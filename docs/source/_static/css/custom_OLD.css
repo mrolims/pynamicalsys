@@ -1,0 +1,249 @@
+/* === GENERAL BACKGROUND & TEXT === */
+html,
+body,
+.wy-body-for-nav,
+.wy-grid-for-nav,
+.wy-nav-content-wrap,
+.wy-nav-content {
+    background-color: #1a152b;
+    /* dark background */
+    color: #f0f0f0;
+}
+
+.rst-content {
+    color: #f0f0f0;
+}
+
+/* === SIDEBAR === */
+.wy-side-nav-search {
+    background-color: #4b2c8a;
+    /* purple header */
+    color: #ffffff;
+}
+
+.wy-side-nav-search input {
+    background-color: #5c3ca2;
+    color: #ffffff;
+    border: 1px solid #8666cc;
+}
+
+.wy-nav-side {
+    background: #2a1b4f;
+    color: #ffffff;
+}
+
+/* === MENU LINKS === */
+.wy-menu-vertical a {
+    color: #d1c4ff;
+}
+
+.wy-menu-vertical a:hover {
+    background-color: #3d2a68;
+    color: #ffffff;
+}
+
+.wy-menu-vertical li.current>a {
+    background-color: #7b4fdc;
+    color: #ffffff;
+}
+
+/* === SECTION HEADERS (TOCTREE CAPTIONS) === */
+.wy-menu-vertical .caption-text {
+    color: #cfaeff;
+    font-weight: bold;
+}
+
+/* === MAIN HEADERS === */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: #e3ccff;
+}
+
+/* === LINKS === */
+a {
+    color: #bb86fc;
+}
+
+a:hover {
+    color: #d7a3ff;
+}
+
+/* === INLINE CODE & CODE BLOCKS === */
+.rst-content code,
+code,
+.highlight pre {
+    background-color: #2e234a !important;
+    color: #fceaff !important;
+    border-radius: 4px;
+    padding: 0.2em 0.4em;
+}
+
+/* === CODE BLOCKS (ENTIRE CONTAINER) === */
+div.highlight {
+    background-color: #2e234a !important;
+}
+
+/* === TABLES === */
+.wy-table-responsive table {
+    background-color: #2b2247;
+    color: #eee;
+    border: 1px solid #6e579b;
+}
+
+th {
+    background-color: #3b2d5f;
+    color: #ffffff;
+}
+
+/* === NAVBAR TOGGLE (small screen menu icon) === */
+.wy-nav-top {
+    background-color: #4b2c8a;
+    color: #ffffff;
+}
+
+/* === FOOTER === */
+footer {
+    background: #1a152b;
+    color: #aaa;
+}
+
+/* === TOC/ADMONITION PANELS (INFO BOXES) === */
+.rst-content .admonition,
+.rst-content .note,
+.rst-content .seealso {
+    background: #30204f;
+    border-left: 5px solid #8e24aa;
+    color: #f0f0f0;
+}
+
+/* === DRACULA SYNTAX COLORS FOR PYTHON === */
+.highlight .k {
+    color: #ff79c6;
+}
+
+/* Keywords */
+.highlight .kn {
+    color: #ff79c6;
+}
+
+/* 'import', 'from' */
+.highlight .nc {
+    color: #50fa7b;
+}
+
+/* Class names */
+.highlight .nf {
+    color: #8be9fd;
+}
+
+/* Function names */
+.highlight .nb {
+    color: #bd93f9;
+}
+
+/* Built-in names (e.g. list, int) */
+.highlight .bp {
+    color: #bd93f9;
+}
+
+/* Built-in constants */
+.highlight .s {
+    color: #f1fa8c;
+}
+
+/* Strings */
+.highlight .mi {
+    color: #bd93f9;
+}
+
+/* Integers */
+.highlight .c1 {
+    color: #6272a4;
+    font-style: italic;
+}
+
+/* Comments */
+.highlight .o {
+    color: #ff79c6;
+}
+
+/* Operators */
+.highlight .p {
+    color: #f8f8f2;
+}
+
+/* Punctuation */
+.highlight .n {
+    color: #f8f8f2;
+}
+
+/* Keywords like 'import', 'from' */
+.highlight .k,
+/* general keyword */
+.highlight .kn {
+    color: #ff79c6;
+    /* Dracula pink */
+}
+
+/* Module/package names after import (e.g., numpy, os) */
+.highlight .nn {
+    color: #bd93f9;
+    /* Dracula purple (namespaces/modules) */
+}
+
+/* Generic name fallback */
+.highlight .n {
+    color: #f8f8f2;
+    /* Dracula light text */
+}
+
+.highlight .s,
+.highlight .s1,
+.highlight .s2,
+.highlight .sd {
+    color: #f1fa8c !important;
+    /* Dracula yellow */
+}
+
+.highlight .m,
+.highlight .mi,
+.highlight .mf {
+    color: #bd93f9;
+    /* Dracula purple */
+}
+
+/* === BOOLEANS (True, False) and None === */
+.highlight .kc {
+    color: #ff79c6;
+    /* Dracula pink */
+}
+
+body,
+.wy-nav-content,
+.rst-content {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* === MATHJAX & MATH TEXT === */
+
+/* Inline math (e.g., :math:`E = mc^2`) */
+.math,
+.math span {
+    color: #f8f8f2;
+    /* Dracula light text */
+    font-family: "STIX Two Math", "Latin Modern Math", Cambria, "Times New Roman", serif;
+    font-size: 1em;
+}
+
+/* Display math (e.g., .. math:: block or $$...$$) */
+div.math,
+div.math p {
+    color: #f8f8f2;
+    overflow-x: auto;
+    font-family: "STIX Two Math", "Latin Modern Math", Cambria, "Times New Roman", serif;
+    font-size: 1.1em;
+}

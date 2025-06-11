@@ -1,0 +1,30 @@
+[project]
+dynamic = ["version"]
+name = "pycandy"
+description = "A Python toolkit for chaotic analysis and dynamical systems"
+authors = [{ name = "Matheus Rolim Sales", email = "rolim.sales.m@gmail.com" }]
+readme = "README.md"
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+dependencies = ["numpy >=1.21", "matplotlib >=3.4", "numba >=0.55"]
+requires-python = ">=3.8"
+
+[build-system]
+requires = ["setuptools>=61.0", "setuptools-scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["pycandy"]
+package-dir = { "" = "src" }
+
+[tool.setuptools_scm]
+write_to = "src/pycandy/__version__.py"
