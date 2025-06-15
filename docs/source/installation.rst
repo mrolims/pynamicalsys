@@ -18,6 +18,11 @@ To install the latest stable release, run:
 
     $ pip install pycandy
 
+.. note::
+    On **Windows**, it is **strongly recommended** to use `Anaconda <https://www.anaconda.com>`_. It simplifies dependency management and avoids potential issues with scientific libraries during installation.
+
+    Be sure to run the command from the **Anaconda Prompt**, not from Command Prompt or PowerShell, to ensure the correct environment is activated.
+
 Install from source
 -------------------
 

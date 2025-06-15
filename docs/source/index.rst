@@ -51,5 +51,6 @@ PyCandy is built on top of NumPy and Numba, ensuring high performance and effici
    contributing
    code_of_conduct
    contributors
+   changelog
    acknowledgments
    disclaimer
