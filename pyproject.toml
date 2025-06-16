@@ -25,6 +25,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["pycandy"]
 package-dir = { "" = "src" }
+license-files = []
 
 [tool.setuptools_scm]
 write_to = "src/pycandy/__version__.py"
