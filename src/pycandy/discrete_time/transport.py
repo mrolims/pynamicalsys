@@ -257,7 +257,7 @@ def cumulative_average_vs_time(
     return cumul_average
 
 
-@njit(cache=True)
+@njit(cache=True, parallel=True)
 def root_mean_squared(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
