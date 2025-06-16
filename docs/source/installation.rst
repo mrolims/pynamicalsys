@@ -1,7 +1,7 @@
 Installation
 ============
 
-This section guides you through installing the **PyCandy** package.
+This section guides you through installing the **pynamicalsys** package.
 
 Prerequisites
 -------------
@@ -16,7 +16,7 @@ To install the latest stable release, run:
 
 .. code-block:: bash
 
-    $ pip install pycandy
+    $ pip install pynamicalsys
 
 .. note::
     On **Windows**, it is **strongly recommended** to use `Anaconda <https://www.anaconda.com>`_. It simplifies dependency management and avoids potential issues with scientific libraries during installation.
@@ -30,8 +30,8 @@ If you want to install the development version from the source repository, clone
 
 .. code-block:: bash
 
-    $ git clone https://github.com/mrolims/pycandy.git
-    $ cd pycandy
+    $ git clone https://github.com/mrolims/pynamicalsys.git
+    $ cd pynamicalsys
     $ pip install .
 
 Verifying the installation
@@ -41,8 +41,8 @@ After installation, you can verify it by running Python and importing the packag
 
 .. code-block:: python
 
-    import pycandy
-    print(pycandy.__version__)
+    import pynamicalsys
+    print(pynamicalsys.__version__)
 
 Troubleshooting
 ---------------

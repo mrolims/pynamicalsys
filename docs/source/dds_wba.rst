@@ -38,11 +38,11 @@ The convergence of the weighted Birkhoff average can be measured by calculating 
 
 The weighted Birkhoff average, in contrast to the standard Birkhoff average, only improves the convergence of the average for regular orbits. Therefore, a high value of dig, which indicates a fast convergence, is a strong indicator for regular dynamics. A low value of dig, which indicates a slow convergence, is a strong indicator for chaotic dynamics.
 
-The following code snippet shows how to calculate the number of digits of the weighted Birkhoff average convergence using the :py:meth:`dig <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>` method from the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class for the standard map with three different functions.
+The following code snippet shows how to calculate the number of digits of the weighted Birkhoff average convergence using the :py:meth:`dig <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>` method from the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class for the standard map with three different functions.
 
 .. code-block:: python
 
-   from pycandy import DiscreteDynamicalSystem as dds
+   from pynamicalsys import DiscreteDynamicalSystem as dds
    import numpy as np
 
    # Create the discrete dynamical system object 
@@ -83,7 +83,7 @@ We can visualize the results by plotting the number of digits for each initial c
 
 .. code-block:: python
 
-   from pycandy import PlotStyler
+   from pynamicalsys import PlotStyler
    import matplotlib.pyplot as plt
 
    # Set the plot style

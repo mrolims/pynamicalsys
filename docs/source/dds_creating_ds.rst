@@ -1,12 +1,12 @@
 Creating a discrete dynamical system
 ------------------------------------
 
-The :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class allows you to create a discrete dynamical system object. You can use built-in systems or define your own discrete maps.
+The :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class allows you to create a discrete dynamical system object. You can use built-in systems or define your own discrete maps.
 
 Using built-in systems
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To check available built-in systems, you can use the :py:meth:`available_models <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.available_models>` method:
+To check available built-in systems, you can use the :py:meth:`available_models <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.available_models>` method:
 
 .. code-block:: python
 
@@ -41,7 +41,7 @@ where :math:`k` is a constant. You can create this system using:
 
     ds = dds(model="standard map")
 
-and then all the methods available for the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class can be used to run simulations and analyze the system.
+and then all the methods available for the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class can be used to run simulations and analyze the system.
 
 Creating custom discrete maps
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -60,7 +60,7 @@ You can also create your own discrete maps by defining a function that takes the
         x_next = (x + y_next) % 1
         return np.array([x_next, y_next])
 
-Note that we use `numba` to compile the function for performance. Most methods inside the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class are decoreted with numba. Therefore, it is absolute necessary that all custom mapping function be decoreted with it as well. You can then create a discrete dynamical system object with this custom function:
+Note that we use `numba` to compile the function for performance. Most methods inside the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class are decoreted with numba. Therefore, it is absolute necessary that all custom mapping function be decoreted with it as well. You can then create a discrete dynamical system object with this custom function:
 
 .. code-block:: python
 

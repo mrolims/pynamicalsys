@@ -1,16 +1,16 @@
 Generating trajectories
 -----------------------
 
-To generate trajectories for a discrete dynamical system, we can use the :py:meth:`trajectory <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method of the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. This method allows us to specify the initial condition, parameter values, and total time for the simulation.
+To generate trajectories for a discrete dynamical system, we can use the :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. This method allows us to specify the initial condition, parameter values, and total time for the simulation.
 
 Single initial condition
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-As a first example, let's consider the standard map. We first create an instance of the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class:
+As a first example, let's consider the standard map. We first create an instance of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class:
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem
+    from pynamicalsys import DiscreteDynamicalSystem
 
     import numpy as np
     import matplotlib.pyplot as plt
@@ -19,7 +19,7 @@ As a first example, let's consider the standard map. We first create an instance
     # Create an instance of the standard map
     ds = DiscreteDynamicalSystem(model="standard_map")
 
-Next, we can generate a trajectory by specifying the initial condition, parameters, and total time. The :py:meth:`trajectory <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method returns a Numpy array with shape `(N, d)`, where `N` is the number of iterations and `d` is the dimension of the system. Each row of the array corresponds to a time step, and each column corresponds to a state variable. 
+Next, we can generate a trajectory by specifying the initial condition, parameters, and total time. The :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method returns a Numpy array with shape `(N, d)`, where `N` is the number of iterations and `d` is the dimension of the system. Each row of the array corresponds to a time step, and each column corresponds to a state variable. 
 
 .. code-block:: python
 
@@ -30,11 +30,11 @@ Next, we can generate a trajectory by specifying the initial condition, paramete
 
     trajectory = ds.trajectory(u, total_time, parameters=k)
 
-To visualize the generated trajectory, we can use Matplotlib to plot the time series of the system's state. But before, let's import the :py:class:`PlotStyler <pycandy.core.plot_styler.PlotStyler>` class from PyCandy to set the plot style:
+To visualize the generated trajectory, we can use Matplotlib to plot the time series of the system's state. But before, let's import the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class from pynamicalsys to set the plot style:
 
 .. code-block:: python
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
 
 Then, we can apply the style and plot the trajectory:
 
@@ -70,7 +70,7 @@ Then, we can apply the style and plot the trajectory:
 Multiple initial conditions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To generate trajectories for multiple initial conditions, we can use the :py:meth:`trajectory <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method and simply pass a list of initial conditions with shape `(M, d)`, where `M` is the number of initial conditions and `d` is the system's dimension. The method will return a Numpy array with shape `(N * M, d)`, where `N` is the number of iterations. In other words, each initial condition will generate its own trajectory, and the results will be concatenated into a single array. It is, however, possible to reshape the output to get a list of trajectories, each with shape `(N, d)`.
+To generate trajectories for multiple initial conditions, we can use the :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method and simply pass a list of initial conditions with shape `(M, d)`, where `M` is the number of initial conditions and `d` is the system's dimension. The method will return a Numpy array with shape `(N * M, d)`, where `N` is the number of iterations. In other words, each initial condition will generate its own trajectory, and the results will be concatenated into a single array. It is, however, possible to reshape the output to get a list of trajectories, each with shape `(N, d)`.
 
 Let's then generate trajectories for 200 randomly chosen initial conditions in the unit square, with a fixed parameter value and total time:
 
@@ -101,7 +101,7 @@ Let's then generate trajectories for 200 randomly chosen initial conditions in t
     # Reshape the output to get a list of trajectories
     trajectories_reshaped = trajectory.reshape(num_ic, total_time, 2)
 
-To visualize the results, we can plot each trajectory in a loop. We will use the :py:class:`PlotStyler <pycandy.core.plot_styler.PlotStyler>` class to set the plot style and customize the appearance of the trajectories and we will use Seaborn to generate a color palette for the trajectories:
+To visualize the results, we can plot each trajectory in a loop. We will use the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class to set the plot style and customize the appearance of the trajectories and we will use Seaborn to generate a color palette for the trajectories:
 
 .. code-block:: python
 
@@ -148,7 +148,7 @@ As a final example, let's consider a dissipative system, the Hénon map. The Hé
         y_{n+1} &= b x_n,
     \end{align*}
 
-where :math:`a` and :math:`b` are parameters of the system. We can create an instance of the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class for the Hénon map and generate trajectories in a similar way as before. However, in the case of dissipative systems, we often discard the initial transient period and focus on the long-term behavior of the system.
+where :math:`a` and :math:`b` are parameters of the system. We can create an instance of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class for the Hénon map and generate trajectories in a similar way as before. However, in the case of dissipative systems, we often discard the initial transient period and focus on the long-term behavior of the system.
 
 .. code-block:: python
 

@@ -28,16 +28,16 @@ To illustrate the concept, we will consider the 4-dimensional symplectic map, gi
         x_{n+1}^{(4)} &= x_{n}^{(4)} - \epsilon_2\sin(x_{n}^{(3)} + x_{n}^{(4)}) - \xi[1 - \cos(x_{n}^{(1)} + x_{n}^{(2)} + x_{n}^{(3)} + x_{n}^{(4)})] \bmod{2\pi}.
     \end{align*}
 
-The LDI is computed using :py:meth:`LDI <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.LDI>` method from the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. Let's compute the LDI for :math:`k = 2`, :math:`k = 3`, and :math:`k = 4` for this map. First, we need to import the necessary modules and define the dynamical system:
+The LDI is computed using :py:meth:`LDI <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.LDI>` method from the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. Let's compute the LDI for :math:`k = 2`, :math:`k = 3`, and :math:`k = 4` for this map. First, we need to import the necessary modules and define the dynamical system:
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
 
     # Define the symplectic map
     ds = dds(model="4d symplectic map")
 
-To make sure the order at which order the parameters should be passed, we can use the :py:meth:`info <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.info>` property:
+To make sure the order at which order the parameters should be passed, we can use the :py:meth:`info <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.info>` property:
 
 .. code-block:: python
 
@@ -47,7 +47,7 @@ To make sure the order at which order the parameters should be passed, we can us
 
     ['epsilon_1', 'epsilon_2', 'xi']
 
-With this information, let's compute the LDI for two different initial conditions, one regular and one chaotic. The :py:meth:`LDI <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.LDI>` method is similar to the :py:meth:`lyapunov <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method. It computes the linear dependence index for a given initial condition, parameters, total time, and number of deviation vectors :math:`k`. The `return_history` argument allows us to return the history of the LDI values at specified sample times:
+With this information, let's compute the LDI for two different initial conditions, one regular and one chaotic. The :py:meth:`LDI <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.LDI>` method is similar to the :py:meth:`lyapunov <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method. It computes the linear dependence index for a given initial condition, parameters, total time, and number of deviation vectors :math:`k`. The `return_history` argument allows us to return the history of the LDI values at specified sample times:
 
 .. code-block:: python
 
@@ -83,7 +83,7 @@ Now we can visualize the results
 
 .. code-block:: python
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
     import matplotlib.pyplot as plt
 
     # Create a plot styler

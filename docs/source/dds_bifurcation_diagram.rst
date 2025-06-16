@@ -13,18 +13,18 @@ As a first example, we will create a bifurcation diagram for the logistic map, w
 
 where :math:`r` is the parameter that we will vary. The parameter :math:`r` typically ranges from 0 to 4, however, we will focus on the range from 2.5 to 4.0, which is where interesting bifurcations occur.
 
-Just as in our previous examples, we start by importing the necessary libraries and creating the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` object for the logistic map.
+Just as in our previous examples, we start by importing the necessary libraries and creating the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` object for the logistic map.
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
     import numpy as np
     import matplotlib.pyplot as plt
     import seaborn as sns
 
     ds = dds(model="logistic map")
 
-We are going to use the :py:meth:`bifurcation_diagram <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method from the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class to create the bifurcation diagram. This method requires the following parameters:
+We are going to use the :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method from the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class to create the bifurcation diagram. This method requires the following parameters:
 
 - `u`: the initial condition for the system, which we will set to 0.2.
 - `param_index`: the index of the parameter we are varying, which is 0 for the logistic map.
@@ -32,7 +32,7 @@ We are going to use the :py:meth:`bifurcation_diagram <pycandy.core.discrete_dyn
 - `total_time`: the total number of iterations to run the system, which we will set to 4000.
 - `transient_time`: the number of iterations to discard before plotting, which we will set to 1000.
 
-The :py:meth:`bifurcation_diagram <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method returns two Numpy arrays: `param_values` with shape `(len(param_range),)` which contain the parameter values, and `bifurcation_values`, with shape `(len(param_range), total_time - transient_time)`, which contain the coordinates of the bifurcation diagram at each parameter value.
+The :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method returns two Numpy arrays: `param_values` with shape `(len(param_range),)` which contain the parameter values, and `bifurcation_values`, with shape `(len(param_range), total_time - transient_time)`, which contain the coordinates of the bifurcation diagram at each parameter value.
 
 .. code-block:: python
 
@@ -100,7 +100,7 @@ As a second example, we will create a bifurcation diagram for the Hénon map, wh
         y_{n+1} &= b x_n,
     \end{align*}
 
-where :math:`a` and :math:`b` are parameters that we will vary. We will focus on the range of :math:`a` from 1.0 to 1.4 and set :math:`b = 0.3`. Now, our system has two parameters. Since we are interested in changing :math:`a`, we will set `param_index` to 0. However, if for instance we wanted to change :math:`b`, we would set `param_index` to 1. In this case, an additional parameter has to be passed to the :py:meth:`bifurcation_diagram <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method, which is the value of :math:`b`.
+where :math:`a` and :math:`b` are parameters that we will vary. We will focus on the range of :math:`a` from 1.0 to 1.4 and set :math:`b = 0.3`. Now, our system has two parameters. Since we are interested in changing :math:`a`, we will set `param_index` to 0. However, if for instance we wanted to change :math:`b`, we would set `param_index` to 1. In this case, an additional parameter has to be passed to the :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method, which is the value of :math:`b`.
 
 .. code-block:: python
 
@@ -159,7 +159,7 @@ We plot the bifurcation diagram for the Hénon map in a similar way as we did fo
    
    Bifurcation diagram of the Hénon map.
 
-An additional parameter can be passed to the :py:meth:`bifurcation_diagram <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method, which is which observable to use for the bifurcation diagram, i.e., which coordinate. By default, the first coordinate is used, which is :math:`x_n` for the Hénon map. If we wanted to use the second coordinate, we would set `observable_index=1`.
+An additional parameter can be passed to the :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method, which is which observable to use for the bifurcation diagram, i.e., which coordinate. By default, the first coordinate is used, which is :math:`x_n` for the Hénon map. If we wanted to use the second coordinate, we would set `observable_index=1`.
 
 Nontwist sine circle map example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -185,13 +185,13 @@ where :math:`\Omega \in \mathbb{R}`, :math:`a \in [0, 1]`, and :math:`b \in \mat
 
         return np.array([x_new])
 
-And also create a :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` object for it.
+And also create a :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` object for it.
 
 .. code-block:: python
 
     ds = dds(mapping=nontwist_sine_circle_map, system_dimension=1, number_of_parameters=3)
 
-In both previous examples, the :py:meth:`bifurcation_diagram <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method used a *fixed* initial condition, i.e., the initial condition was the same for all parameter values. However, in this case, we will use as the initial condition the last value of the previous parameter value, i.e., we will use a *continuation* method. To do this, we will set `continuation=True` in the :py:meth:`bifurcation_diagram <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method. We can also set `return_last_state=True` to return the last state of the system, which will be used as the initial condition for the backward continuation, i.e., instead of changaing the parameter `b` in the forward direction, we will change it in the backward direction (decreasing).
+In both previous examples, the :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method used a *fixed* initial condition, i.e., the initial condition was the same for all parameter values. However, in this case, we will use as the initial condition the last value of the previous parameter value, i.e., we will use a *continuation* method. To do this, we will set `continuation=True` in the :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method. We can also set `return_last_state=True` to return the last state of the system, which will be used as the initial condition for the backward continuation, i.e., instead of changaing the parameter `b` in the forward direction, we will change it in the backward direction (decreasing).
 
 Since we are changing the parameter `b`, and we have defined the parameter list as `parameters = [a, b, omega]`, we will set `param_index=1` to indicate that we are varying the second parameter in the list. For the forward continuation, we will set the initial condition `u` to `0.5`, and modify the optional parameters `continuation` and `return_last_state` as described above.
 

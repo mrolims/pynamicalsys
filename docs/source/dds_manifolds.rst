@@ -1,7 +1,7 @@
 Periodic orbits and their manifolds
 -----------------------------------
 
-This section covers the analysis of periodic orbits and their stable and unstable manifolds in discrete dynamical systems using **PyCandy**. It includes methods for identifying periodic orbits, calculating their manifolds, and visualizing the results.
+This section covers the analysis of periodic orbits and their stable and unstable manifolds in discrete dynamical systems using **pynamicalsys**. It includes methods for identifying periodic orbits, calculating their manifolds, and visualizing the results.
 
 Given a discrete dynamical system :math:`\mathbf{x}_{n + 1} = \mathbf{f}(\mathbf{x}_n)`, a fixed point is a point :math:`\mathbf{x}^*` such that :math:`\mathbf{f}(\mathbf{x}^*) = \mathbf{x}^*`. A periodic orbit of period :math:`p`, on the other hand, is a sequence of points :math:`\mathcal{O} = (\mathbf{x}^*, \mathbf{f}(\mathbf{x}^*), \ldots, \mathbf{f}^{p-1}(\mathbf{x}^*))` such that :math:`\mathbf{f}^p(\mathbf{x}^*) = \mathbf{x}^*`, where :math:`\mathbf{x}^*` is a point in the orbit.
 
@@ -15,14 +15,14 @@ We are going to illustrate this process using the standard map. As usual, we sta
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem
+    from pynamicalsys import DiscreteDynamicalSystem
     import numpy as np
     import matplotlib.pyplot as plt
     
     # Create the discrete dynamical system
     dds = dds(model="standard map")
 
-Then, we can compute the fixed points of the system and identify periodic orbits. The standard map has two well-known fixed points at :math:`(0, 0)` and at :math:`(0.5, 0)`. Let's compute their stability using the :py:meth:`classify_stability <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.classify_stability>` method, which returns a dictionary containing the stability information, the eigenvalues, and the eigenvectors of the fixed points. Note that this method only works for two-dimensional systems. If you wish to compute the eigenvalues and eigenvectors of a fixed point or periodic orbit in a higher-dimensional system, you can use the :py:meth:`eigenvalues_and_eigenvectors <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.eigenvalues_and_eigenvectors>` method.
+Then, we can compute the fixed points of the system and identify periodic orbits. The standard map has two well-known fixed points at :math:`(0, 0)` and at :math:`(0.5, 0)`. Let's compute their stability using the :py:meth:`classify_stability <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.classify_stability>` method, which returns a dictionary containing the stability information, the eigenvalues, and the eigenvectors of the fixed points. Note that this method only works for two-dimensional systems. If you wish to compute the eigenvalues and eigenvectors of a fixed point or periodic orbit in a higher-dimensional system, you can use the :py:meth:`eigenvalues_and_eigenvectors <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.eigenvalues_and_eigenvectors>` method.
 
 .. code-block:: python
 
@@ -57,7 +57,7 @@ Then, we can compute the fixed points of the system and identify periodic orbits
     Eigenvectors: [[0.38729833+0.5j 0.38729833-0.5j]
     [0.77459667+0.j  0.77459667+0.j ]]
 
-Once we have the stability information, we can compute the stable and unstable manifolds of the hyperbolic fixed point, i.e., the saddle point at :math:`(0, 0)`. We use the :py:meth:`manifold <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.manifold>` method.
+Once we have the stability information, we can compute the stable and unstable manifolds of the hyperbolic fixed point, i.e., the saddle point at :math:`(0, 0)`. We use the :py:meth:`manifold <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.manifold>` method.
 
 .. code-block:: python
 
@@ -73,7 +73,7 @@ Finally, we can visualize the periodic orbit and its stable and unstable manifol
     # We plot a chaotic trajectory to visualize the periodic orbit and its manifolds
     trajectory = ds.trajectory([0.05, 0.05], 2500000, parameters=k)
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
     import matplotlib.pyplot as plt
 
     # Set the plot style
@@ -118,7 +118,7 @@ Finally, we can visualize the periodic orbit and its stable and unstable manifol
    
    Fixed points and stable (red) and unstable (maroon) manifolds of the standard map with :math:`k = 1.5`. The chaotic trajectory is shown in black. The saddle point is marked with a circle, while the elliptic point is marked with a square.
 
-We can also compute the stability of periodic orbits of higher periods. For example, we can compute the stability of the periodic orbit of period 2. We know that the elliptic orbit of period 2 is at :math:`(0.0, 0.5)` and :math:`(0.5, 0.5)`. However, let's assume we do not know that. We know, however, that the periodic orbit is along a symmetry line of the standard map. One of these symmetry lines is the line :math:`x = 0.0`. We can use the :py:meth:`find_periodic_orbit <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.find_periodic_orbit>` method to compute the periodic orbit of period 2 along this line. This method returns an 1D array cointaining a point on the periodic orbit.
+We can also compute the stability of periodic orbits of higher periods. For example, we can compute the stability of the periodic orbit of period 2. We know that the elliptic orbit of period 2 is at :math:`(0.0, 0.5)` and :math:`(0.5, 0.5)`. However, let's assume we do not know that. We know, however, that the periodic orbit is along a symmetry line of the standard map. One of these symmetry lines is the line :math:`x = 0.0`. We can use the :py:meth:`find_periodic_orbit <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.find_periodic_orbit>` method to compute the periodic orbit of period 2 along this line. This method returns an 1D array cointaining a point on the periodic orbit.
 
 First, we need to define the symmetry line. The symmetry line we are going to use is the line :math:`x = 0.0`. We can define it as a function that returns a list of points along the line given a parameter :math:`y` and the parameters of the system (even though, in this case, the line does not depend on any parameter.
 
@@ -197,7 +197,7 @@ Next, we can use the `find_periodic_orbit` method to compute the periodic orbit 
     
 This huge output was printed because we set the `verbose` parameter to `True`. If you do not want to see the output, you can set it to `False`. At each iteration, the method computes the difference between the current periodic orbit and the previous one, as well as the bounds of the phase space region we are searching for the periodic orbit. The method stops when the difference is smaller than the tolerance specified by the `tolerance` parameter (default is :math:`10^{-15}`). Another important parameter is the `axis` parameter, which specifies the axis along which the symmetry line is defined. In this case, we set it to 1, meaning that the symmetry line is defined along the y-axis. If you want to define the symmetry line along the x-axis, you can set the `axis` parameter to 0.
 
-Now that we have the periodic orbit, we can compute its stability using the :py:meth:`classify_stability <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.classify_stability>` method as before:
+Now that we have the periodic orbit, we can compute its stability using the :py:meth:`classify_stability <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.classify_stability>` method as before:
 
 .. code-block:: python
 
@@ -216,7 +216,7 @@ Now that we have the periodic orbit, we can compute its stability using the :py:
     Eigenvectors: [[0.7801895 +0.j         0.7801895 +0.j        ]
     [0.58514212-0.22116293j 0.58514212+0.22116293j]]
 
-We confirm what we already knew: the periodic orbit is elliptic. Now for the hyperbolic periodic orbit of period 2. We know that it is on some symmetry line as well, but we do not know whick one. We do know, however, that it is in between the two period 2 islands (Poincaré-Birkhoff theorem). We can then use the :py:meth:`find_periodic_orbit <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.find_periodic_orbit>` to perform a two-dimensional search for the periodic orbit within a rectangular region: :math:`(x, y) \in [0.1, 0.3] \times [0.3, 0.55]`. We then define a 3D array containing the points in the rectangular region, and we can use the `find_periodic_orbit` method to compute the periodic orbit of period 2.
+We confirm what we already knew: the periodic orbit is elliptic. Now for the hyperbolic periodic orbit of period 2. We know that it is on some symmetry line as well, but we do not know whick one. We do know, however, that it is in between the two period 2 islands (Poincaré-Birkhoff theorem). We can then use the :py:meth:`find_periodic_orbit <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.find_periodic_orbit>` to perform a two-dimensional search for the periodic orbit within a rectangular region: :math:`(x, y) \in [0.1, 0.3] \times [0.3, 0.55]`. We then define a 3D array containing the points in the rectangular region, and we can use the `find_periodic_orbit` method to compute the periodic orbit of period 2.
 
 .. code-block:: python
 

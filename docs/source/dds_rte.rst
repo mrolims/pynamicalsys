@@ -27,8 +27,8 @@ We are going to illustrate the concept of recurrence time entropy using three di
 
 .. code-block:: python
 
-   from pycandy import DiscreteDynamicalSystem as dds
-   from pycandy import PlotStyler
+   from pynamicalsys import DiscreteDynamicalSystem as dds
+   from pynamicalsys import PlotStyler
    import numpy as np
    import matplotlib.pyplot as plt
 
@@ -72,11 +72,11 @@ We are going to illustrate the concept of recurrence time entropy using three di
    
    Three trajectories of the standard map with different initial conditions.
 
-Next, we will compute the recurrence matrices for these trajectories using the :py:meth:`recurrence_matrix <pycandy.core.time_series_metrics.TimeSeriesMetrics.recurrence_matrix>` method from the :py:class:`TimeSeriesMetrics <pycandy.core.time_series_metrics.TimeSeriesMetrics>` class. The recurrence matrix is computed using a threshold of 10% of the standard deviation of the trajectory. To change that, use the parameters `threshold` and `threshold_std`. The recurrence matrices, given a trajectory, are calculated as shown below:
+Next, we will compute the recurrence matrices for these trajectories using the :py:meth:`recurrence_matrix <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics.recurrence_matrix>` method from the :py:class:`TimeSeriesMetrics <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics>` class. The recurrence matrix is computed using a threshold of 10% of the standard deviation of the trajectory. To change that, use the parameters `threshold` and `threshold_std`. The recurrence matrices, given a trajectory, are calculated as shown below:
 
 .. code-block:: python
 
-   from pycandy import TimeSeriesMetrics
+   from pynamicalsys import TimeSeriesMetrics
 
    # Empty lists to store recurrence matrices and white vertical line distributions
    recmats = []
@@ -125,7 +125,7 @@ Next, we will compute the recurrence matrices for these trajectories using the :
 
 The recurrence matrices for the three trajectories exhibit different patterns, reflecting the underlying dynamics of the system. The first trajectory shows a complex structure, while the second exhibits a more regular pattern. The third trajectory shows a mix of both regular and chaotic behavior.
 
-To calculate the recurrence time entropy from the trajectory data, we use the :py:meth:`recurrence_time_entropy <pycandy.core.time_series_metrics.TimeSeriesMetrics.recurrence_time_entropy>` method from the :py:class:`TimeSeriesMetrics <pycandy.core.time_series_metrics.TimeSeriesMetrics>` class
+To calculate the recurrence time entropy from the trajectory data, we use the :py:meth:`recurrence_time_entropy <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics.recurrence_time_entropy>` method from the :py:class:`TimeSeriesMetrics <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics>` class
 
 .. code-block:: python
 
@@ -179,11 +179,11 @@ Finally, we can visualize the white vertical line distributions for the recurren
    
    White vertical line distribution for the above recurrence matrices.
 
-The recurrence time entropy can also be computed using the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class directly, which simplifies the process:
+The recurrence time entropy can also be computed using the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class directly, which simplifies the process:
 
 .. code-block:: python
 
-   from pycandy import DiscreteDynamicalSystem as dds
+   from pynamicalsys import DiscreteDynamicalSystem as dds
 
    # Create a discrete dynamical system for the standard map
    ds = dds(model="standard map")
@@ -200,15 +200,15 @@ The recurrence time entropy can also be computed using the :py:class:`DiscreteDy
 
    [4.961395761597473, 1.190112332533454, 2.1694882785487892]
 
-The `DiscreteDynamicalSystem.recurrence_time_entropy` method can also return the recurrence matrix, the white vertical line distribution, and the final state of the initial condition. See :py:meth:`DiscreteDynamicalSystem.recurrence_time_entropy <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.recurrence_time_entropy>` for more details.
+The `DiscreteDynamicalSystem.recurrence_time_entropy` method can also return the recurrence matrix, the white vertical line distribution, and the final state of the initial condition. See :py:meth:`DiscreteDynamicalSystem.recurrence_time_entropy <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.recurrence_time_entropy>` for more details.
 
 As a final example. let's compute the recurrence time entropy for the standard map for three different parameter values, :math:`k = 0.9`, :math:`k = 1.5`, and :math:`k = 3.6`, using random initial conditions:
 
 .. code-block:: python
 
-   from pycandy import DiscreteDynamicalSystem as dds
+   from pynamicalsys import DiscreteDynamicalSystem as dds
    import numpy as np
-   from pycandy import PlotStyler
+   from pynamicalsys import PlotStyler
    import matplotlib.pyplot as plt
 
    # Create a discrete dynamical system for the standard map

@@ -1,12 +1,12 @@
 Quickstart
 ==========
 
-This guide walks you through the basics of using **PyCandy**.
+This guide walks you through the basics of using **pynamicalsys**.
 
 Creating a discrete dynamical system object
 -------------------------------------------
 
-To get started, you need to create a discrete dynamical system object. This is done using the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. For this example, we will use the logistic map, defined as:
+To get started, you need to create a discrete dynamical system object. This is done using the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. For this example, we will use the logistic map, defined as:
 
 .. math::
     
@@ -16,7 +16,7 @@ This map is a discrete dynamical system that exhibits a wide range of behaviors 
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
     ds = dds(model="logistc map")
 
 Generating a time series
@@ -35,11 +35,11 @@ We are going to generate a time series for this system using four different para
 Visualizing the results
 -----------------------
 
-To visualize the results, we can use the :py:class:`PlotStyler <pycandy.core.plot_styler.PlotStyler>` class to customize our plots.
+To visualize the results, we can use the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class to customize our plots.
 
 .. code-block:: python
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
     import seaborn as sns
     import matplotlib.pyplot as plt
     

@@ -1,9 +1,9 @@
 Escape analysis in dynamical systems
 ------------------------------------
 
-This section discusses the analysis of escape dynamics in discrete dynamical systems using PyCandy. Escape dynamics refers to the behavior of trajectories that leave a bounded region in the phase space or escape thorough a hole in the system. Escape analysis is crucial for understanding the long-term behavior of dynamical systems, especially in chaotic regimes. PyCandy provides tools to analyze escape dynamics, including the computation of escape basin, escape rates and quantification of basins of attraction.
+This section discusses the analysis of escape dynamics in discrete dynamical systems using pynamicalsys. Escape dynamics refers to the behavior of trajectories that leave a bounded region in the phase space or escape thorough a hole in the system. Escape analysis is crucial for understanding the long-term behavior of dynamical systems, especially in chaotic regimes. pynamicalsys provides tools to analyze escape dynamics, including the computation of escape basin, escape rates and quantification of basins of attraction.
 
-The escape analysis is performed using the :py:meth:`escape_analysis <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.escape_analysis>` method of the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. In general, the escape analysis can be in two forms:
+The escape analysis is performed using the :py:meth:`escape_analysis <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.escape_analysis>` method of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. In general, the escape analysis can be in two forms:
 
 1. The ensemble of particles, i.e., the set of initial conditions, is initialized within a bounded region in phase space, and the escape dynamics is analyzed by tracking when the particles leave this region.
 2. Or the ensemble of particles is initialized within a region that contains a hole, and the escape dynamics is analyzed by tracking when the particles leave through this hole.
@@ -26,7 +26,7 @@ Before performing the escape analysis, let's take a look at the phase space of t
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
     import numpy as np
 
     ds = dds(model="leonel map")
@@ -48,7 +48,7 @@ We then plot the trajectories in the phase space:
 
 .. code-block:: python
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
     import matplotlib.pyplot as plt
 
     # Set the style for the plots
@@ -116,7 +116,7 @@ To perform the escape analysis, we can use the following code snippet:
     
     escapes = np.array(escapes, dtype=np.int32)
 
-First, let's understand the output of the :py:meth:`escape_analysis <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.escape_analysis>` method. The method returns a 2D array of shape `(num_ic, 2)`, where each row corresponds to an initial condition and contains the following information:
+First, let's understand the output of the :py:meth:`escape_analysis <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.escape_analysis>` method. The method returns a 2D array of shape `(num_ic, 2)`, where each row corresponds to an initial condition and contains the following information:
 
 - The first column contains the exit point of the particle, which is either the exit region or the hole through which the particle escapes. In our case that we have a two-dimensional box, the exit point represents whether the particle has escaped through the left (0) or right (1) side of the box, or through the bottom (2) or top (3) side. If the particle does not escape, the exit point is set to -1.
 - The second column contains the time step at which the particle escapes the bounded region.
@@ -163,7 +163,7 @@ Now, what about the escape times? To understand the escape times, we compute the
 
     P(n) = \frac{N(n)}{N_0}
 
-where :math:`N(n)` is the number of particles that have not escaped at time :math:`t`, and :math:`N_0` is the total number of particles. The survival probability can be computed using the :py:meth:`survival_probability <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.survival_probability>`. The following code snippet demonstrates how to compute the survival probability for the escape analysis we performed above:
+where :math:`N(n)` is the number of particles that have not escaped at time :math:`t`, and :math:`N_0` is the total number of particles. The survival probability can be computed using the :py:meth:`survival_probability <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.survival_probability>`. The following code snippet demonstrates how to compute the survival probability for the escape analysis we performed above:
 
 .. code-block:: python
 
@@ -178,7 +178,7 @@ The method returns the time steps and the survival probability for each time ste
 
 .. code-block:: python
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
     import matplotlib.pyplot as plt
     import matplotlib as mpl
     import seaborn as sns
@@ -248,11 +248,11 @@ In this case, we analyze the escape dynamics of a discrete dynamical system by t
 
 where :math:`k` is a parameter that controls the strength of the nonlinearity. The Weiss map is a nontwist, area-preserving map, which means that the twist condition, :math:`\partial x_{n + 1} / \partial y_n \neq 0`, is not satisfied.
 
-This system is not built-in in PyCandy, so we first need to define it as a custom discrete dynamical system. The following code snippet demonstrates how to define the Weiss map in PyCandy:
+This system is not built-in in pynamicalsys, so we first need to define it as a custom discrete dynamical system. The following code snippet demonstrates how to define the Weiss map in pynamicalsys:
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
     import numpy as np
     from numba import njit
 
@@ -312,7 +312,7 @@ We then plot the escape basins together with the escape times. The following cod
 .. code-block:: python
 
     import matplotlib.pyplot as plt
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
     from matplotlib.colors import ListedColormap
     import matplotlib as mpl
 
@@ -362,7 +362,7 @@ We then plot the escape basins together with the escape times. The following cod
 
    The escape basins (top row) and escape times (bottom row) for the Weiss map for different values of :math:`k`, namely, :math:`k = 0.5`, :math:`k = 0.55`, :math:`k = 0.6`, and :math:`k = 0.7`.
 
-We can quantify the complexity of the escape basins by computing the basin entropy. We use the :py:meth:`basin_entropy <pycandy.core.basin_metrics.BasinMetrics.basin_entropy>` method from the :py:class:`BasinMetrics <pycandy.core.basin_metrics.BasinMetrics>` class in PyCandy to compute the basin entropy for each escape basin. The basin entropy is defined as follows: Given a region in phase space :math:`\mathcal{R}` which contains :math:`N_A` distinguishable assymptotic state. We divide the region :math:`\mathcal{R}` into a mesh of :math:`N_T \times N_T` boxes of linear size :math:`\delta`. Each box has a large number of initial conditions and each one leads to one of the :math:`N_A` assymptotic states. For each box :math:`i`, we associate a probability :math:`p_{ij}` of a assymptotic state :math:`j` to be present in the box and define the Shanon entropy of the :math:`i`-th box as:
+We can quantify the complexity of the escape basins by computing the basin entropy. We use the :py:meth:`basin_entropy <pynamicalsys.core.basin_metrics.BasinMetrics.basin_entropy>` method from the :py:class:`BasinMetrics <pynamicalsys.core.basin_metrics.BasinMetrics>` class in pynamicalsys to compute the basin entropy for each escape basin. The basin entropy is defined as follows: Given a region in phase space :math:`\mathcal{R}` which contains :math:`N_A` distinguishable assymptotic state. We divide the region :math:`\mathcal{R}` into a mesh of :math:`N_T \times N_T` boxes of linear size :math:`\delta`. Each box has a large number of initial conditions and each one leads to one of the :math:`N_A` assymptotic states. For each box :math:`i`, we associate a probability :math:`p_{ij}` of a assymptotic state :math:`j` to be present in the box and define the Shanon entropy of the :math:`i`-th box as:
 
 .. math::
 
@@ -394,7 +394,7 @@ The following code snippet demonstrates how to compute the basin entropy and bas
 
 .. code-block:: python
 
-    from pycandy import BasinMetrics
+    from pynamicalsys import BasinMetrics
 
     n = 5
     for i, k in enumerate(ks):

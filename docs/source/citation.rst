@@ -1,7 +1,7 @@
 Citation
 ========
 
-Currently, our research paper is under review, but in the mean time, if you use **PyCandy** in your work, you can cite the arXiv version:
+Currently, our research paper is under review, but in the mean time, if you use **pynamicalsys** in your work, you can cite the arXiv version:
 
 .. code-block:: bibtex
 
@@ -16,7 +16,7 @@ Currently, our research paper is under review, but in the mean time, if you use 
     }
 
 
-Publications Using **PyCandy**
+Publications Using **pynamicalsys**
 ------------------------------
 
-If your work uses **PyCandy**, please let us know!
+If your work uses **pynamicalsys**, please let us know!

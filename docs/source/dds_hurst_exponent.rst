@@ -7,12 +7,12 @@ The Hurst exponent is a measure of the long-term memory of time series data. It 
 - If :math:`H = 0.5`, the time series is a random walk (Brownian motion).
 - If :math:`H > 0.5`, the time series is trending (persistent).
 
-The Hurst exponent can be calculated using the :py:meth:`hurst_exponent <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.hurst_exponent>` method from the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. The method takes the initial conditions and the number of iterations as input and returns the Hurst exponent for each time series.
+The Hurst exponent can be calculated using the :py:meth:`hurst_exponent <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.hurst_exponent>` method from the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. The method takes the initial conditions and the number of iterations as input and returns the Hurst exponent for each time series.
 The following code snippet shows how to calculate the Hurst exponent for the standard map with three different parameter values.
 
 .. code-block:: python
 
-   from pycandy import DiscreteDynamicalSystem as dds
+   from pynamicalsys import DiscreteDynamicalSystem as dds
    import numpy as np
 
    # Create the discrete dynamical system object 
@@ -45,7 +45,7 @@ We can visualize the Hurst exponent for the :math:`x` time series of the standar
 
 .. code-block:: python
 
-   from pycandy import PlotStyler
+   from pynamicalsys import PlotStyler
    import matplotlib.pyplot as plt
 
    # Set the plot style

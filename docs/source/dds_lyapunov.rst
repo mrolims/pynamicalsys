@@ -15,11 +15,11 @@ where :math:`f'(x_i)` is the derivative of the map evaluated at the point :math:
 - If :math:`\lambda = 0`, the dynamics is quasiperiodic and trajectories neither converge nor diverge.
 - If :math:`\lambda > 0`, the dynamics is chaotic and trajectories diverge exponentially.
 
-The calculation of the Lyapunov exponent can be done using the :py:meth:`lyapunov <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method from the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. Let's use the logistic map as an example:
+The calculation of the Lyapunov exponent can be done using the :py:meth:`lyapunov <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method from the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. Let's use the logistic map as an example:
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
 
     # Define the logistic map
     ds = dds(model="logistic map")
@@ -79,7 +79,7 @@ We can now plot the bifurcation diagram and the Lyapunov exponent:
 
 .. code-block:: python
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
     import matplotlib.pyplot as plt
 
     # Style the plot
@@ -141,11 +141,11 @@ The Lyapunov exponents can be interpreted similarly to the one-dimensional case,
 - If all Lyapunov exponents are negative, the trajectory is periodic.
 - If all Lyapunov exponents are zero, the trajectory is quasiperiodic.
 
-The calculation of the Lyapunov exponents for higher-dimensional maps can be done using the :py:meth:`lyapunov <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method from the :py:class:`DiscreteDynamicalSystem <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. Let's use the Hénon map as an example:
+The calculation of the Lyapunov exponents for higher-dimensional maps can be done using the :py:meth:`lyapunov <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method from the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. Let's use the Hénon map as an example:
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
     import numpy as np
     import matplotlib.pyplot as plt
 
@@ -172,7 +172,7 @@ The calculation of the Lyapunov exponents for higher-dimensional maps can be don
 
     [ 0.4182113  -1.62218411]
 
-The Hénon map is a two-dimensional map, and there exist two Lyapunov exponents. The first one is positive, indicating that this trajectory is chaotic. By default, the :py:meth:`lyapunov <pycandy.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method uses the modified Gram-Schmidt algorithm to perform the QR decomposition. If you need a more stable algorithm, you can set `method="QR_HH"` to use Householder reflections for the QR decomposition:
+The Hénon map is a two-dimensional map, and there exist two Lyapunov exponents. The first one is positive, indicating that this trajectory is chaotic. By default, the :py:meth:`lyapunov <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.lyapunov>` method uses the modified Gram-Schmidt algorithm to perform the QR decomposition. If you need a more stable algorithm, you can set `method="QR_HH"` to use Householder reflections for the QR decomposition:
 
 .. code-block:: python
 
@@ -200,7 +200,7 @@ Let's compute the Lyapunov exponents for this map:
 
 .. code-block:: python
 
-    from pycandy import DiscreteDynamicalSystem as dds
+    from pynamicalsys import DiscreteDynamicalSystem as dds
 
     # Define the symplectic map
     ds = dds(model="4d symplectic map")
@@ -284,7 +284,7 @@ We can now plot the history of the Lyapunov exponents for both initial condition
 
 .. code-block:: python
 
-    from pycandy import PlotStyler
+    from pynamicalsys import PlotStyler
 
     # Style the plot
     ps = PlotStyler(linewidth=1.5)
