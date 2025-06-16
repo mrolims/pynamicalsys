@@ -1,4 +1,4 @@
-pynamicalsys: A Python toolkit for chaotic analysis and dynamical systems
+pynamicalsys: A Python toolkit for the analysis of dynamical systems
 ====================================================================
 
    *A fast, flexible, and user-friendly toolkit for analyzing chaotic systems and dynamical behaviors in Python.*

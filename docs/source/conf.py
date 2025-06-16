@@ -15,7 +15,10 @@ author = "Matheus Rolim Sales"
 
 
 release = __version__
-version = ".".join(__version__.split(".")[:2])  # Short version (e.g., 1.2)
+if "dev" in __version__:
+    version = __version__.split(".dev")[0] + "-dev"
+else:
+    version = ".".join(__version__.split(".")[:2])
 
 extensions = [
     "sphinx.ext.autodoc",
