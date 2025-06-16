@@ -1,7 +1,7 @@
 Discrete Dynamical Systems API
 ==============================
 
-.. automodule:: pycandy.core.discrete_dynamical_systems
+.. automodule:: pynamicalsys.core.discrete_dynamical_systems
    :members:
    :undoc-members:
    :show-inheritance:
