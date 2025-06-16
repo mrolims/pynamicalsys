@@ -4,7 +4,7 @@ __pycache__
 *.egg-info/
 tests/*.png
 dist/
-src/pycandy/__version__.py
+src/pynamicalsys/__version__.py
 docs/build/
 build/
 paper/*.eps

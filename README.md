@@ -1,7 +1,7 @@
 # PyCandy: A Python toolkit for chaotic analysis and dynamical systems
 
-[![Documentation Status](https://readthedocs.org/projects/pycandy/badge/?version=latest)](https://pycandy.readthedocs.io/en/latest/)
-[![PyPI](https://img.shields.io/pypi/v/pycandy.svg)](https://pypi.org/project/pycandy/)
+[![Documentation Status](https://readthedocs.org/projects/pynamicalsys/badge/?version=latest)](https://pynamicalsys.readthedocs.io/en/latest/)
+[![PyPI](https://img.shields.io/pypi/v/pynamicalsys.svg)](https://pypi.org/project/pynamicalsys/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 ## Overview
@@ -30,7 +30,7 @@ PyCandy is built on top of NumPy and Numba, ensuring high performance and effici
 To install the latest stable release, run:
 
 ```bash
-$ pip install pycandy
+$ pip install pynamicalsys
 ```
 
 > **Note:** On **Windows**, it is **strongly recommended** to use [Anaconda](https://www.anaconda.com). It simplifies dependency management and avoids potential issues with scientific libraries during installation. Be sure to run the command from the **Anaconda Prompt**, not from Command Prompt or PowerShell, to ensure the correct environment is activated.
@@ -41,8 +41,8 @@ $ pip install pycandy
 If you want to install the development version from the source repository, clone the repo and install with:
 
 ```bash
-$ git clone https://github.com/mrolims/pycandy.git
-$ cd pycandy
+$ git clone https://github.com/mrolims/pynamicalsys.git
+$ cd pynamicalsys
 $ pip install .
 ```
 
@@ -51,8 +51,8 @@ $ pip install .
 After installation, you can verify it by running Python and importing the package:
 
 ```python
->>> import pycandy
->>> pycandy.__version__
+>>> import pynamicalsys
+>>> pynamicalsys.__version__
 ```
 
 ### Troubleshooting

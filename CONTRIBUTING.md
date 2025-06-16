@@ -35,12 +35,12 @@ We appreciate your interest in contributing to **PyCandy**! Whether you're fixin
 
 ## Bug Reports & Feature Requests
 
--   Submit an [issue](https://github.com/mrolims/pycandy/issues) to report bugs or suggest new features.
+-   Submit an [issue](https://github.com/mrolims/pynamicalsys/issues) to report bugs or suggest new features.
 -   Include steps to reproduce, error messages, or use cases when possible.
 
 ## Code of Conduct
 
-We strive to maintain a respectful and inclusive community. Please follow our [code of conduct](https://pycandy.readthedocs.io/en/latest/) when interacting.
+We strive to maintain a respectful and inclusive community. Please follow our [code of conduct](https://pynamicalsys.readthedocs.io/en/latest/) when interacting.
 
 ## Thank You
 

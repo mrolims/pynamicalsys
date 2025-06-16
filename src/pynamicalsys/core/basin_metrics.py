@@ -19,7 +19,7 @@ import numpy as np
 from numbers import Integral, Real
 from typing import Optional, Tuple
 from numpy.typing import NDArray
-from pycandy.common.basin_analysis import basin_entropy, uncertainty_fraction
+from pynamicalsys.common.basin_analysis import basin_entropy, uncertainty_fraction
 
 
 class BasinMetrics:
@@ -47,7 +47,7 @@ class BasinMetrics:
     Examples
     --------
     >>> import numpy as np
-    >>> from pycandy import BasinMetrics
+    >>> from pynamicalsys import BasinMetrics
     >>> basin = np.array([[0, 1], [1, 0]])
     >>> metrics = BasinMetrics(basin)
     """
@@ -104,7 +104,7 @@ class BasinMetrics:
         >>> import numpy as np
         >>> np.random.seed(13)
         >>> basin = np.random.randint(1, 4, size=(1000, 1000))
-        >>> from pycandy import BasinMetrics
+        >>> from pynamicalsys import BasinMetrics
         >>> metrics = BasinMetrics(basin)
         >>> metrics.basin_entropy(n=5, log_base=2)
         (1.5251876046167432, 1.5251876046167432)

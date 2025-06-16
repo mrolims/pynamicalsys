@@ -15,10 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from pycandy.core.discrete_dynamical_systems import DiscreteDynamicalSystem
-from pycandy.core.basin_metrics import BasinMetrics
-from pycandy.core.plot_styler import PlotStyler
-from pycandy.core.time_series_metrics import TimeSeriesMetrics
+from pynamicalsys.core.discrete_dynamical_systems import DiscreteDynamicalSystem
+from pynamicalsys.core.basin_metrics import BasinMetrics
+from pynamicalsys.core.plot_styler import PlotStyler
+from pynamicalsys.core.time_series_metrics import TimeSeriesMetrics
 from .__version__ import __version__
 
 __all__ = ["DiscreteDynamicalSystem", "PlotStyler", "TimeSeriesMetrics", "BasinMetrics"]

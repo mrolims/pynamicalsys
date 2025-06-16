@@ -21,8 +21,8 @@ from numbers import Integral, Real
 from typing import Optional, Tuple, Union, Callable, List, Dict, Sequence, Any
 from numpy.typing import NDArray
 
-from pycandy.common.recurrence_quantification_analysis import RTEConfig
-from pycandy.discrete_time.dynamical_indicators import (
+from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
+from pynamicalsys.discrete_time.dynamical_indicators import (
     lyapunov_er,
     lyapunov_qr,
     finite_time_lyapunov,
@@ -36,7 +36,7 @@ from pycandy.discrete_time.dynamical_indicators import (
     RTE,
     finite_time_RTE,
 )
-from pycandy.discrete_time.models import (
+from pynamicalsys.discrete_time.models import (
     standard_map,
     standard_map_backwards,
     standard_map_jacobian,
@@ -62,7 +62,7 @@ from pycandy.discrete_time.models import (
     rulkov_map,
     rulkov_map_jacobian,
 )
-from pycandy.discrete_time.trajectory_analysis import (
+from pynamicalsys.discrete_time.trajectory_analysis import (
     generate_trajectory,
     ensemble_trajectories,
     bifurcation_diagram,
@@ -79,7 +79,7 @@ from pycandy.discrete_time.trajectory_analysis import (
     iterate_mapping,
     ensemble_time_average,
 )
-from pycandy.discrete_time.transport import (
+from pynamicalsys.discrete_time.transport import (
     diffusion_coefficient,
     average_vs_time,
     root_mean_squared,
@@ -88,11 +88,11 @@ from pycandy.discrete_time.transport import (
     cumulative_average_vs_time,
 )
 
-from pycandy.common.utils import finite_difference_jacobian, householder_qr
+from pynamicalsys.common.utils import finite_difference_jacobian, householder_qr
 
 from .time_series_metrics import TimeSeriesMetrics as tsm
 
-from pycandy.discrete_time.validators import (
+from pynamicalsys.discrete_time.validators import (
     validate_initial_conditions,
     validate_parameters,
     validate_non_negative,
@@ -969,7 +969,7 @@ class DiscreteDynamicalSystem:
         Examples
         --------
         >>> # Example usage
-        >>> from pycandy import DiscreteDynamicalSystem as dds
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
         >>> obj = dds(model="henon map")
         >>> u0 = np.array([0.1, 0.2])
         >>> params = np.array([1.0, 0.1])
@@ -1167,7 +1167,7 @@ class DiscreteDynamicalSystem:
         Examples
         --------
         >>> # Example usage
-        >>> from pycandy import DiscreteDynamicalSystem as dds
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
         >>> # Define the system
         >>> obj = dds(model="standard map")
         >>> # Calculate unstable manifold

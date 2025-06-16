@@ -1,7 +1,7 @@
 import numpy as np
 from numba import njit
 from joblib import Parallel, delayed
-from pycandy import DiscreteDynamicalSystem as dds
+from pynamicalsys import DiscreteDynamicalSystem as dds
 
 
 def main():

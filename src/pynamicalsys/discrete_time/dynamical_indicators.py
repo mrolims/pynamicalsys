@@ -20,16 +20,16 @@ from numpy.typing import NDArray
 import numpy as np
 from numba import njit
 
-from pycandy.common.recurrence_quantification_analysis import (
+from pynamicalsys.common.recurrence_quantification_analysis import (
     RTEConfig,
     recurrence_matrix,
     white_vertline_distr,
 )
-from pycandy.discrete_time.trajectory_analysis import (
+from pynamicalsys.discrete_time.trajectory_analysis import (
     iterate_mapping,
     generate_trajectory,
 )
-from pycandy.common.utils import qr, householder_qr, fit_poly
+from pynamicalsys.common.utils import qr, householder_qr, fit_poly
 
 
 @njit(cache=True)

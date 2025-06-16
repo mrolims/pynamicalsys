@@ -1,6 +1,6 @@
 [project]
 dynamic = ["version"]
-name = "pycandy"
+name = "pynamicalsys"
 description = "A Python toolkit for chaotic analysis and dynamical systems"
 authors = [{ name = "Matheus Rolim Sales", email = "rolim.sales.m@gmail.com" }]
 readme = "README.md"
@@ -23,9 +23,9 @@ requires = ["setuptools>=61.0", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["pycandy"]
+packages = ["pynamicalsys"]
 package-dir = { "" = "src" }
 license-files = []
 
 [tool.setuptools_scm]
-write_to = "src/pycandy/__version__.py"
+write_to = "src/pynamicalsys/__version__.py"

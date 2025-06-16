@@ -18,7 +18,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from pycandy.common.recurrence_quantification_analysis import (
+from pynamicalsys.common.recurrence_quantification_analysis import (
     recurrence_matrix,
     RTEConfig,
     white_vertline_distr,

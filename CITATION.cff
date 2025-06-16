@@ -4,7 +4,7 @@ authors:
   - family-names: Rolim Sales
     given-names: Matheus
     orcid: https://orcid.org/0000-0002-1121-6371
-title: "pycandy"
+title: "pynamicalsys"
 version: 1.0.0
 date-released: 2025-06-16
-repository-code: "https://github.com/mrolims/pycandy.git"
+repository-code: "https://github.com/mrolims/pynamicalsys.git"
