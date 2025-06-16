@@ -34,7 +34,7 @@ exclude_patterns = []
 
 html_theme = "sphinx_rtd_theme"
 
-html_logo = "images/LOGO_v2.png"
+# html_logo = "images/LOGO_v2.png"
 
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 html_static_path = ["_static"]

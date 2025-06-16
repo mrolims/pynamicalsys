@@ -24,49 +24,49 @@ body,
 }
 
 /* Hide house icon */
-.wy-side-nav-search a::before {
+/* .wy-side-nav-search a::before {
     display: none !important;
-}
+} */
 
 /* Keep logo visible and center it */
-.wy-side-nav-search a img {
+/* .wy-side-nav-search a img {
     display: block;
     margin: 0 auto;
-}
+} */
 
 /* Visually hide project name text */
-.wy-side-nav-search a {
-    text-indent: -9999px;  /* pushes text out of view */
+/* .wy-side-nav-search a {
+    text-indent: -9999px; 
     overflow: hidden;
     white-space: nowrap;
-}
+} */
 
 /* Tighten space around the logo in RTD theme */
-.wy-side-nav-search {
+/* .wy-side-nav-search {
     padding-top: 0px !important;
     padding-bottom: 10px !important;
     margin-top: 0px !important;
     margin-bottom: 0 !important;
     line-height: 0 !important;
-}
+} */
 
 /* Remove extra space from the anchor */
-.wy-side-nav-search a {
+/* .wy-side-nav-search a {
     margin: 0 !important;
     padding: 0 !important;
     line-height: 0 !important;
-    text-indent: -9999px;  /* still hide the name */
+    text-indent: -9999px; 
     overflow: hidden;
     white-space: nowrap;
-}
+} */
 
 /* Remove margin/padding from the image itself */
-.wy-side-nav-search a img {
+/* .wy-side-nav-search a img {
     display: block;
     margin: 0 auto 12px auto !important;
     padding: 0 !important;
-    max-height: 200px;  /* optional: constrain size */
-}
+    max-height: 200px; 
+} */
 
 .wy-side-nav-search input {
     /* background-color: #5c3ca2; */
