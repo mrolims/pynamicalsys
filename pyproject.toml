@@ -1,7 +1,7 @@
 [project]
 dynamic = ["version"]
 name = "pynamicalsys"
-description = "A Python toolkit for chaotic analysis and dynamical systems"
+description = "A Python toolkit for the analysis of dynamical systems"
 authors = [{ name = "Matheus Rolim Sales", email = "rolim.sales.m@gmail.com" }]
 readme = "README.md"
 license = { file = "LICENSE" }

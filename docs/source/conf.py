@@ -9,8 +9,8 @@ sys.path.insert(
 
 from pynamicalsys import __version__
 
-project = "PyCandy"
-copyright = "2025, Matheus Rolim Sales and PyCandy authors"
+project = "pynamicalsys"
+copyright = "2025, Matheus Rolim Sales and pynamicalsys authors"
 author = "Matheus Rolim Sales"
 
 
