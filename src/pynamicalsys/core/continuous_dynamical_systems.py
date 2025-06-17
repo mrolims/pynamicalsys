@@ -25,6 +25,12 @@ from pynamicalsys.continuous_time.models import (
     lorenz_jacobian,
 )
 
+from pynamicalsys.continuous_time.numerical_integrators import (
+    estimate_initial_step,
+    rk4_step_wrapped,
+    rk45_step_wrapped,
+)
+
 from pynamicalsys.continuous_time.trajectory_analysis import (
     generate_trajectory,
     evolve_system,
@@ -60,6 +66,19 @@ class ContinuousDynamicalSystem:
             "number_of_parameters": 3,
             "parameters": ["sigma", "rho", "beta"],
         }
+    }
+
+    __AVAILABLE_INTEGRATORS: Dict[str, Dict[str, Any]] = {
+        "rk4": {
+            "description": "4th order Runge-Kutta method with fixed step size",
+            "integrator": rk4_step_wrapped,
+            "estimate_initial_step": False,
+        },
+        "rk45": {
+            "description": "Adaptive 4th/5th order Runge-Kutta-Fehlberg method (RK45) with embedded error estimation",
+            "integrator": rk45_step_wrapped,
+            "estimate_initial_step": True,
+        },
     }
 
     def __init__(
@@ -121,10 +140,21 @@ class ContinuousDynamicalSystem:
                 "Must specify either a model name or custom system function with its dimension and number of paramters."
             )
 
+        self.__integrator = "rk4"
+        self.__integrator_func = rk4_step_wrapped
+        self.__time_step = 1e-2
+        self.__atol = 1e-6
+        self.__rtol = 1e-3
+
     @classmethod
     def available_models(cls) -> List[str]:
         """Return a list of available models."""
         return list(cls.__AVAILABLE_MODELS.keys())
+
+    @classmethod
+    def available_integrators(cls) -> List[str]:
+        """Return a list of available integrators."""
+        return list(cls.__AVAILABLE_INTEGRATORS.keys())
 
     @property
     def info(self) -> Dict[str, Any]:
@@ -139,12 +169,57 @@ class ContinuousDynamicalSystem:
 
         return self.__AVAILABLE_MODELS[model]
 
+    @property
+    def integrator_info(self):
+        integrator = self.__integrator.lower()
+
+        return self.__AVAILABLE_INTEGRATORS[integrator]
+
+    def integrator(self, integrator, time_step=1e-2, atol=1e-6, rtol=1e-3):
+
+        validate_non_negative(time_step, "time_step", type_=Real)
+        validate_non_negative(atol, "atol", type_=Real)
+        validate_non_negative(rtol, "rtol", type_=Real)
+
+        if integrator in self.__AVAILABLE_INTEGRATORS:
+            self.__integrator = integrator.lower()
+            integrator_info = self.__AVAILABLE_INTEGRATORS[self.__integrator]
+            self.__integrator_func = integrator_info["integrator"]
+            self.__time_step = time_step
+            self.__atol = atol
+            self.__rtol = rtol
+
+        else:
+            integrator = integrator.lower()
+            if integrator not in self.__AVAILABLE_INTEGRATORS:
+                available = "\n".join(
+                    f"- {name}: {info["description"]}"
+                    for name, info in self.__AVAILABE_INTEGRATORS.items()
+                )
+            raise ValueError(
+                f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
+            )
+
+    def __get_initial_time_step(self, u, parameters):
+        if self.integrator_info["estimate_initial_step"]:
+            time_step = estimate_initial_step(
+                0.0,
+                u,
+                parameters,
+                self.__equations_of_motion,
+                atol=self.__atol,
+                rtol=self.__rtol,
+            )
+        else:
+            time_step = self.__time_step
+
+        return time_step
+
     def evolve_system(
         self,
         u: NDArray[np.float64],
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        time_step: float = 0.01,
     ) -> NDArray[np.float64]:
         """
         Evolve the dynamical system from the given initial conditions over a specified time period.
@@ -182,6 +257,8 @@ class ContinuousDynamicalSystem:
 
         _, total_time = validate_times(1, total_time)
 
+        time_step = self.__get_initial_time_step(u, parameters)
+
         total_time += time_step
 
         return evolve_system(
@@ -190,6 +267,9 @@ class ContinuousDynamicalSystem:
             total_time,
             self.__equations_of_motion,
             time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
         )
 
     def trajectory(
@@ -198,7 +278,6 @@ class ContinuousDynamicalSystem:
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
-        time_step: float = 0.01,
     ) -> NDArray[np.float64]:
         """
         Compute the trajectory of the dynamical system over a specified time period.
@@ -257,20 +336,27 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
-        validate_non_negative(time_step, "time_step", type_=Real)
+        time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
-            return generate_trajectory(
+            result = generate_trajectory(
                 u,
                 parameters,
                 total_time,
                 self.__equations_of_motion,
                 transient_time=transient_time,
                 time_step=time_step,
+                atol=self.__atol,
+                rtol=self.__rtol,
+                integrator=self.__integrator_func,
             )
+            return np.array(result)
         else:
             num_ic, neq = u.shape
-            number_of_steps = round((total_time - transient_time) / time_step)
+            number_of_steps = round(
+                (total_time - (transient_time if transient_time is not None else 0))
+                / time_step
+            )
             return ensemble_trajectories(
                 u,
                 parameters,
@@ -278,7 +364,10 @@ class ContinuousDynamicalSystem:
                 self.__equations_of_motion,
                 transient_time=transient_time,
                 time_step=time_step,
-            ).reshape(num_ic, number_of_steps, neq + 1)
+                atol=self.__atol,
+                rtol=self.__rtol,
+                integrator=self.__integrator_func,
+            )
 
     def lyapunov(
         self,
@@ -286,9 +375,7 @@ class ContinuousDynamicalSystem:
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
-        time_step: float = 0.01,
         return_history: bool = False,
-        sample_times: Union[None, Sequence[float], NDArray[np.float64]] = None,
         seed: int = 13,
         log_base: int = np.e,
         method: str = "QR",
@@ -381,7 +468,7 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
-        validate_non_negative(time_step, "time_step", type_=Real)
+        time_step = self.__get_initial_time_step(u, parameters)
 
         if endpoint:
             total_time += time_step
@@ -401,42 +488,26 @@ class ContinuousDynamicalSystem:
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1")
 
+        result = lyapunov_exponents(
+            u,
+            parameters,
+            total_time,
+            self.__equations_of_motion,
+            self.__jacobian,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            return_history=return_history,
+            seed=seed,
+            log_base=log_base,
+            QR=qr_func,
+        )
         if return_history:
-            if sample_times is not None:
-                sample_times = sample_times.copy()
-                sample_times = (
-                    sample_times - (transient_time if transient_time is not None else 0)
-                ) / time_step
-            return lyapunov_exponents(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                transient_time=transient_time,
-                time_step=time_step,
-                return_history=return_history,
-                sample_times=sample_times,
-                seed=seed,
-                log_base=log_base,
-                QR=qr_func,
-            )
+            return np.array(result)
         else:
-            result = lyapunov_exponents(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                transient_time=transient_time,
-                time_step=time_step,
-                return_history=return_history,
-                sample_times=sample_times,
-                seed=seed,
-                log_base=log_base,
-                QR=qr_func,
-            )
-            return result[:, 0]
+            return np.array(result[0])
 
     def SALI(
         self,
@@ -444,9 +515,7 @@ class ContinuousDynamicalSystem:
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
-        time_step: float = 0.01,
         return_history: bool = False,
-        sample_times: Union[None, Sequence[float], NDArray[np.float64]] = None,
         seed: int = 13,
         threshold: float = 1e-16,
         endpoint: bool = True,
@@ -531,47 +600,33 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
-        validate_non_negative(time_step, "time_step", type_=Real)
+        time_step = self.__get_initial_time_step(u, parameters)
 
         validate_non_negative(threshold, "threshold", type_=Real)
 
         if endpoint:
             total_time += time_step
 
+        result = SALI(
+            u,
+            parameters,
+            total_time,
+            self.__equations_of_motion,
+            self.__jacobian,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            return_history=return_history,
+            seed=seed,
+            threshold=threshold,
+        )
+
         if return_history:
-            if sample_times is not None:
-                sample_times = sample_times.copy()
-                sample_times = (
-                    sample_times - (transient_time if transient_time is not None else 0)
-                ) / time_step
-            return SALI(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                transient_time=transient_time,
-                time_step=time_step,
-                return_history=return_history,
-                sample_times=sample_times,
-                seed=seed,
-                threshold=threshold,
-            )
+            return np.array(result)
         else:
-            result = SALI(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                transient_time=transient_time,
-                time_step=time_step,
-                return_history=return_history,
-                sample_times=sample_times,
-                seed=seed,
-                threshold=threshold,
-            )
-            return result[0, 0], result[1, 0]
+            return np.array(result[0])
 
     def LDI(
         self,
@@ -582,7 +637,6 @@ class ContinuousDynamicalSystem:
         transient_time: Optional[float] = None,
         time_step: float = 0.01,
         return_history: bool = False,
-        sample_times: Union[None, Sequence[float], NDArray[np.float64]] = None,
         seed: int = 13,
         threshold: float = 1e-16,
         endpoint: bool = True,
@@ -666,51 +720,31 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
-        validate_non_negative(time_step, "time_step", type_=Real)
+        time_step = self.__get_initial_time_step(u, parameters)
 
         validate_non_negative(threshold, "threshold", type_=Real)
-
-        if not isinstance(k, Integral) or k < 2:
-            raise ValueError(
-                "The number of deviation vectors, `k`, must be an integer >= 2"
-            )
 
         if endpoint:
             total_time += time_step
 
+        result = LDI(
+            u,
+            parameters,
+            total_time,
+            self.__equations_of_motion,
+            self.__jacobian,
+            k,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            return_history=return_history,
+            seed=seed,
+            threshold=threshold,
+        )
+
         if return_history:
-            if sample_times is not None:
-                sample_times = sample_times.copy()
-                sample_times = (
-                    sample_times - (transient_time if transient_time is not None else 0)
-                ) / time_step
-            return LDI(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                k,
-                transient_time=transient_time,
-                time_step=time_step,
-                return_history=return_history,
-                sample_times=sample_times,
-                seed=seed,
-                threshold=threshold,
-            )
+            return np.array(result)
         else:
-            result = LDI(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                k,
-                transient_time=transient_time,
-                time_step=time_step,
-                return_history=return_history,
-                sample_times=sample_times,
-                seed=seed,
-                threshold=threshold,
-            )
-            return result[0, 0], result[1, 0]
+            return np.array(result[0])
