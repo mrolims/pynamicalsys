@@ -15,4 +15,702 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-"""To be implemented: Continuous Dynamical Systems (CDS) class."""
+import numpy as np
+from numbers import Integral, Real
+from typing import Optional, Tuple, Union, Callable, List, Dict, Sequence, Any
+from numpy.typing import NDArray
+
+from pynamicalsys.continuous_time.models import (
+    lorenz_system,
+    lorenz_jacobian,
+)
+
+from pynamicalsys.continuous_time.trajectory_analysis import (
+    generate_trajectory,
+    evolve_system,
+    ensemble_trajectories,
+)
+
+from pynamicalsys.continuous_time.chaotic_indicators import (
+    lyapunov_exponents,
+    SALI,
+    LDI,
+)
+
+from pynamicalsys.continuous_time.validators import (
+    validate_non_negative,
+    validate_initial_conditions,
+    validate_parameters,
+    validate_times,
+)
+
+from pynamicalsys.common.utils import qr, householder_qr
+
+
+class ContinuousDynamicalSystem:
+
+    __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
+        "lorenz system": {
+            "description": "3D Lorenz system",
+            "has_jacobian": True,
+            "has_variational_equations": True,
+            "equations_of_motion": lorenz_system,
+            "jacobian": lorenz_jacobian,
+            "dimension": 3,
+            "number_of_parameters": 3,
+            "parameters": ["sigma", "rho", "beta"],
+        }
+    }
+
+    def __init__(
+        self,
+        model: Optional[str] = None,
+        equations_of_motion: Optional[Callable] = None,
+        jacobian: Optional[Callable] = None,
+        system_dimension: Optional[int] = None,
+        number_of_parameters: Optional[int] = None,
+    ) -> None:
+
+        if model is not None and equations_of_motion is not None:
+            raise ValueError("Cannot specify both model and custom system")
+
+        if model is not None:
+            model = model.lower()
+            if model not in self.__AVAILABLE_MODELS:
+                available = "\n".join(
+                    f"- {name}: {info['description']}"
+                    for name, info in self.__AVAILABLE_MODELS.items()
+                )
+                raise ValueError(
+                    f"Model '{model}' not implemented. Available models:\n{available}"
+                )
+
+            model_info = self.__AVAILABLE_MODELS[model]
+            self.__model = model
+            self.__equations_of_motion = model_info["equations_of_motion"]
+            self.__jacobian = model_info["jacobian"]
+            self.__system_dimension = model_info["dimension"]
+            self.__number_of_parameters = model_info["number_of_parameters"]
+
+            if jacobian is not None:
+                self.__jacobian = jacobian
+
+        elif (
+            equations_of_motion is not None
+            and system_dimension is not None
+            and number_of_parameters is not None
+        ):
+            self.__equations_of_motion = equations_of_motion
+            self.__jacobian = jacobian
+
+            validate_non_negative(system_dimension, "system_dimension", Integral)
+            validate_non_negative(
+                number_of_parameters, "number_of_parameters", Integral
+            )
+
+            self.__system_dimension = system_dimension
+            self.__number_of_parameters = number_of_parameters
+
+            if not callable(self.__equations_of_motion):
+                raise TypeError("Custom mapping must be callable")
+
+            if self.__jacobian is not None and not callable(self.__jacobian):
+                raise TypeError("Custom Jacobian must be callable or None")
+        else:
+            raise ValueError(
+                "Must specify either a model name or custom system function with its dimension and number of paramters."
+            )
+
+    @classmethod
+    def available_models(cls) -> List[str]:
+        """Return a list of available models."""
+        return list(cls.__AVAILABLE_MODELS.keys())
+
+    @property
+    def info(self) -> Dict[str, Any]:
+        """Return a dictionary with information about the current model."""
+
+        if self.__model is None:
+            raise ValueError(
+                "The 'info' property is only available when a model is provided."
+            )
+
+        model = self.__model.lower()
+
+        return self.__AVAILABLE_MODELS[model]
+
+    def evolve_system(
+        self,
+        u: NDArray[np.float64],
+        total_time: float,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        time_step: float = 0.01,
+    ) -> NDArray[np.float64]:
+        """
+        Evolve the dynamical system from the given initial conditions over a specified time period.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        total_time : float
+            Total time over which to evolve the system.
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
+        time_step : float, optional
+            Integration step size, by default 0.01.
+
+        Returns
+        -------
+        result : NDArray[np.float64]
+            The state of the system at time = total_time.
+
+        Raises
+        ------
+        ValueError
+            - If the initial condition is not valid, i.e., if the dimensions do not match.
+            - If the number of parameters does not match.
+            - If `parameters` is not a scalar, 1D list, or 1D array.
+        TypeError
+            - If `total_time` is not a valid number.
+        """
+
+        u = validate_initial_conditions(u, self.__system_dimension)
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        _, total_time = validate_times(1, total_time)
+
+        total_time += time_step
+
+        return evolve_system(
+            u,
+            parameters,
+            total_time,
+            self.__equations_of_motion,
+            time_step=time_step,
+        )
+
+    def trajectory(
+        self,
+        u: NDArray[np.float64],
+        total_time: float,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        time_step: float = 0.01,
+    ) -> NDArray[np.float64]:
+        """
+        Compute the trajectory of the dynamical system over a specified time period.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        total_time : float
+            Total time over which to evolve the system (including transient).
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
+        transient_time : float
+            Initial time to discard.
+        time_step : float, optional
+            Integration step size, by default 0.01.
+
+        Returns
+        -------
+        result : NDArray[np.float64]
+            The trajectory of the system.
+
+            - For a single initial condition (u.ndim = 1), return a 2D array of shape (number_of_steps, neq + 1), where the first column is the time samples and the remaining columns are the coordinates of the system
+            - For multiple initial conditions (u.ndim = 2), return a 3D array of shape (num_ic, number_of_steps, neq + 1).
+
+        Raises
+        ------
+        ValueError
+            - If the initial condition is not valid, i.e., if the dimensions do not match.
+            - If the number of parameters does not match.
+            - If `parameters` is not a scalar, 1D list, or 1D array.
+        TypeError
+            - If `total_time` or `transient_time` are not valid numbers.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]  # Initial condition
+        >>> parameters = [10, 28, 8/3]
+        >>> total_time = 700
+        >>> transient_time = 500
+        >>> trajectory = ds.trajectory(u, total_time, parameters=parameters, transient_time=transient_time)
+        (11000, 4)
+        >>> u = [[0.1, 0.1, 0.1],
+        ... [0.2, 0.2, 0.2],
+        ... [0.3, 0.3, 0.3]]  # Three initial conditions
+        >>> trajectories = ds.trajectory(u, total_time, parameters=parameters, transient_time=transient_time)
+        (3, 20000, 4)
+        """
+
+        u = validate_initial_conditions(u, self.__system_dimension)
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        transient_time, total_time = validate_times(transient_time, total_time)
+
+        validate_non_negative(time_step, "time_step", type_=Real)
+
+        if u.ndim == 1:
+            return generate_trajectory(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                transient_time=transient_time,
+                time_step=time_step,
+            )
+        else:
+            num_ic, neq = u.shape
+            number_of_steps = round((total_time - transient_time) / time_step)
+            return ensemble_trajectories(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                transient_time=transient_time,
+                time_step=time_step,
+            ).reshape(num_ic, number_of_steps, neq + 1)
+
+    def lyapunov(
+        self,
+        u: NDArray[np.float64],
+        total_time: float,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        time_step: float = 0.01,
+        return_history: bool = False,
+        sample_times: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        seed: int = 13,
+        log_base: int = np.e,
+        method: str = "QR",
+        endpoint: bool = True,
+    ) -> NDArray[np.float64]:
+        """Calculate the Lyapunov exponents of a given dynamical system.
+
+        The Lyapunov exponent is a key concept in the study of dynamical systems. It measures the average rate at which nearby trajectories in the system diverge (or converge) over time. In simple terms, it quantifies how sensitive a system is to initial conditions.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        total_time : float
+            Total time over which to evolve the system (including transient).
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
+        transient_time : Optional[float], optional
+            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        time_step : float, optional
+            Integration step size, by default 0.01.
+        return_history : bool, optional
+            Whether to return or not the Lyapunov exponents history in time, by default False.
+        sample_times : Union[None, Sequence[float], NDArray[np.float64]], optional
+            The sample times to return the Lyapunov exponents, by default None.
+        seed : int, optional
+            The seed to randomly generate the deviation vectors, by default 13.
+        log_base : int, optional
+            The base of the logarithm function, by default np.e, i.e., natural log.
+        method : str, optional
+            The method used to calculate the QR decomposition, by default "QR". Set to "QR_HH" to use Householder reflections.
+        endpoint : bool, optional
+            Whether to include the endpoint time = total_time in the calculation, by default True.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The Lyapunov exponents.
+
+            - If `return_history = False`, return the Lyapunov exponents' final value.
+            - If `return_history = True`, return the time series of each exponent.
+            - If `sample_times` is provided, return the Lyapunov exponents at the specified times.
+
+        Raises
+        ------
+        ValueError
+            - If the Jacobian function is not provided.
+            - If the initial condition is not valid, i.e., if the dimensions do not match.
+            - If the number of parameters does not match.
+            - If `parameters` is not a scalar, 1D list, or 1D array.
+        TypeError
+            - If `method` is not a string.
+            - If `total_time`, `transient_time`, or `log_base` are not valid numbers.
+            - If `seed` is not an integer.
+
+        Notes
+        -----
+        - By default, the method uses the modified Gram-Schimdt algorithm to perform the QR decomposition. If your problem requires a higher numerical stability (e.g. large-scale problem), you can set `method=QR_HH` to use Householder reflections instead.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]
+        >>> total_time = 1000
+        >>> transient_time = 500
+        >>> parameters = [16.0, 45.92, 4.0]
+        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2)
+        array([ 2.15920769e+00, -4.61882314e-03, -3.24498622e+01])
+        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2, method="QR_HH")
+        array([ 2.15920769e+00, -4.61882314e-03, -3.24498622e+01])
+        >>> # Returning the history at specific times
+        >>> sample_times = np.arange(transient_time, total_time, 1000 * 0.01)
+        >>> lyapunov_exponents_sampled = ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2, return_history=True, sample_times=sample_times)
+        >>> lyapunov_exponents_sampled.shape
+        (51, 4)
+        """
+
+        if self.__jacobian is None:
+            raise ValueError(
+                "Jacobian function is required to compute Lyapunov exponents"
+            )
+
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        transient_time, total_time = validate_times(transient_time, total_time)
+
+        validate_non_negative(time_step, "time_step", type_=Real)
+
+        if endpoint:
+            total_time += time_step
+
+        if not isinstance(method, str):
+            raise TypeError("method must be a string")
+
+        method = method.upper()
+        if method == "QR":
+            qr_func = qr
+        elif method == "QR_HH":
+            qr_func = householder_qr
+        else:
+            raise ValueError("method must be QR or QR_HH")
+
+        validate_non_negative(log_base, "log_base", Real)
+        if log_base == 1:
+            raise ValueError("The logarithm function is not defined with base 1")
+
+        if return_history:
+            if sample_times is not None:
+                sample_times = sample_times.copy()
+                sample_times = (
+                    sample_times - (transient_time if transient_time is not None else 0)
+                ) / time_step
+            return lyapunov_exponents(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                transient_time=transient_time,
+                time_step=time_step,
+                return_history=return_history,
+                sample_times=sample_times,
+                seed=seed,
+                log_base=log_base,
+                QR=qr_func,
+            )
+        else:
+            result = lyapunov_exponents(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                transient_time=transient_time,
+                time_step=time_step,
+                return_history=return_history,
+                sample_times=sample_times,
+                seed=seed,
+                log_base=log_base,
+                QR=qr_func,
+            )
+            return result[:, 0]
+
+    def SALI(
+        self,
+        u: NDArray[np.float64],
+        total_time: float,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        time_step: float = 0.01,
+        return_history: bool = False,
+        sample_times: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        seed: int = 13,
+        threshold: float = 1e-16,
+        endpoint: bool = True,
+    ) -> Tuple[np.float64, np.float64]:
+        """Calculate the smallest aligment index (SALI) for a given dynamical system.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        total_time : float
+            Total time over which to evolve the system (including transient).
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
+        transient_time : Optional[float], optional
+            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        time_step : float, optional
+            Integration step size, by default 0.01.
+        return_history : bool, optional
+            Whether to return or not the Lyapunov exponents history in time, by default False.
+        sample_times : Union[None, Sequence[float], NDArray[np.float64]], optional
+            The sample times to return the Lyapunov exponents, by default None.
+        seed : int, optional
+            The seed to randomly generate the deviation vectors, by default 13.
+        threshold : float, optional
+            The threhshold for early termination, by default 1e-16. When SALI becomes less than `threshold`, stops the execution.
+        endpoint : bool, optional
+            Whether to include the endpoint time = total_time in the calculation, by default True.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The SALI value
+
+            - If `return_history = False`, return time and SALI, where time is the time at the end of the execution. time < total_time if SALI becomes less than `threshold` before `total_time`.
+            - If `return_history = True`, return the sampled times and the SALI values.
+            - If `sample_times` is provided, return the SALI at the specified times.
+
+        Raises
+        ------
+        ValueError
+            - If the Jacobian function is not provided.
+            - If the initial condition is not valid, i.e., if the dimensions do not match.
+            - If the number of parameters does not match.
+            - If `parameters` is not a scalar, 1D list, or 1D array.
+            - If `total_time`, `transient_time`, or `threshold` are negative.
+        TypeError
+            - If `total_time`, `transient_time`, or `threshold` are not valid numbers.
+            - If `seed` is not an integer.
+
+        Notes
+        -----
+        - By default, the method uses the modified Gram-Schimdt algorithm to perform the QR decomposition. If your problem requires a higher numerical stability (e.g. large-scale problem), you can set `method=QR_HH` to use Householder reflections instead.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]
+        >>> total_time = 1000
+        >>> transient_time = 500
+        >>> parameters = [16.0, 45.92, 4.0]
+        >>> ds.SALI(u, total_time, parameters=parameters, transient_time=transient_time)
+        (521.8899999999801, 7.850462293418876e-17)
+        >>> # Returning the history
+        >>> sali = ds.SALI(u, total_time, parameters=parameters, transient_time=transient_time, return_history=True)
+        >>> sali.shape
+        (2189, 2)
+        """
+
+        if self.__jacobian is None:
+            raise ValueError(
+                "Jacobian function is required to compute Lyapunov exponents"
+            )
+
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        transient_time, total_time = validate_times(transient_time, total_time)
+
+        validate_non_negative(time_step, "time_step", type_=Real)
+
+        validate_non_negative(threshold, "threshold", type_=Real)
+
+        if endpoint:
+            total_time += time_step
+
+        if return_history:
+            if sample_times is not None:
+                sample_times = sample_times.copy()
+                sample_times = (
+                    sample_times - (transient_time if transient_time is not None else 0)
+                ) / time_step
+            return SALI(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                transient_time=transient_time,
+                time_step=time_step,
+                return_history=return_history,
+                sample_times=sample_times,
+                seed=seed,
+                threshold=threshold,
+            )
+        else:
+            result = SALI(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                transient_time=transient_time,
+                time_step=time_step,
+                return_history=return_history,
+                sample_times=sample_times,
+                seed=seed,
+                threshold=threshold,
+            )
+            return result[0, 0], result[1, 0]
+
+    def LDI(
+        self,
+        u: NDArray[np.float64],
+        total_time: float,
+        k: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        time_step: float = 0.01,
+        return_history: bool = False,
+        sample_times: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        seed: int = 13,
+        threshold: float = 1e-16,
+        endpoint: bool = True,
+    ) -> Tuple[np.float64, np.float64]:
+        """Calculate the linear dependence index (LDI) for a given dynamical system.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        total_time : float
+            Total time over which to evolve the system (including transient).
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
+        transient_time : Optional[float], optional
+            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        time_step : float, optional
+            Integration step size, by default 0.01.
+        return_history : bool, optional
+            Whether to return or not the Lyapunov exponents history in time, by default False.
+        sample_times : Union[None, Sequence[float], NDArray[np.float64]], optional
+            The sample times to return the Lyapunov exponents, by default None.
+        seed : int, optional
+            The seed to randomly generate the deviation vectors, by default 13.
+        threshold : float, optional
+            The threhshold for early termination, by default 1e-16. When SALI becomes less than `threshold`, stops the execution.
+        endpoint : bool, optional
+            Whether to include the endpoint time = total_time in the calculation, by default True.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The LDI value
+
+            - If `return_history = False`, return time and LDI, where time is the time at the end of the execution. time < total_time if LDI becomes less than `threshold` before `total_time`.
+            - If `return_history = True`, return the sampled times and the LDI values.
+            - If `sample_times` is provided, return the LDI at the specified times.
+
+        Raises
+        ------
+        ValueError
+            - If the Jacobian function is not provided.
+            - If the initial condition is not valid, i.e., if the dimensions do not match.
+            - If the number of parameters does not match.
+            - If `parameters` is not a scalar, 1D list, or 1D array.
+            - If `total_time`, `transient_time`, or `threshold` are negative.
+            - If `k` < 2.
+        TypeError
+            - If `total_time`, `transient_time`, or `threshold` are not valid numbers.
+            - If `seed` is not an integer.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]
+        >>> total_time = 1000
+        >>> transient_time = 500
+        >>> parameters = [16.0, 45.92, 4.0]
+        >>> ds.LDI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
+        (521.8099999999802, 7.328757804386809e-17)
+        >>> ds.LDI(u, total_time, 3, parameters=parameters, transient_time=transient_time)
+        (501.26999999999884, 9.984145370766051e-17)
+        >>> # Returning the history
+        >>> ldi = ds.LDI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
+        >>> ldi.shape
+        (2181, 2)
+        """
+
+        if self.__jacobian is None:
+            raise ValueError(
+                "Jacobian function is required to compute Lyapunov exponents"
+            )
+
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        transient_time, total_time = validate_times(transient_time, total_time)
+
+        validate_non_negative(time_step, "time_step", type_=Real)
+
+        validate_non_negative(threshold, "threshold", type_=Real)
+
+        if not isinstance(k, Integral) or k < 2:
+            raise ValueError(
+                "The number of deviation vectors, `k`, must be an integer >= 2"
+            )
+
+        if endpoint:
+            total_time += time_step
+
+        if return_history:
+            if sample_times is not None:
+                sample_times = sample_times.copy()
+                sample_times = (
+                    sample_times - (transient_time if transient_time is not None else 0)
+                ) / time_step
+            return LDI(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                k,
+                transient_time=transient_time,
+                time_step=time_step,
+                return_history=return_history,
+                sample_times=sample_times,
+                seed=seed,
+                threshold=threshold,
+            )
+        else:
+            result = LDI(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                k,
+                transient_time=transient_time,
+                time_step=time_step,
+                return_history=return_history,
+                sample_times=sample_times,
+                seed=seed,
+                threshold=threshold,
+            )
+            return result[0, 0], result[1, 0]
