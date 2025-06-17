@@ -22,10 +22,7 @@ from numba import njit, prange
 
 from pynamicalsys.common.utils import qr
 from pynamicalsys.continuous_time.trajectory_analysis import evolve_system
-from pynamicalsys.continuous_time.numerical_integrators import (
-    rk4_step,
-    variational_rk4_step,
-)
+from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
 
 
 @njit(cache=True)
@@ -41,8 +38,10 @@ def lyapunov_exponents(
     ],
     transient_time: Optional[float] = None,
     time_step: float = 0.01,
+    atol: float = 1e-6,
+    rtol: float = 1e-3,
+    integrator=rk4_step_wrapped,
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.float64]] = None,
     seed: int = 13,
     log_base: float = np.e,
     QR: Callable[
@@ -58,7 +57,14 @@ def lyapunov_exponents(
     # Handle transient time
     if transient_time is not None:
         u = evolve_system(
-            u, parameters, transient_time, equations_of_motion, time_step=time_step
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
         )
         sample_time = total_time - transient_time
         time = transient_time
@@ -77,51 +83,58 @@ def lyapunov_exponents(
     v, _ = QR(v)
     uv[neq:] = v.reshape(neq**2)
 
-    number_of_steps = round(sample_time / time_step)
     exponents = np.zeros(neq, dtype=np.float64)
+    history = []
 
-    if return_history:
-        if sample_times is not None:
-            history = np.zeros((len(sample_times), neq + 1))
-            count = 0
-        else:
-            history = np.zeros((number_of_steps, neq + 1))
+    while time < total_time:
+        if time + time_step > total_time:
+            time_step = total_time - time
 
-    for i in range(number_of_steps):
-        uv = variational_rk4_step(
-            time, uv, parameters, equations_of_motion, jacobian, time_step=time_step
+        uv_new, time_new, time_step_new, accept = integrator(
+            time,
+            uv,
+            parameters,
+            equations_of_motion,
+            jacobian=jacobian,
+            time_step=time_step,
         )
 
-        # Reshape the deviation vectors into a neq x neq matrix
-        v = uv[neq:].reshape(neq, neq)
+        if accept:
+            time = time_new
+            uv = uv_new.copy()
+            #  Reshape the deviation vectors into a neq x neq matrix
+            v = uv[neq:].reshape(neq, neq).copy()
 
-        # Perform the QR decomposition
-        v, R = QR(v)
+            # Perform the QR decomposition
+            v, R = QR(v)
 
-        # Accumulate the log
-        exponents += np.log(np.abs(np.diag(R))) / np.log(log_base)
+            # Accumulate the log
+            exponents += np.log(np.abs(np.diag(R))) / np.log(log_base)
 
-        if return_history:
-            if sample_times is None:
-                history[i, 0] = time
-                history[i, 1:] = exponents / (i + 1)
-            elif i in sample_times:
-                history[count, 0] = time
-                history[count, 1:] = exponents / (i + 1)
-                count += 1
+            if return_history:
+                result = [time]
+                for i in range(neq):
+                    result.append(
+                        exponents[i]
+                        / (time - (transient_time if transient_time is not None else 0))
+                    )
+                history.append(result)
 
-        # Reshape v back to uv
-        uv[neq:] = v.reshape(neq**2)
+            # Reshape v back to uv
+            uv[neq:] = v.reshape(neq**2)
 
-        # Update time
-        time += time_step
+        time_step = time_step_new
 
     if return_history:
         return history
     else:
-        aux_exponents = np.zeros((neq, 1))
-        aux_exponents[:, 0] = exponents / (number_of_steps * time_step)
-        return aux_exponents
+        result = []
+        for i in range(neq):
+            result.append(
+                exponents[i]
+                / (time - (transient_time if transient_time is not None else 0))
+            )
+        return [result]
 
 
 @njit(cache=True)
@@ -137,11 +150,14 @@ def SALI(
     ],
     transient_time: Optional[float] = None,
     time_step: float = 0.01,
+    atol: float = 1e-6,
+    rtol: float = 1e-3,
+    integrator=rk4_step_wrapped,
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.float64]] = None,
     seed: int = 13,
     threshold: float = 1e-16,
 ) -> NDArray[np.float64]:
+
     neq = len(u)  # Number of equations of the system
     ndv = 2  # Number of deviation vectors
     nt = neq + neq * ndv  # Total number of equations including variational equations
@@ -151,12 +167,17 @@ def SALI(
     # Handle transient time
     if transient_time is not None:
         u = evolve_system(
-            u, parameters, transient_time, equations_of_motion, time_step=time_step
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
         )
-        sample_time = total_time - transient_time
         time = transient_time
     else:
-        sample_time = total_time
         time = 0
 
     # State + deviation vectors
@@ -170,68 +191,55 @@ def SALI(
     v, _ = qr(v)
     uv[neq:] = v.reshape(neq * ndv)
 
-    number_of_steps = round(sample_time / time_step)
+    history = []
 
-    if return_history:
-        if sample_times is not None:
-            history = np.zeros((len(sample_times), 2))
-            count = 0
-        else:
-            history = np.zeros((number_of_steps, 2))
+    while time < total_time:
+        if time + time_step > total_time:
+            time_step = total_time - time
 
-    for i in range(number_of_steps):
-        uv = variational_rk4_step(
+        uv_new, time_new, time_step_new, accept = integrator(
             time,
             uv,
             parameters,
             equations_of_motion,
-            jacobian,
+            jacobian=jacobian,
             time_step=time_step,
             number_of_deviation_vectors=ndv,
         )
 
-        # Reshape the deviation vectors into a neq x ndv matrix
-        v = uv[neq:].reshape(neq, ndv)
+        if accept:
+            time = time_new
+            uv = uv_new.copy()
 
-        # Normalize the deviation vectors
-        v[:, 0] /= np.linalg.norm(v[:, 0])
-        v[:, 1] /= np.linalg.norm(v[:, 1])
+            # Reshape the deviation vectors into a neq x ndv matrix
+            v = uv[neq:].reshape(neq, ndv)
 
-        # Calculate the aligment indexes and SALI
-        PAI = np.linalg.norm(v[:, 0] + v[:, 1])
-        AAI = np.linalg.norm(v[:, 0] - v[:, 1])
-        sali = min(PAI, AAI)
+            # Normalize the deviation vectors
+            v[:, 0] /= np.linalg.norm(v[:, 0])
+            v[:, 1] /= np.linalg.norm(v[:, 1])
 
-        if return_history:
-            if sample_times is None:
-                history[i, 0] = time
-                history[i, 1] = sali
-            elif i in sample_times:
-                history[count, 0] = time
-                history[count, 1] = sali
-                count += 1
+            # Calculate the aligment indexes and SALI
+            PAI = np.linalg.norm(v[:, 0] + v[:, 1])
+            AAI = np.linalg.norm(v[:, 0] - v[:, 1])
+            sali = min(PAI, AAI)
 
-        # Early termination
-        if sali <= threshold:
-            break
+            if return_history:
+                result = [time, sali]
+                history.append(result)
 
-        # Reshape v back to uv
-        uv[neq:] = v.reshape(neq * ndv)
+            # Early termination
+            if sali <= threshold:
+                break
 
-        # Update time
-        time += time_step
+            # Reshape v back to uv
+            uv[neq:] = v.reshape(neq * ndv)
+
+        time_step = time_step_new
 
     if return_history:
-        if sample_times is not None:
-            return history[:count]
-        else:
-            return history[:i]
+        return history
     else:
-        aux_sali = np.zeros((2, 1), dtype=np.float64)
-        aux_sali[0, 0] = time
-        aux_sali[1, 0] = sali
-
-        return aux_sali
+        return [[time, sali]]
 
 
 # @njit(cache=True)
@@ -248,11 +256,14 @@ def LDI(
     number_deviation_vectors: int,
     transient_time: Optional[float] = None,
     time_step: float = 0.01,
+    atol: float = 1e-6,
+    rtol: float = 1e-3,
+    integrator=rk4_step_wrapped,
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.float64]] = None,
     seed: int = 13,
     threshold: float = 1e-16,
 ) -> NDArray[np.float64]:
+
     neq = len(u)  # Number of equations of the system
     ndv = number_deviation_vectors  # Number of deviation vectors
     nt = neq + neq * ndv  # Total number of equations including variational equations
@@ -262,12 +273,17 @@ def LDI(
     # Handle transient time
     if transient_time is not None:
         u = evolve_system(
-            u, parameters, transient_time, equations_of_motion, time_step=time_step
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
         )
-        sample_time = total_time - transient_time
         time = transient_time
     else:
-        sample_time = total_time
         time = 0
 
     # State + deviation vectors
@@ -281,87 +297,51 @@ def LDI(
     v, _ = qr(v)
     uv[neq:] = v.reshape(neq * ndv)
 
-    number_of_steps = round(sample_time / time_step)
+    history = []
 
-    if return_history:
-        if sample_times is not None:
-            history = np.zeros((len(sample_times), 2))
-            count = 0
-        else:
-            history = np.zeros((number_of_steps, 2))
+    while time < total_time:
+        if time + time_step > total_time:
+            time_step = total_time - time
 
-    for i in range(number_of_steps):
-        uv = variational_rk4_step(
+        uv_new, time_new, time_step_new, accept = integrator(
             time,
             uv,
             parameters,
             equations_of_motion,
-            jacobian,
+            jacobian=jacobian,
             time_step=time_step,
             number_of_deviation_vectors=ndv,
         )
 
-        # Reshape the deviation vectors into a neq x ndv matrix
-        v = uv[neq:].reshape(neq, ndv)
+        if accept:
+            time = time_new
+            uv = uv_new.copy()
 
-        # Normalize the deviation vectors
-        for j in range(ndv):
-            v[:, j] /= np.linalg.norm(v[:, j])
+            # Reshape the deviation vectors into a neq x ndv matrix
+            v = uv[neq:].reshape(neq, ndv)
 
-        # Calculate the singular value decomposition
-        S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
-        ldi = np.prod(S)
+            # Normalize the deviation vectors
+            for i in range(ndv):
+                v[:, i] /= np.linalg.norm(v[:, i])
 
-        if return_history:
-            if sample_times is None:
-                history[i, 0] = time
-                history[i, 1] = ldi
-            elif i in sample_times:
-                history[count, 0] = time
-                history[count, 1] = ldi
-                count += 1
+            # Calculate the singular values
+            S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
+            ldi = np.prod(S)
 
-        # Early termination
-        if ldi <= threshold:
-            break
+            if return_history:
+                result = [time, ldi]
+                history.append(result)
 
-        # Reshape v back to uv
-        uv[neq:] = v.reshape(neq * ndv)
+            # Early termination
+            if ldi <= threshold:
+                break
 
-        # Update time
-        time += time_step
+            # Reshape v back to uv
+            uv[neq:] = v.reshape(neq * ndv)
+
+        time_step = time_step_new
 
     if return_history:
-        if sample_times is not None:
-            return history[:count]
-        else:
-            return history[:i]
+        return history
     else:
-        aux_ldi = np.zeros((2, 1), dtype=np.float64)
-        aux_ldi[0, 0] = time
-        aux_ldi[1, 0] = ldi
-
-        return aux_ldi
-
-
-if __name__ == "__main__":
-    from pynamicalsys.continuous_time.models import (
-        lorenz_system,
-        lorenz_jacobian,
-    )
-
-    neq = 3
-    u = np.array([0.1, 0.1, 0.1])
-    total_time = 1000
-    transient_time = 500
-    parameters = np.array([16.0, 45.92, 4.0])
-    sali = SALI(
-        u,
-        parameters,
-        total_time,
-        lorenz_system,
-        lorenz_jacobian,
-        transient_time=transient_time,
-    )
-    print(sali, sali.shape)
-    print(sali[0, 0])
+        return [[time, ldi]]
