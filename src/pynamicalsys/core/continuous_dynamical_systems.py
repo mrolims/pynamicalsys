@@ -15,42 +15,35 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
 from numbers import Integral, Real
-from typing import Optional, Tuple, Union, Callable, List, Dict, Sequence, Any
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 from numpy.typing import NDArray
 
-from pynamicalsys.continuous_time.models import (
-    lorenz_system,
-    lorenz_jacobian,
+from pynamicalsys.common.utils import householder_qr, qr
+from pynamicalsys.continuous_time.chaotic_indicators import (
+    LDI,
+    SALI,
+    lyapunov_exponents,
 )
-
+from pynamicalsys.continuous_time.models import lorenz_jacobian, lorenz_system
 from pynamicalsys.continuous_time.numerical_integrators import (
     estimate_initial_step,
     rk4_step_wrapped,
     rk45_step_wrapped,
 )
-
 from pynamicalsys.continuous_time.trajectory_analysis import (
-    generate_trajectory,
-    evolve_system,
     ensemble_trajectories,
+    evolve_system,
+    generate_trajectory,
 )
-
-from pynamicalsys.continuous_time.chaotic_indicators import (
-    lyapunov_exponents,
-    SALI,
-    LDI,
-)
-
 from pynamicalsys.continuous_time.validators import (
-    validate_non_negative,
     validate_initial_conditions,
+    validate_non_negative,
     validate_parameters,
     validate_times,
 )
-
-from pynamicalsys.common.utils import qr, householder_qr
 
 
 class ContinuousDynamicalSystem:
@@ -232,8 +225,6 @@ class ContinuousDynamicalSystem:
             Total time over which to evolve the system.
         parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
             Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
-        time_step : float, optional
-            Integration step size, by default 0.01.
 
         Returns
         -------
@@ -248,6 +239,17 @@ class ContinuousDynamicalSystem:
             - If `parameters` is not a scalar, 1D list, or 1D array.
         TypeError
             - If `total_time` is not a valid number.
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> ds.integrator("rk4", time_step=0.01)
+        >>> parameters = [10, 28, 8/3]
+        >>> u = [1.0, 1.0, 1.0]
+        >>> total_time = 10
+        >>> ds.evolve_system(u, total_time, parameters=parameters)
+        >>> ds.integrator("rk45", atol=1e-8, rtol=1e-6)
+        >>> ds.evolve_system(u, total_time, parameters=parameters)
         """
 
         u = validate_initial_conditions(u, self.__system_dimension)
@@ -292,8 +294,6 @@ class ContinuousDynamicalSystem:
             Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
         transient_time : float
             Initial time to discard.
-        time_step : float, optional
-            Integration step size, by default 0.01.
 
         Returns
         -------
@@ -395,12 +395,8 @@ class ContinuousDynamicalSystem:
             Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
         transient_time : Optional[float], optional
             Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
-        time_step : float, optional
-            Integration step size, by default 0.01.
         return_history : bool, optional
             Whether to return or not the Lyapunov exponents history in time, by default False.
-        sample_times : Union[None, Sequence[float], NDArray[np.float64]], optional
-            The sample times to return the Lyapunov exponents, by default None.
         seed : int, optional
             The seed to randomly generate the deviation vectors, by default 13.
         log_base : int, optional
@@ -447,11 +443,6 @@ class ContinuousDynamicalSystem:
         array([ 2.15920769e+00, -4.61882314e-03, -3.24498622e+01])
         >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2, method="QR_HH")
         array([ 2.15920769e+00, -4.61882314e-03, -3.24498622e+01])
-        >>> # Returning the history at specific times
-        >>> sample_times = np.arange(transient_time, total_time, 1000 * 0.01)
-        >>> lyapunov_exponents_sampled = ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2, return_history=True, sample_times=sample_times)
-        >>> lyapunov_exponents_sampled.shape
-        (51, 4)
         """
 
         if self.__jacobian is None:
@@ -532,12 +523,8 @@ class ContinuousDynamicalSystem:
             Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
         transient_time : Optional[float], optional
             Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
-        time_step : float, optional
-            Integration step size, by default 0.01.
         return_history : bool, optional
             Whether to return or not the Lyapunov exponents history in time, by default False.
-        sample_times : Union[None, Sequence[float], NDArray[np.float64]], optional
-            The sample times to return the Lyapunov exponents, by default None.
         seed : int, optional
             The seed to randomly generate the deviation vectors, by default 13.
         threshold : float, optional
@@ -653,12 +640,8 @@ class ContinuousDynamicalSystem:
             Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
         transient_time : Optional[float], optional
             Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
-        time_step : float, optional
-            Integration step size, by default 0.01.
         return_history : bool, optional
             Whether to return or not the Lyapunov exponents history in time, by default False.
-        sample_times : Union[None, Sequence[float], NDArray[np.float64]], optional
-            The sample times to return the Lyapunov exponents, by default None.
         seed : int, optional
             The seed to randomly generate the deviation vectors, by default 13.
         threshold : float, optional
