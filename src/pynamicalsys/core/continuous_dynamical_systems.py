@@ -15,42 +15,35 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
 from numbers import Integral, Real
-from typing import Optional, Tuple, Union, Callable, List, Dict, Sequence, Any
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 from numpy.typing import NDArray
 
-from pynamicalsys.continuous_time.models import (
-    lorenz_system,
-    lorenz_jacobian,
+from pynamicalsys.common.utils import householder_qr, qr
+from pynamicalsys.continuous_time.chaotic_indicators import (
+    LDI,
+    SALI,
+    lyapunov_exponents,
 )
-
+from pynamicalsys.continuous_time.models import lorenz_jacobian, lorenz_system
 from pynamicalsys.continuous_time.numerical_integrators import (
     estimate_initial_step,
     rk4_step_wrapped,
     rk45_step_wrapped,
 )
-
 from pynamicalsys.continuous_time.trajectory_analysis import (
-    generate_trajectory,
-    evolve_system,
     ensemble_trajectories,
+    evolve_system,
+    generate_trajectory,
 )
-
-from pynamicalsys.continuous_time.chaotic_indicators import (
-    lyapunov_exponents,
-    SALI,
-    LDI,
-)
-
 from pynamicalsys.continuous_time.validators import (
-    validate_non_negative,
     validate_initial_conditions,
+    validate_non_negative,
     validate_parameters,
     validate_times,
 )
-
-from pynamicalsys.common.utils import qr, householder_qr
 
 
 class ContinuousDynamicalSystem:
@@ -194,11 +187,11 @@ class ContinuousDynamicalSystem:
             if integrator not in self.__AVAILABLE_INTEGRATORS:
                 available = "\n".join(
                     f"- {name}: {info["description"]}"
-                    for name, info in self.__AVAILABE_INTEGRATORS.items()
+                    for name, info in self.__AVAILABLE_INTEGRATORS.items()
                 )
-            raise ValueError(
-                f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
-            )
+                raise ValueError(
+                    f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
+                )
 
     def __get_initial_time_step(self, u, parameters):
         if self.integrator_info["estimate_initial_step"]:
@@ -377,7 +370,7 @@ class ContinuousDynamicalSystem:
         transient_time: Optional[float] = None,
         return_history: bool = False,
         seed: int = 13,
-        log_base: int = np.e,
+        log_base: float = np.e,
         method: str = "QR",
         endpoint: bool = True,
     ) -> NDArray[np.float64]:
@@ -519,7 +512,7 @@ class ContinuousDynamicalSystem:
         seed: int = 13,
         threshold: float = 1e-16,
         endpoint: bool = True,
-    ) -> Tuple[np.float64, np.float64]:
+    ) -> NDArray[np.float64]:
         """Calculate the smallest aligment index (SALI) for a given dynamical system.
 
         Parameters
@@ -640,7 +633,7 @@ class ContinuousDynamicalSystem:
         seed: int = 13,
         threshold: float = 1e-16,
         endpoint: bool = True,
-    ) -> Tuple[np.float64, np.float64]:
+    ) -> NDArray[np.float64]:
         """Calculate the linear dependence index (LDI) for a given dynamical system.
 
         Parameters
