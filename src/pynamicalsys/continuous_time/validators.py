@@ -15,12 +15,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
 from numbers import Integral, Real
+from typing import Type, Union
+
+import numpy as np
 from numpy.typing import NDArray
 
 
-def validate_non_negative(value, name, type_=Integral) -> None:
+def validate_non_negative(
+    value: Union[Integral, int, Real, float],
+    name: str,
+    type_: Type[Union[Integral, int, Real, float]] = Integral,
+) -> None:
     if not isinstance(value, type_):
         raise TypeError(f"{name} must be of type {type_.__name__}")
     if value < 0:

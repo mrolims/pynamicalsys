@@ -186,12 +186,12 @@ class ContinuousDynamicalSystem:
             integrator = integrator.lower()
             if integrator not in self.__AVAILABLE_INTEGRATORS:
                 available = "\n".join(
-                    f"- {name}: {info['description']}"
+                    f"- {name}: {info["description"]}"
                     for name, info in self.__AVAILABE_INTEGRATORS.items()
                 )
-            raise ValueError(
-                f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
-            )
+                raise ValueError(
+                    f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
+                )
 
     def __get_initial_time_step(self, u, parameters):
         if self.integrator_info["estimate_initial_step"]:
@@ -377,7 +377,7 @@ class ContinuousDynamicalSystem:
         transient_time: Optional[float] = None,
         return_history: bool = False,
         seed: int = 13,
-        log_base: int = np.e,
+        log_base: float = np.e,
         method: str = "QR",
         endpoint: bool = True,
     ) -> NDArray[np.float64]:
@@ -510,7 +510,7 @@ class ContinuousDynamicalSystem:
         seed: int = 13,
         threshold: float = 1e-16,
         endpoint: bool = True,
-    ) -> Tuple[np.float64, np.float64]:
+    ) -> NDArray[np.float64]:
         """Calculate the smallest aligment index (SALI) for a given dynamical system.
 
         Parameters
@@ -627,7 +627,7 @@ class ContinuousDynamicalSystem:
         seed: int = 13,
         threshold: float = 1e-16,
         endpoint: bool = True,
-    ) -> Tuple[np.float64, np.float64]:
+    ) -> NDArray[np.float64]:
         """Calculate the linear dependence index (LDI) for a given dynamical system.
 
         Parameters
