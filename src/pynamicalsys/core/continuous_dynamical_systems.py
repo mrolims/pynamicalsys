@@ -186,7 +186,7 @@ class ContinuousDynamicalSystem:
             integrator = integrator.lower()
             if integrator not in self.__AVAILABLE_INTEGRATORS:
                 available = "\n".join(
-                    f"- {name}: {info["description"]}"
+                    f"- {name}: {info['description']}"
                     for name, info in self.__AVAILABE_INTEGRATORS.items()
                 )
                 raise ValueError(
