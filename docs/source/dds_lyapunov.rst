@@ -128,7 +128,13 @@ describes the evolution of the tangent vectors under the linearized dynamics. Th
 
     \lambda_i = \lim_{n \to \infty} \frac{1}{n} \log \|J_n(\mathbf{x}_0)\mathbf{v}_i\|.
 
-Numerically, we perform a QR decomposition of the Jacobian matrix at each time step to ensure numerical stability: :math:`J_n = Q_n R_n`, where :math:`Q_n` is an orthogonal matrix and :math:`R_n` is an upper triangular matrix. The Lyapunov exponents are then computed from the averages of the logarithm of diagonal elements of the matrix :math:`R_n`, :math:`|r_{ii}^{(n)}|`:
+Numerically, we follow the evolution of a orthonormal basis of deviation vectors and reorthonormalize them at each step using a QR decomposition. Let :math:`A_n \in \mathbb{R}^{d\times d}` be a matrix whose columns are the deviation vectors at time :math:`n`. The time evolution under the linearized dynamics is given by
+
+.. math::
+
+   A_n(\mathbf{x}_0) = J_n(\mathbf{x}_0)A_0.
+
+At each iteration, we compute :math:`A_n = Q_n R_n`, where :math:`Q_n` is an orthogonal matrix and :math:`R_n` is an upper triangular matrix. The Lyapunov exponents are then computed from the averages of the logarithm of diagonal elements of the matrix :math:`R_n`, :math:`|r_{ii}^{(n)}|`:
 
 .. math::
 

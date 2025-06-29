@@ -17,6 +17,13 @@ where :math:`U` is a :math:`d \times d` orthogonal matrix, :math:`\Sigma` is a :
 
 where :math:`\sigma_i` are the singular values of :math:`A`.
 
+In our case, the matrix :math:`A` is the matrix whose columns are the :math:`k` deviation vectors that evolve according to the linearized dynamics:
+
+.. math::
+   A_{n + 1} = J_nA_{n}.
+
+To avoid the numerical instability that arises from the exponential divergence of the deviation vectors for chaotic trajectories, we normalize the columns of :math:`A` at each time step before computing its SVD.
+
 To illustrate the concept, we will consider the 4-dimensional symplectic map, given by:
 
 .. math::
