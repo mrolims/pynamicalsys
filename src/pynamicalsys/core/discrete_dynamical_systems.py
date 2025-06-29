@@ -16,93 +16,92 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
-import numpy as np
 from numbers import Integral, Real
-from typing import Optional, Tuple, Union, Callable, List, Dict, Sequence, Any
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
+import numpy as np
 from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
+from pynamicalsys.common.utils import finite_difference_jacobian, householder_qr
 from pynamicalsys.discrete_time.dynamical_indicators import (
-    lyapunov_er,
-    lyapunov_qr,
-    finite_time_lyapunov,
-    lyapunov_1D,
+    RTE,
     SALI,
     LDI_k,
-    lagrangian_descriptors,
     dig,
-    hurst_exponent,
     finite_time_hurst_exponent,
-    RTE,
+    finite_time_lyapunov,
     finite_time_RTE,
+    hurst_exponent,
+    lagrangian_descriptors,
+    lyapunov_1D,
+    lyapunov_er,
+    lyapunov_qr,
 )
 from pynamicalsys.discrete_time.models import (
-    standard_map,
-    standard_map_backwards,
-    standard_map_jacobian,
-    unbounded_standard_map,
-    henon_map,
-    henon_map_jacobian,
-    logistic_map,
-    logistic_map_jacobian,
-    standard_nontwist_map,
-    standard_nontwist_map_backwards,
-    standard_nontwist_map_jacobian,
     extended_standard_nontwist_map,
     extended_standard_nontwist_map_backwards,
     extended_standard_nontwist_map_jacobian,
+    henon_map,
+    henon_map_jacobian,
     leonel_map,
-    leonel_map_jacobian,
     leonel_map_backwards,
-    symplectic_map_4D,
-    symplectic_map_4D_backwards,
-    symplectic_map_4D_jacobian,
+    leonel_map_jacobian,
+    logistic_map,
+    logistic_map_jacobian,
     lozi_map,
     lozi_map_jacobian,
     rulkov_map,
     rulkov_map_jacobian,
+    standard_map,
+    standard_map_backwards,
+    standard_map_jacobian,
+    standard_nontwist_map,
+    standard_nontwist_map_backwards,
+    standard_nontwist_map_jacobian,
+    symplectic_map_4D,
+    symplectic_map_4D_backwards,
+    symplectic_map_4D_jacobian,
+    unbounded_standard_map,
 )
 from pynamicalsys.discrete_time.trajectory_analysis import (
-    generate_trajectory,
-    ensemble_trajectories,
     bifurcation_diagram,
-    period_counter,
+    calculate_manifolds,
+    classify_stability,
+    eigenvalues_and_eigenvectors,
+    ensemble_time_average,
+    ensemble_trajectories,
     escape_basin_and_time_entering,
     escape_time_exiting,
-    survival_probability,
     find_periodic_orbit,
     find_periodic_orbit_symmetry_line,
-    eigenvalues_and_eigenvectors,
-    classify_stability,
-    calculate_manifolds,
-    rotation_number,
+    generate_trajectory,
     iterate_mapping,
-    ensemble_time_average,
+    period_counter,
+    rotation_number,
+    survival_probability,
 )
 from pynamicalsys.discrete_time.transport import (
-    diffusion_coefficient,
     average_vs_time,
-    root_mean_squared,
+    cumulative_average_vs_time,
+    diffusion_coefficient,
     mean_squared_displacement,
     recurrence_times,
-    cumulative_average_vs_time,
+    root_mean_squared,
 )
-
-from pynamicalsys.common.utils import finite_difference_jacobian, householder_qr
-
-from .time_series_metrics import TimeSeriesMetrics as tsm
-
 from pynamicalsys.discrete_time.validators import (
-    validate_initial_conditions,
-    validate_parameters,
-    validate_non_negative,
-    validate_transient_time,
     validate_and_convert_param_range,
-    validate_positive,
-    validate_sample_times,
     validate_axis,
     validate_finite_time,
+    validate_initial_conditions,
+    validate_non_negative,
+    validate_parameters,
+    validate_positive,
+    validate_sample_times,
+    validate_transient_time,
 )
+
+from .time_series_metrics import TimeSeriesMetrics as tsm
 
 
 class DiscreteDynamicalSystem:
