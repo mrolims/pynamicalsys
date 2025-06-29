@@ -16,7 +16,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from numbers import Integral, Real
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -27,7 +27,16 @@ from pynamicalsys.continuous_time.chaotic_indicators import (
     SALI,
     lyapunov_exponents,
 )
-from pynamicalsys.continuous_time.models import lorenz_jacobian, lorenz_system
+from pynamicalsys.continuous_time.models import (
+    henon_heiles,
+    henon_heiles_jacobian,
+    lorenz_jacobian,
+    lorenz_system,
+    rossler_system,
+    rossler_system_4D,
+    rossler_system_4D_jacobian,
+    rossler_system_jacobian,
+)
 from pynamicalsys.continuous_time.numerical_integrators import (
     estimate_initial_step,
     rk4_step_wrapped,
@@ -58,7 +67,37 @@ class ContinuousDynamicalSystem:
             "dimension": 3,
             "number_of_parameters": 3,
             "parameters": ["sigma", "rho", "beta"],
-        }
+        },
+        "henon heiles": {
+            "description": "Two d.o.f. Hénon-Heiles system",
+            "has_jacobian": True,
+            "has_variational_equations": True,
+            "equations_of_motion": henon_heiles,
+            "jacobian": henon_heiles_jacobian,
+            "dimension": 4,
+            "number_of_parameters": 0,
+            "parameters": [],
+        },
+        "rossler system": {
+            "description": "3D Rössler system",
+            "has_jacobian": True,
+            "has_variational_equations": True,
+            "equations_of_motion": rossler_system,
+            "jacobian": rossler_system_jacobian,
+            "dimension": 3,
+            "number_of_parameters": 3,
+            "parameters": ["a", "b", "c"],
+        },
+        "4d rossler system": {
+            "description": "4D Rössler system",
+            "has_jacobian": True,
+            "has_variational_equations": True,
+            "equations_of_motion": rossler_system_4D,
+            "jacobian": rossler_system_4D_jacobian,
+            "dimension": 4,
+            "number_of_parameters": 4,
+            "parameters": ["a", "b", "c", "d"],
+        },
     }
 
     __AVAILABLE_INTEGRATORS: Dict[str, Dict[str, Any]] = {
@@ -164,12 +203,43 @@ class ContinuousDynamicalSystem:
 
     @property
     def integrator_info(self):
+        """Return the information about the current integrator"""
         integrator = self.__integrator.lower()
 
         return self.__AVAILABLE_INTEGRATORS[integrator]
 
     def integrator(self, integrator, time_step=1e-2, atol=1e-6, rtol=1e-3):
+        """Set the integrator to use in the simulation.
 
+        Parameters
+        ----------
+        integrator : str
+            The integrator name. Available options are 'rk4' and 'rk45'
+        time_step : float, optional
+            The integration time step when `integrator='rk4'`, by default 1e-2
+        atol : float, optional
+            The absolute tolerance used when `integrator='rk45'`, by default 1e-6
+        rtol : float, optional
+            The relative tolerance used when `integrator='rk45'`, by default 1e-3
+
+        Raises
+        ------
+        ValueError
+            If `time_step`, `atol`, or `rtol` are negative.
+            If `integrator` is not available.
+        TypeError
+            If `time_step`, `atol`, or `rtol` are not valid numbers.
+            If `integrator` is not a string.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> cds.available_integrators()
+        ['rk4', 'rk45']
+        >>> ds = cds(model="lorenz system")
+        >>> ds.integrator("rk4", time_step=0.001) #  To use the RK4 integrator
+        >>> ds.integrator("rk45", atol=1e-10, rtol=1e-8) #  To use the RK45 integrator
+        """
         validate_non_negative(time_step, "time_step", type_=Real)
         validate_non_negative(atol, "atol", type_=Real)
         validate_non_negative(rtol, "rtol", type_=Real)
@@ -187,7 +257,7 @@ class ContinuousDynamicalSystem:
             if integrator not in self.__AVAILABLE_INTEGRATORS:
                 available = "\n".join(
                     f"- {name}: {info['description']}"
-                    for name, info in self.__AVAILABE_INTEGRATORS.items()
+                    for name, info in self.__AVAILABLE_INTEGRATORS.items()
                 )
                 raise ValueError(
                     f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
@@ -239,6 +309,7 @@ class ContinuousDynamicalSystem:
             - If `parameters` is not a scalar, 1D list, or 1D array.
         TypeError
             - If `total_time` is not a valid number.
+
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
@@ -352,11 +423,6 @@ class ContinuousDynamicalSystem:
             )
             return np.array(result)
         else:
-            num_ic, neq = u.shape
-            number_of_steps = round(
-                (total_time - (transient_time if transient_time is not None else 0))
-                / time_step
-            )
             return ensemble_trajectories(
                 u,
                 parameters,
@@ -412,7 +478,7 @@ class ContinuousDynamicalSystem:
             The Lyapunov exponents.
 
             - If `return_history = False`, return the Lyapunov exponents' final value.
-            - If `return_history = True`, return the time series of each exponent.
+            - If `return_history = True`, return the time series of each exponent together with the time samples.
             - If `sample_times` is provided, return the Lyapunov exponents at the specified times.
 
         Raises
@@ -553,10 +619,6 @@ class ContinuousDynamicalSystem:
             - If `total_time`, `transient_time`, or `threshold` are not valid numbers.
             - If `seed` is not an integer.
 
-        Notes
-        -----
-        - By default, the method uses the modified Gram-Schimdt algorithm to perform the QR decomposition. If your problem requires a higher numerical stability (e.g. large-scale problem), you can set `method=QR_HH` to use Householder reflections instead.
-
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
@@ -622,7 +684,6 @@ class ContinuousDynamicalSystem:
         k: int,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
-        time_step: float = 0.01,
         return_history: bool = False,
         seed: int = 13,
         threshold: float = 1e-16,
