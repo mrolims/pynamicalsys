@@ -17,6 +17,6 @@ Currently, our research paper is under review, but in the mean time, if you use 
 
 
 Publications Using **pynamicalsys**
-------------------------------
+-----------------------------------
 
 If your work uses **pynamicalsys**, please let us know!

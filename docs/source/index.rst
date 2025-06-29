@@ -31,13 +31,15 @@ pynamicalsys is built on top of NumPy and Numba, ensuring high performance and e
    :maxdepth: 2
    :caption: Tutorial
 
-   tutorial
+   dds_tutorial
+   cds_tutorial
 
 .. toctree::
    :maxdepth: 1
    :caption: API Reference
 
    api/dds
+   api/cds
    api/basin_metrics
    api/time_series_metrics
    api/plot_styler
