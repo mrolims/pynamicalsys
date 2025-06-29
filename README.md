@@ -6,28 +6,28 @@
 
 ## Overview
 
-**pynamicalsys** is designed to provide a fast, flexible, and user-friendly environment for analyzing **nonlinear dynamical systems**. It is designed for students, researchers, educators, and enthusiasts who want to explore the world of chaos and dynamical systems. Beyond standard tools like trajectory generation and Lyapunov exponents calculation, pynamicalsys includes advanced features such as
+**pynamicalsys** is designed to provide a fast, flexible, and user-friendly environment for analyzing **nonlinear dynamical systems**. It is intended for students, researchers, educators, and enthusiasts who want to explore the world of chaos and dynamical systems. Beyond standard tools like trajectory generation and Lyapunov exponents calculation, **pynamicalsys** includes advanced features such as
 
--   **Linear dependence index** for chaos detection.
--   **Recurrence plots** and recurrence time statistics.
--   Chaos indicators based on **weighted Birkhoff averages**.
--   Statistical measures of **diffusion and transport** in dynamical systems.
--   Computation of **periodic orbits**, their **stability** and their **manifolds**.
--   Basin metric for **quantifying** the structure of **basins of attraction**.
--   **Plot styling** for consistent and customizable visualizations.
+- **Linear dependence index** for chaos detection.
+- **Recurrence plots** and recurrence time statistics.
+- Chaos indicators based on **weighted Birkhoff averages**.
+- Statistical measures of **diffusion and transport** in dynamical systems.
+- Computation of **periodic orbits**, their **stability** and their **manifolds**.
+- Basin metric for **quantifying** the structure of **basins of attraction**.
+- **Plot styling** for consistent and customizable visualizations.
 
-pynamicalsys is built on top of NumPy and Numba, ensuring high performance and efficiency. Thanks to Numba accelerated computation, pynamicalsys offers speedups up to **130x** compared to the original Python implementation of the algorithms. This makes it suitable for large-scale simulations and analyses.
+**pynamicalsys** is built on top of NumPy and Numba, ensuring high performance and efficiency. Thanks to Numba accelerated computation, **pynamicalsys** offers speedups up to **130x** compared to the original Python implementation of the algorithms. This makes it suitable for large-scale simulations and analyses.
 
 ## Installation
 
 ### Prerequisites
 
--   Python 3.8 or higher
--   pip (Python package installer)
+- Python 3.8 or higher
+- pip (Python package installer)
 
 ### Install via PyPI
 
-To install the latest stable release, run:
+To install the latest stable release, run in your command line:
 
 ```bash
 $ pip install pynamicalsys
@@ -35,6 +35,13 @@ $ pip install pynamicalsys
 
 > **Note:** On **Windows**, it is **strongly recommended** to use [Anaconda](https://www.anaconda.com). It simplifies dependency management and avoids potential issues with scientific libraries during installation. Be sure to run the command from the **Anaconda Prompt**, not from Command Prompt or PowerShell, to ensure the correct environment is activated.
 
+### Upgrade via PyPI
+
+To upgrade your current version of **pynamicalsys** to the latest stable release, run in your command line:
+
+```bash
+$ pip install **pynamicalsys** --upgrade
+```
 
 ### Install from source
 
@@ -69,13 +76,13 @@ Currently, our research paper is under review, but in the mean time, if you use 
 
 ```bibtex
 @misc{pynamicalsys,
-  title={pynamicalsys: A Python toolkit for the analysis of dynamical systems}, 
+  title={pynamicalsys: A Python toolkit for the analysis of dynamical systems},
   author={Matheus Rolim Sales and Leonardo Costa de Souza and Daniel Borin and Michele Mugnaine and José Danilo Szezech Jr. and Ricardo Luiz Viana and Iberê Luiz Caldas and Edson Denis Leonel and Chris G. Antonopoulos},
   year={2025},
   eprint={2506.14044},
   archivePrefix={arXiv},
   primaryClass={nlin.CD},
-  url={https://arxiv.org/abs/2506.14044}, 
+  url={https://arxiv.org/abs/2506.14044},
 }
 ```
 

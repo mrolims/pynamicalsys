@@ -23,6 +23,15 @@ To install the latest stable release, run:
 
     Be sure to run the command from the **Anaconda Prompt**, not from Command Prompt or PowerShell, to ensure the correct environment is activated.
 
+Upgrade via PyPI
+----------------
+
+To upgrade your current version of **pynamicalsys** to the latest stable release, run in your command line:
+
+.. code-block:: bash
+    
+    $ pip install pynamicalsys --upgrade
+
 Install from source
 -------------------
 
