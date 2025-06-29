@@ -15,7 +15,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-dependencies = ["numpy >=1.21", "matplotlib >=3.4", "numba >=0.55"]
+dependencies = ["numpy >=1.21", "matplotlib >=3.4", "numba >=0.55", "scipy >=0.6"]
 requires-python = ">=3.8"
 
 [build-system]
