@@ -91,7 +91,7 @@ The continuous-time analysis is similar to the discrete-time analysis. To get st
         \dot{z} &= xy - \beta z.
     \end{align*}
 
-For this example, we are going to use the same parameters Lorenz used in his original paper in 1986: :math:`\sigma = 10`, :math:`\sigma = 28`, and :math:`\beta = 8/3`. The system exhibit chaotic behavior for this set of parameters.
+For this example, we are going to use the same parameters Lorenz used in his original paper in 1963: :math:`\sigma = 10`, :math:`\sigma = 28`, and :math:`\beta = 8/3`. The system exhibit chaotic behavior for this set of parameters.
 
 To create the continuous-time dynamical system object, we need to instanciate the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class using the `model` parameter, since the Lorenz system is built-in within this class:
 

@@ -17,7 +17,7 @@ To check available built-in systems, you can use the :py:meth:`available_models 
 
     ['lorenz system']
 
-For example, you can create the 86 Lorenz system, given by:
+For example, you can create the 63 Lorenz system, given by:
 
 .. math::
 

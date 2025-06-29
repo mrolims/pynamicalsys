@@ -13,7 +13,7 @@ Currently, our research paper is under review, but in the mean time, if you use 
       archivePrefix={arXiv},
       primaryClass={nlin.CD},
       url={https://arxiv.org/abs/2506.14044}, 
-}
+    }
 
 
 Publications Using **pynamicalsys**
