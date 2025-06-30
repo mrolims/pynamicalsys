@@ -9,7 +9,7 @@ Contact Methods
 ---------------
 
 - 📧 **Email**: `rolim.sales.m[at]gmail.com <mailto:rolim.sales.m@gmail.com>`_
-- 🐙 **GitHub Issues**: `Submit an issue <https://github.com/mrolims/pycandy/issues>`_
+- 🐙 **GitHub Issues**: `Submit an issue <https://github.com/mrolims/pynamicalsys/issues>`_
 - 🤝 **Pull Requests**: Want to contribute? See our :doc:`contributing guide <contributing>`
 
 Contributing
