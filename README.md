@@ -40,7 +40,7 @@ $ pip install pynamicalsys
 To upgrade your current version of **pynamicalsys** to the latest stable release, run in your command line:
 
 ```bash
-$ pip install **pynamicalsys** --upgrade
+$ pip install pynamicalsys --upgrade
 ```
 
 ### Install from source
@@ -88,7 +88,7 @@ Currently, our research paper is under review, but in the mean time, if you use 
 
 ## Contributing
 
-We welcome contributions from the community! To get started, please see our Contributing Guidelines.
+We welcome contributions from the community! To get started, please see our [Contributing Guidelines](https://pynamicalsys.readthedocs.io/en/latest/contributing.html).
 
 ## License
 
