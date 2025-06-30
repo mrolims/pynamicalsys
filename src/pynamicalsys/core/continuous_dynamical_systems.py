@@ -47,6 +47,47 @@ from pynamicalsys.continuous_time.validators import (
 
 
 class ContinuousDynamicalSystem:
+    """Class representing a continuous-time dynamical system with various models and methods for analysis.
+
+    This class allows users to work with predefined dynamical models or with user-provided equations of motion, compute trajectories, Lyapunov exponents and more dynamical analyses.
+
+    Parameters
+    ----------
+    model : str, optional
+        Name of the predefined model to use (e.g. "lorenz system").
+    equations_of_motion : callable, optional
+        Custom function that describes the equations of motion with signature f(time, state, parameters) -> array_like. If provided, `model` must be None.
+    jacobian : callable, optional
+        Custom function that describes the Jacobian matrix of the system with signature J(time, state, parameters) -> array_like
+    system_dimension : int, optional
+        Dimension of the system (number of equations). Required if using custom equations of motion and not a predefined model.
+    number_of_parameters : int, optional
+        Number of parameters of the system. Required if using custom equations of motion and not a predefined model.
+
+    Raises
+    ------
+    ValueError
+        - If neither model nor equations_of_motion is provided, or if provided model is not implemented.
+        - If `system_dimension` is negative.
+        - If `number_of_parameters` is negative.
+
+    TypeError
+        - If `equations_of_motion` or `jacobian` are not callable.
+        - If `system_dimension` or `number_of_parameters` are not valid integers.
+
+    Notes
+    -----
+    - When providing custom functions, either provide both `equations_of_motion` and `jacobian`, or just the `equations_of_motion`.
+    - When providing custom functions, the equations of motion functions signature should be f(time, u, parameters) -> NDArray[np.float64].
+    - The class supports various predefined models, such as the Lorenz and Rössler system.
+    - The available models can be queried using the 'available_models' class method.
+
+    Examples
+    --------
+    >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+    >>> #  Using predefined model
+    >>> ds = cds(model="lorenz system")
+    """
 
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
         "lorenz system": {
@@ -164,12 +205,46 @@ class ContinuousDynamicalSystem:
 
     @property
     def integrator_info(self):
+        """Return a dictionary with information about the current integrator."""
         integrator = self.__integrator.lower()
 
         return self.__AVAILABLE_INTEGRATORS[integrator]
 
     def integrator(self, integrator, time_step=1e-2, atol=1e-6, rtol=1e-3):
+        """Define the integrator.
 
+        Parameters
+        ----------
+        integrator : str
+            The abbreviation for the integrator. The available integrators can be viewed with ContinuousDynamicalSystem.available_integrators.
+        time_step : float, optional
+            The time step used in the integration with the 4th order Runge-Kutta method, default is 0.01.
+        atol : float, optional
+            The absolute tolerance used in the integration with the 4th/5th Runge-Kutta-Fehlberg method, default is 1e-6.
+        rtol : float, optional
+            The relative tolerance used in the integration with the 4th/5th Runge-Kutta-Fehlberg method, default is 1e-3.
+
+        Raises
+        ------
+        ValueError
+            - If `integrator` is not implemented
+            - If `time_step`, `atol`, or `rtol` are negative
+
+        TypeError
+            - If `integrator` is not a string.
+            - If `time_step`, `atol`, or `rtol` are not valid numbers
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> cds.available_integrators
+        ['rk4', 'rk45']
+        >>> ds = cds(model="lorenz system")
+        >>> ds.integrator('rk45', atol=1e-7, rtol=1e-5)
+        """
+
+        if not isinstance(integrator, str):
+            raise ValueError("integrator must be a string.")
         validate_non_negative(time_step, "time_step", type_=Real)
         validate_non_negative(atol, "atol", type_=Real)
         validate_non_negative(rtol, "rtol", type_=Real)
