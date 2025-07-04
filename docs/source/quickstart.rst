@@ -15,12 +15,12 @@ To get started, you need to create a discrete dynamical system object. This is d
     
     x_{n+1} = r x_n (1 - x_n).
 
-This map is a discrete dynamical system that exhibits a wide range of behaviors depending on the parameter :math:`r`. It is often used as a classic example in chaos theory. To create the discrete-time dynamical system object, we need to instanciate the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class using the `model` parameter, since the Lorenz system is built-in within this class:
+This map is a discrete dynamical system that exhibits a wide range of behaviors depending on the parameter :math:`r`. It is often used as a classic example in chaos theory. To create the discrete-time dynamical system object, we need to instanciate the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class using the `model` parameter, since the logistic map is built-in within this class:
 
 .. code-block:: python
 
     from pynamicalsys import DiscreteDynamicalSystem as dds
-    ds = dds(model="logistc map")
+    ds = dds(model="logistic map")
 
 Generating a trajectory
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -91,7 +91,7 @@ The continuous-time analysis is similar to the discrete-time analysis. To get st
         \dot{z} &= xy - \beta z.
     \end{align*}
 
-For this example, we are going to use the same parameters Lorenz used in his original paper in 1963: :math:`\sigma = 10`, :math:`\sigma = 28`, and :math:`\beta = 8/3`. The system exhibit chaotic behavior for this set of parameters.
+For this example, we are going to use the same parameters Lorenz used in his original paper in 1963: :math:`\sigma = 10`, :math:`\sigma = 28`, and :math:`\beta = 8/3`. The system exhibits chaotic behavior for this set of parameters.
 
 To create the continuous-time dynamical system object, we need to instanciate the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class using the `model` parameter, since the Lorenz system is built-in within this class:
 
