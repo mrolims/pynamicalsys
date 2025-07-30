@@ -404,6 +404,70 @@ class DiscreteDynamicalSystem:
 
         return self.__AVAILABLE_MODELS[model]
 
+    def step(
+        self,
+        u: Union[NDArray[np.float64], Sequence[float], float],
+        parameters: Union[None, float, Sequence[float], NDArray[np.float64]] = None,
+    ) -> NDArray[np.float64]:
+        """Perform one step in the mapping evolution
+
+        Parameters
+        ----------
+        u : Union[NDArray[np.float64], Sequence[float], float]
+            Initial condition(s):
+            - Single IC: 1D array of shape (d,) where d is the system dimension
+            - Ensemble: 2D array of shape (n, d) for n initial conditions
+            - Also accepts sequence types that will be converted to numpy arrays
+            - Scalar
+        parameters : Union[NDArray[np.float64], Sequence[float], float], optional
+            Parameters of the dynamical system, shape (p,) where p is the number of parameters
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The next step of the given initial condition with the same shape as `u`.
+
+        Raises
+        ------
+        ValueError
+            - If `u` is not a scalar, 1D, or 2D array, or if its shape does not match the expected system dimension.
+            - If `u` is a 1D array but its length does not match the system dimension, or if `u` is a 2D array but does not match the expected shape for an ensemble.
+            - If `parameters` is not None and does not match the expected number of parameters.
+            - If `parameters` is None but the system expects parameters.
+            - If `parameters` is a scalar or array-like but not 1D.
+
+        TypeError
+            - If `u` is not a scalar or array-like type.
+            - If `parameters` is not a scalar or array-like type.
+
+        Examples
+        --------
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> ds = dds(model="standard map")
+        >>> # Single initial condition
+        >>> u = [0.2, 0.5]
+        >>> ds.step(u, parameters=1.5)
+        [[0.92704802 0.72704802]]
+        >>> # Multiple initial conditions
+        >>> u = np.array([[0.2, 0.5], [0.2, 0.3], [0.2, 0.6]])
+        >>> ds.step(u, paramters=1.5)
+        array([[0.92704802, 0.72704802],
+               [0.72704802, 0.52704802],
+               [0.02704802, 0.82704802]])
+        """
+        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        if u.ndim == 1:
+            u_next = self.__mapping(u, parameters)
+        else:
+            u_next = np.zeros_like(u)
+            for i in range(u_next.shape[0]):
+                u_next[i] = self.__mapping(u[i], parameters)
+
+        return u_next
+
     def trajectory(
         self,
         u: Union[NDArray[np.float64], Sequence[float], float],

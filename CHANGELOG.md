@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `DiscreteDynamicalSystem` class:
+  - `step` method that returns the next step of the system.
+
 ## [v1.2.2] - 2025-06-29
 
 ### Added
@@ -20,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `DiscreteDynamicalSystems` class for simulating and analyzing discrete nonlinear dynamical systems:
+- `DiscreteDynamicalSystem` class for simulating and analyzing discrete nonlinear dynamical systems:
   - Trajectory computation.
   - Chaotic indicators.
   - Fixed points, periodic orbits, and manifolds.
