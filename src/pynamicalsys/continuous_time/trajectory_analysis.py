@@ -15,14 +15,57 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional, Callable, Union, Tuple, Dict, List, Any, Sequence
-from numpy.typing import NDArray
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+
 import numpy as np
 from numba import njit, prange
+from numpy.typing import NDArray
 
-from pynamicalsys.continuous_time.numerical_integrators import (
-    rk4_step_wrapped,
-)
+from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
+
+
+@njit(cache=True)
+def step(
+    time: np.float64,
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    equations_of_motion: Callable[
+        [NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    jacobian: Optional[
+        Callable[
+            [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+        ]
+    ] = None,
+    time_step: float = 0.01,
+    atol: float = 1e-6,
+    rtol: float = 1e-3,
+    integrator=rk4_step_wrapped,
+    number_of_deviation_vectors: Optional[int] = None,
+) -> NDArray[np.float64]:
+
+    u = u.copy()
+    accept = False
+
+    while not accept:
+        u_new, time_new, time_step_new, accept = integrator(
+            time,
+            u,
+            parameters,
+            equations_of_motion,
+            jacobian=jacobian,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            number_of_deviation_vectors=number_of_deviation_vectors,
+        )
+        if accept:
+            time = time_new
+            u = u_new.copy()
+
+        time_step = time_step_new
+
+    return u_new, time_new, time_step_new
 
 
 @njit(cache=True)
@@ -41,13 +84,9 @@ def evolve_system(
 
     u = u.copy()
 
-    # number_of_steps = round(total_time / time_step)
-
     time = 0
     while time < total_time:
-        if time + time_step > total_time:
-            time_step = total_time - time
-        u_new, time_new, time_step_new, accept = integrator(
+        u, time, time_step = step(
             time,
             u,
             parameters,
@@ -55,12 +94,10 @@ def evolve_system(
             time_step=time_step,
             atol=atol,
             rtol=rtol,
+            integrator=integrator,
         )
-        if accept:
-            time = time_new
-            u = u_new.copy()
-
-        time_step = time_step_new
+        if time + time_step > total_time:
+            time_step = total_time - time
 
     return u
 
@@ -103,7 +140,8 @@ def generate_trajectory(
     while time < total_time:
         if time + time_step > total_time:
             time_step = total_time - time
-        u_new, time_new, time_step_new, accept = integrator(
+
+        u, time, time_step = step(
             time,
             u,
             parameters,
@@ -111,15 +149,13 @@ def generate_trajectory(
             time_step=time_step,
             atol=atol,
             rtol=rtol,
+            integrator=integrator,
         )
-        if accept:
-            time = time_new
-            u = u_new.copy()
-            result = [time]
-            for i in range(neq):
-                result.append(u[i])
-            trajectory.append(result)
-        time_step = time_step_new
+
+        result = [time]
+        for i in range(neq):
+            result.append(u[i])
+        trajectory.append(result)
 
     return trajectory
 
