@@ -237,7 +237,7 @@ def rk4_step_wrapped(
     ],
     jacobian=None,
     time_step: float = 0.01,
-    number_of_deviation_vectors=None,
+    number_of_deviation_vectors: Optional[int] = None,
     atol: float = 1e-6,  # unused, just to match signature
     rtol: float = 1e-3,  # unused, just to match signature
 ) -> tuple[NDArray[np.float64], float, float, bool]:

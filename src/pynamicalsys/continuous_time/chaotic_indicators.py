@@ -18,10 +18,10 @@
 from typing import Optional, Callable, Union, Tuple, Dict, List, Any, Sequence
 from numpy.typing import NDArray
 import numpy as np
-from numba import njit, prange
+from numba import njit
 
 from pynamicalsys.common.utils import qr
-from pynamicalsys.continuous_time.trajectory_analysis import evolve_system
+from pynamicalsys.continuous_time.trajectory_analysis import step, evolve_system
 from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
 
 
@@ -90,40 +90,38 @@ def lyapunov_exponents(
         if time + time_step > total_time:
             time_step = total_time - time
 
-        uv_new, time_new, time_step_new, accept = integrator(
+        uv, time, time_step = step(
             time,
             uv,
             parameters,
             equations_of_motion,
             jacobian=jacobian,
             time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
         )
 
-        if accept:
-            time = time_new
-            uv = uv_new.copy()
-            #  Reshape the deviation vectors into a neq x neq matrix
-            v = uv[neq:].reshape(neq, neq).copy()
+        #  Reshape the deviation vectors into a neq x neq matrix
+        v = uv[neq:].reshape(neq, neq).copy()
 
-            # Perform the QR decomposition
-            v, R = QR(v)
+        # Perform the QR decomposition
+        v, R = QR(v)
 
-            # Accumulate the log
-            exponents += np.log(np.abs(np.diag(R))) / np.log(log_base)
+        # Accumulate the log
+        exponents += np.log(np.abs(np.diag(R))) / np.log(log_base)
 
-            if return_history:
-                result = [time]
-                for i in range(neq):
-                    result.append(
-                        exponents[i]
-                        / (time - (transient_time if transient_time is not None else 0))
-                    )
-                history.append(result)
+        if return_history:
+            result = [time]
+            for i in range(neq):
+                result.append(
+                    exponents[i]
+                    / (time - (transient_time if transient_time is not None else 0))
+                )
+            history.append(result)
 
-            # Reshape v back to uv
-            uv[neq:] = v.reshape(neq**2)
-
-        time_step = time_step_new
+        # Reshape v back to uv
+        uv[neq:] = v.reshape(neq**2)
 
     if return_history:
         return history
@@ -197,44 +195,41 @@ def SALI(
         if time + time_step > total_time:
             time_step = total_time - time
 
-        uv_new, time_new, time_step_new, accept = integrator(
+        uv, time, time_step = step(
             time,
             uv,
             parameters,
             equations_of_motion,
             jacobian=jacobian,
             time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
             number_of_deviation_vectors=ndv,
         )
 
-        if accept:
-            time = time_new
-            uv = uv_new.copy()
+        # Reshape the deviation vectors into a neq x ndv matrix
+        v = uv[neq:].reshape(neq, ndv)
 
-            # Reshape the deviation vectors into a neq x ndv matrix
-            v = uv[neq:].reshape(neq, ndv)
+        # Normalize the deviation vectors
+        v[:, 0] /= np.linalg.norm(v[:, 0])
+        v[:, 1] /= np.linalg.norm(v[:, 1])
 
-            # Normalize the deviation vectors
-            v[:, 0] /= np.linalg.norm(v[:, 0])
-            v[:, 1] /= np.linalg.norm(v[:, 1])
+        # Calculate the aligment indexes and SALI
+        PAI = np.linalg.norm(v[:, 0] + v[:, 1])
+        AAI = np.linalg.norm(v[:, 0] - v[:, 1])
+        sali = min(PAI, AAI)
 
-            # Calculate the aligment indexes and SALI
-            PAI = np.linalg.norm(v[:, 0] + v[:, 1])
-            AAI = np.linalg.norm(v[:, 0] - v[:, 1])
-            sali = min(PAI, AAI)
+        if return_history:
+            result = [time, sali]
+            history.append(result)
 
-            if return_history:
-                result = [time, sali]
-                history.append(result)
+        # Early termination
+        if sali <= threshold:
+            break
 
-            # Early termination
-            if sali <= threshold:
-                break
-
-            # Reshape v back to uv
-            uv[neq:] = v.reshape(neq * ndv)
-
-        time_step = time_step_new
+        # Reshape v back to uv
+        uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
         return history
@@ -303,43 +298,40 @@ def LDI(
         if time + time_step > total_time:
             time_step = total_time - time
 
-        uv_new, time_new, time_step_new, accept = integrator(
+        uv, time, time_step = step(
             time,
             uv,
             parameters,
             equations_of_motion,
             jacobian=jacobian,
             time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
             number_of_deviation_vectors=ndv,
         )
 
-        if accept:
-            time = time_new
-            uv = uv_new.copy()
+        # Reshape the deviation vectors into a neq x ndv matrix
+        v = uv[neq:].reshape(neq, ndv)
 
-            # Reshape the deviation vectors into a neq x ndv matrix
-            v = uv[neq:].reshape(neq, ndv)
+        # Normalize the deviation vectors
+        for i in range(ndv):
+            v[:, i] /= np.linalg.norm(v[:, i])
 
-            # Normalize the deviation vectors
-            for i in range(ndv):
-                v[:, i] /= np.linalg.norm(v[:, i])
+        # Calculate the singular values
+        S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
+        ldi = np.prod(S)
 
-            # Calculate the singular values
-            S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
-            ldi = np.prod(S)
+        if return_history:
+            result = [time, ldi]
+            history.append(result)
 
-            if return_history:
-                result = [time, ldi]
-                history.append(result)
+        # Early termination
+        if ldi <= threshold:
+            break
 
-            # Early termination
-            if ldi <= threshold:
-                break
-
-            # Reshape v back to uv
-            uv[neq:] = v.reshape(neq * ndv)
-
-        time_step = time_step_new
+        # Reshape v back to uv
+        uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
         return history
