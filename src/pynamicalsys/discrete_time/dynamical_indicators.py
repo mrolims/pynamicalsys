@@ -322,7 +322,6 @@ def lyapunov_qr(
 
     neq = len(u)
     v = np.ascontiguousarray(np.random.rand(neq, neq))
-    v = np.ascontiguousarray(np.eye(neq))
     v, _ = qr(v)  # Initialize orthonormal vectors
     exponents = np.zeros(neq)
     u_contig = np.ascontiguousarray(u.copy())
