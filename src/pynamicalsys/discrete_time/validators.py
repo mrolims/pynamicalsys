@@ -278,7 +278,7 @@ def validate_sample_times(sample_times, total_time):
         return None
 
     try:
-        sample_times_arr = np.asarray(sample_times, dtype=np.int32)
+        sample_times_arr = np.asarray(sample_times, dtype=np.int64)
         if sample_times_arr.ndim != 1:
             raise ValueError("sample_times must be a 1D array")
         if np.any(sample_times_arr < 0) or np.any(sample_times_arr > total_time):

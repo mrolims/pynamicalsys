@@ -44,7 +44,7 @@ def diffusion_coefficient(
     parameters : NDArray[np.float64]
         System parameters passed to mapping function
     total_time : int
-        Total evolution time (must be > transient_time)
+        Total evolution time
     mapping : Callable[[NDArray, NDArray], NDArray]
         System evolution function: u_next = mapping(u, parameters)
     axis : int, optional
@@ -58,7 +58,6 @@ def diffusion_coefficient(
     Raises
     ------
     ValueError
-        If total_time ≤ transient_time
         If axis index is invalid
 
     Notes
@@ -93,14 +92,12 @@ def average_vs_time(
     mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     sample_times: Optional[NDArray[np.int32]] = None,
     axis: int = 1,
-    transient_time: int = 0,
 ) -> NDArray[np.float64]:
     """
     Compute the time evolution of ensemble averages for a dynamical system.
 
     Tracks the average value of a specified coordinate across multiple trajectories,
-    with options for downsampling and transient removal. Useful for studying
-    convergence to equilibrium or statistical properties.
+    with options for downsampling. Useful for studying convergence to equilibrium or statistical properties.
 
     Parameters
     ----------
@@ -109,15 +106,13 @@ def average_vs_time(
     parameters : NDArray[np.float64]
         System parameters passed to mapping function
     total_time : int
-        Total number of iterations (must be > transient_time)
+        Total number of iterations
     mapping : Callable[[NDArray, NDArray], NDArray]
         System evolution function: u_next = mapping(u, parameters)
     sample_times : Optional[NDArray[np.int64]], optional
         Specific time steps to record (default: record all steps)
     axis : int, optional
         Coordinate index to analyze (default: 1)
-    transient_time : int, optional
-        Initial iterations to discard (default: 0)
 
     Returns
     -------
@@ -127,7 +122,6 @@ def average_vs_time(
     Raises
     ------
     ValueError
-        If total_time ≤ transient_time
         If sample_times contains values > total_time
         If axis is invalid
 
@@ -135,11 +129,9 @@ def average_vs_time(
     -----
     - Uses parallel processing over initial conditions
     - For large ensembles, consider using sample_times to reduce memory
-    - The output length matches len(sample_times) if provided, else (total_time - transient_time)
+    - The output length matches len(sample_times) if provided, else total_time
     """
     # Input validation
-    if total_time <= transient_time:
-        raise ValueError("total_time must be > transient_time")
     if axis < 0 or axis >= u.shape[1]:
         raise ValueError(f"axis must be in [0, {u.shape[1]-1}]")
     if sample_times is not None:
@@ -148,30 +140,26 @@ def average_vs_time(
 
     # Initialize tracking
     num_ic = u.shape[0]
-    effective_time = total_time - transient_time
     u_current = u.copy()
 
-    # Handle output array
+    # Handle output array and sample times
     if sample_times is not None:
         output = np.empty(len(sample_times))
     else:
-        output = np.empty(effective_time)
+        sample_times = np.arange(total_time) + 1
+        output = np.empty(total_time)
 
-    output_idx = 0
+    sample_idx = 0
 
-    # Main evolution loop
-    for t in range(total_time):
-        # Parallel evolution
-        for i in prange(num_ic):
-            u_current[i] = mapping(u_current[i], parameters)
-
-        # Record if past transient and matches sampling
-        if t >= transient_time:
-            output[output_idx] = np.mean(u_current[:, axis])
-            if sample_times is None:
-                output_idx += 1
-            elif t in sample_times:
-                output_idx += 1
+    prev_t = 0
+    for st in sample_times:
+        steps = st - prev_t
+        for _ in range(steps):
+            for i in prange(num_ic):
+                u_current[i] = mapping(u_current[i], parameters)
+        output[sample_idx] = np.mean(u_current[:, axis])
+        sample_idx += 1
+        prev_t = st
 
     return output
 
@@ -184,7 +172,6 @@ def cumulative_average_vs_time(
     mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     sample_times: Optional[NDArray[np.int32]] = None,
     axis: int = 1,
-    transient_time: int = 0,
 ) -> NDArray[np.float64]:
     """
     Compute the time evolution of the cumulative average of a coordinate across trajectories.
@@ -196,15 +183,13 @@ def cumulative_average_vs_time(
     parameters : NDArray[np.float64]
         System parameters passed to mapping function
     total_time : int
-        Total number of iterations (must be > transient_time)
+        Total number of iterations
     mapping : Callable[[NDArray, NDArray], NDArray]
         System evolution function: u_next = mapping(u, parameters)
     sample_times : Optional[NDArray[np.int64]], optional
         Specific time steps to record (default: record all steps)
     axis : int, optional
         Coordinate index to analyze (default: 1)
-    transient_time : int, optional
-        Initial iterations to discard (default: 0)
 
     Returns
     -------
@@ -214,7 +199,6 @@ def cumulative_average_vs_time(
     Raises
     ------
     ValueError
-        If total_time ≤ transient_time
         If sample_times contains invalid values
         If axis is invalid
 
@@ -222,39 +206,33 @@ def cumulative_average_vs_time(
     -----
     - Uses parallel processing over initial conditions
     - For large total_time, use sample_times to reduce memory usage
-    - The cumulative average is computed over the ensemble after removing transient
+    - The output length matches len(sample_times) if provided, else total_time
     """
 
     num_ic = u.shape[0]
     u_current = u.copy()
     sum_values = np.zeros(num_ic)
+    sample_idx = 0
 
-    # Initialize output array
+    # Handle output array and sample times
     if sample_times is not None:
-        output_size = len(sample_times)
+        output = np.empty(len(sample_times))
     else:
-        output_size = total_time - transient_time
+        sample_times = np.arange(total_time, dtype=np.int64) + 1
+        output = np.empty(total_time)
 
-    cumul_average = np.zeros(output_size)
-    output_idx = 0
-
-    # Main evolution loop
-    for t in range(1, total_time + 1):
-        # Parallel evolution
-        for i in prange(num_ic):
-            u_current[i] = mapping(u_current[i], parameters)
-
-        # Record if past transient and matches sampling
-        if t > transient_time:
-            # Update running sum of squares
+    prev_t = 0
+    for st in sample_times:
+        steps = st - prev_t
+        for _ in range(steps):
+            for i in prange(num_ic):
+                u_current[i] = mapping(u_current[i], parameters)
             sum_values += u_current[:, axis]
-            cumul_average[output_idx] = np.mean(sum_values / t)
-            if sample_times is None:
-                output_idx += 1
-            elif t in sample_times:
-                output_idx += 1
+        output[sample_idx] = np.mean(sum_values / st)
+        sample_idx += 1
+        prev_t = st
 
-    return cumul_average
+    return output
 
 
 @njit(cache=True, parallel=True)
@@ -265,7 +243,6 @@ def root_mean_squared(
     mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     sample_times: Optional[NDArray[np.int32]] = None,
     axis: int = 1,
-    transient_time: int = 0,
 ) -> NDArray[np.float64]:
     """
     Compute the time evolution of the root mean square (RMS) of a coordinate across trajectories.
@@ -281,15 +258,13 @@ def root_mean_squared(
     parameters : NDArray[np.float64]
         System parameters passed to mapping function
     total_time : int
-        Total number of iterations (must be > transient_time)
+        Total number of iterations
     mapping : Callable[[NDArray, NDArray], NDArray]
         System evolution function: u_next = mapping(u, parameters)
     sample_times : Optional[NDArray[np.int64]], optional
         Specific time steps to record (default: record all steps)
     axis : int, optional
         Coordinate index to analyze (default: 1)
-    transient_time : int, optional
-        Initial iterations to discard (default: 0)
 
     Returns
     -------
@@ -299,7 +274,6 @@ def root_mean_squared(
     Raises
     ------
     ValueError
-        If total_time ≤ transient_time
         If sample_times contains invalid values
         If axis is invalid
 
@@ -307,39 +281,34 @@ def root_mean_squared(
     -----
     - Uses parallel processing over initial conditions
     - For large total_time, use sample_times to reduce memory usage
-    - The RMS is computed over the ensemble after removing transient
+    - The output length matches len(sample_times) if provided, else total_time
     """
 
     num_ic = u.shape[0]
     u_current = u.copy()
     sum_squares = np.zeros(num_ic)
 
-    # Initialize output array
+    # Handle output array and sample times
     if sample_times is not None:
-        output_size = len(sample_times)
+        output = np.empty(len(sample_times))
     else:
-        output_size = total_time - transient_time
+        sample_times = np.arange(total_time) + 1
+        output = np.empty(total_time)
 
-    rms = np.zeros(output_size)
-    output_idx = 0
+    sample_idx = 0
 
-    # Main evolution loop
-    for t in range(1, total_time + 1):
-        # Parallel evolution
-        for i in prange(num_ic):
-            u_current[i] = mapping(u_current[i], parameters)
-
-        # Record if past transient and matches sampling
-        if t > transient_time:
-            # Update running sum of squares
+    prev_t = 0
+    for st in sample_times:  # st = sample time
+        steps = st - prev_t
+        for _ in range(steps):
+            for i in prange(num_ic):
+                u_current[i] = mapping(u_current[i], parameters)
             sum_squares += u_current[:, axis] ** 2
-            rms[output_idx] = np.sqrt(np.mean(sum_squares / t))
-            if sample_times is None:
-                output_idx += 1
-            elif t in sample_times:
-                output_idx += 1
+        output[sample_idx] = np.sqrt(np.mean(sum_squares / st))
+        sample_idx += 1
+        prev_t = st
 
-    return rms
+    return output
 
 
 @njit(cache=True, parallel=True)
@@ -350,7 +319,6 @@ def mean_squared_displacement(
     mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     sample_times: Optional[NDArray[np.int32]] = None,
     axis: int = 1,
-    transient_time: int = 0,
 ) -> NDArray[np.float64]:
     """
     Compute the mean squared displacement (MSD) of a coordinate across multiple trajectories.
@@ -366,15 +334,13 @@ def mean_squared_displacement(
     parameters : NDArray[np.float64]
         System parameters passed to mapping function
     total_time : int
-        Total number of iterations (must be > transient_time)
+        Total number of iterations
     mapping : Callable[[NDArray, NDArray], NDArray]
         System evolution function: u_next = mapping(u, parameters)
     sample_times : Optional[NDArray[np.int64]], optional
         Specific time steps to record (default: record all steps)
     axis : int, optional
         Coordinate index to analyze (default: 1)
-    transient_time : int, optional
-        Initial iterations to discard (default: 0)
 
     Returns
     -------
@@ -384,7 +350,6 @@ def mean_squared_displacement(
     Raises
     ------
     ValueError
-        If total_time ≤ transient_time
         If sample_times contains invalid values
         If axis is invalid
 
@@ -392,7 +357,8 @@ def mean_squared_displacement(
     -----
     - Uses parallel processing over initial conditions
     - For normal diffusion, MSD grows linearly with time
-    - The output length matches len(sample_times) if provided, else (total_time - transient_time)
+    - The output length matches len(sample_times) if provided, else total_time
+    - For large total_time, use sample_times to reduce memory usage
     """
     # Input validation
 
@@ -401,31 +367,27 @@ def mean_squared_displacement(
     # Store initial values for MSD calculation
     initial_values = u0[:, axis].copy()
 
-    # Initialize output array
+    # Handle output array and sample times
     if sample_times is not None:
-        output_size = len(sample_times)
+        output = np.empty(len(sample_times))
     else:
-        output_size = total_time - transient_time
+        sample_times = np.arange(total_time) + 1
+        output = np.empty(total_time)
 
-    msd = np.zeros(output_size)
-    output_idx = 0
+    sample_idx = 0
 
-    # Main evolution loop
-    for t in range(1, total_time + 1):
-        # Parallel evolution
-        for i in prange(num_ic):
-            u[i] = mapping(u[i], parameters)
+    prev_t = 0
+    for st in sample_times:
+        steps = st - prev_t
+        for _ in range(steps):
+            for i in prange(num_ic):
+                u[i] = mapping(u[i], parameters)
+        displacements = u[:, axis] - initial_values
+        output[sample_idx] = np.mean(displacements**2)
+        sample_idx += 1
+        prev_t = st
 
-        # Calculate and store MSD if past transient
-        if t > transient_time:
-            displacements = u[:, axis] - initial_values
-            msd[output_idx] = np.mean(displacements**2)
-            if sample_times is None:
-                output_idx += 1
-            elif t in sample_times:
-                output_idx += 1
-
-    return msd
+    return output
 
 
 @njit(cache=True)

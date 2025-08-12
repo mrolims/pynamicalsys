@@ -204,42 +204,44 @@ def lyapunov_er(
     if return_history:
         if sample_times is not None:
             if sample_times.max() > sample_size:
-                raise ValueError("sample_times must be ≤ total_time")
+                raise ValueError("sample_times must be ≤ total_time - transient_time")
             history = np.zeros((len(sample_times), neq))
-            count = 0
+
         else:
+            sample_times = np.arange(sample_size) + 1
             history = np.zeros((sample_size, neq))
 
+    sample_idx = 0
     eigvals = np.zeros(neq)
-    # Main computation loop
-    for i in range(1, sample_size + 1):
-        u_contig = mapping(u_contig, parameters)
-        J = jacobian(u_contig, parameters, mapping)
+    log_base_inv = 1.0 / np.log(log_base)
+    prev_i = 0
+    for st in sample_times:
+        steps = st - prev_i
+        for _ in range(steps):
+            u_contig = mapping(u_contig, parameters)
+            J = jacobian(u_contig, parameters, mapping)
 
-        # Compute new rotation angle
-        cb0, sb0 = np.cos(beta0), np.sin(beta0)
-        beta = np.arctan2(-J[1, 0] * cb0 + J[1, 1] * sb0, J[0, 0] * cb0 - J[0, 1] * sb0)
+            cb0, sb0 = np.cos(beta0), np.sin(beta0)
+            beta = np.arctan2(
+                -J[1, 0] * cb0 + J[1, 1] * sb0, J[0, 0] * cb0 - J[0, 1] * sb0
+            )
 
-        # Transformation matrix elements
-        cb, sb = np.cos(beta), np.sin(beta)
-        eigvals[0] = (J[0, 0] * cb - J[1, 0] * sb) * cb0 - (
-            J[0, 1] * cb - J[1, 1] * sb
-        ) * sb0
-        eigvals[1] = (J[0, 0] * sb + J[1, 0] * cb) * sb0 + (
-            J[0, 1] * sb + J[1, 1] * cb
-        ) * cb0
+            cb, sb = np.cos(beta), np.sin(beta)
+            eigvals[0] = (J[0, 0] * cb - J[1, 0] * sb) * cb0 - (
+                J[0, 1] * cb - J[1, 1] * sb
+            ) * sb0
+            eigvals[1] = (J[0, 0] * sb + J[1, 0] * cb) * sb0 + (
+                J[0, 1] * sb + J[1, 1] * cb
+            ) * cb0
 
-        exponents += np.log(np.abs(eigvals)) / np.log(log_base)
+            exponents += np.log(np.abs(eigvals)) * log_base_inv
 
-        # Record history if requested
+            beta0 = beta
+
         if return_history:
-            if sample_times is None:
-                history[i - 1] = exponents / i
-            elif i in sample_times:
-                history[count] = exponents / i
-                count += 1
-
-        beta0 = beta  # Update angle for next iteration
+            history[sample_idx] = exponents / st
+            sample_idx += 1
+        prev_i = st
 
     # Format output
     if return_history:
@@ -266,6 +268,7 @@ def lyapunov_qr(
     sample_times: Optional[NDArray[np.int32]] = None,
     transient_time: Optional[int] = None,
     log_base: float = np.e,
+    seed: int = 13,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute Lyapunov exponents using QR decomposition (Gram-Schmidt) for N-dimensional systems.
@@ -320,6 +323,7 @@ def lyapunov_qr(
         Physica D 16D, 285-317 (1985).
     """
 
+    np.random.seed(seed)
     neq = len(u)
     v = np.ascontiguousarray(np.random.rand(neq, neq))
     v, _ = qr(v)  # Initialize orthonormal vectors
@@ -338,30 +342,31 @@ def lyapunov_qr(
     if return_history:
         if sample_times is not None:
             if sample_times.max() > sample_size:
-                raise ValueError("sample_times must be ≤ total_time")
+                raise ValueError("sample_times must be ≤ total_time - transient_time")
             history = np.zeros((len(sample_times), neq))
-            count = 0
+
         else:
+            sample_times = np.arange(sample_size) + 1
             history = np.zeros((sample_size, neq))
 
-    # Main computation loop
-    for j in range(1, sample_size + 1):
-        u_contig = mapping(u_contig, parameters)
-        J = np.ascontiguousarray(jacobian(u_contig, parameters, mapping))
+    sample_idx = 0
+    log_base_inv = 1.0 / np.log(log_base)
+    prev_i = 0
+    for st in sample_times:
+        steps = st - prev_i
+        for _ in range(steps):
+            u_contig = mapping(u_contig, parameters)
+            J = np.ascontiguousarray(jacobian(u_contig, parameters, mapping))
+            # Evolve and orthogonalize vectors
+            for i in range(neq):
+                v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
+            v, R = QR(v)
+            exponents += np.log(np.abs(np.diag(R))) * log_base_inv
 
-        # Evolve and orthogonalize vectors
-        for i in range(neq):
-            v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
-        v, R = QR(v)
-        exponents += np.log(np.abs(np.diag(R))) / np.log(log_base)
-
-        # Record history if requested
         if return_history:
-            if sample_times is None:
-                history[j - 1] = exponents / j
-            elif j in sample_times:
-                history[count] = exponents / j
-                count += 1
+            history[sample_idx] = exponents / st
+            sample_idx += 1
+        prev_i = st
 
     # Format output
     if return_history:
@@ -640,43 +645,39 @@ def SALI(
     if return_history:
         if sample_times is not None:
             if sample_times.max() > sample_size:
-                raise ValueError("Maximum sample time must be ≤ total_time.")
+                raise ValueError("sample_times must be ≤ total_time - transient_time")
             history = np.zeros(len(sample_times))
-            count = 0
+
         else:
+            sample_times = np.arange(sample_size) + 1
             history = np.zeros(sample_size)
 
-    # Main evolution loop
-    for j in range(sample_size):
-        u = mapping(u, parameters)
-        J = np.ascontiguousarray(jacobian(u, parameters, mapping))
+    sample_idx = 0
+    prev_i = 0
+    for st in sample_times:
+        steps = st - prev_i
+        for _ in range(steps):
+            u = mapping(u, parameters)
+            J = np.ascontiguousarray(jacobian(u, parameters, mapping))
 
-        # Update deviation vectors
-        for i in range(2):
-            v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
-            v[:, i] /= np.linalg.norm(v[:, i])
+            for i in range(2):
+                v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
+                v[:, i] /= np.linalg.norm(v[:, i])
 
-        # Compute SALI
-        PAI = np.linalg.norm(v[:, 0] + v[:, 1])
-        AAI = np.linalg.norm(v[:, 0] - v[:, 1])
-        sali_val = min(PAI, AAI)
+            # Compute SALI
+            PAI = np.linalg.norm(v[:, 0] + v[:, 1])
+            AAI = np.linalg.norm(v[:, 0] - v[:, 1])
+            sali_val = min(PAI, AAI)
 
-        # Record history if requested
         if return_history:
-            if sample_times is None:
-                history[j] = sali_val
-            elif (j + 1) in sample_times:
-                history[count] = sali_val
-                count += 1
+            history[sample_idx] = sali_val
+            sample_idx += 1
+        prev_i = st
 
-        # Early termination
         if sali_val < tol:
             break
 
     return history if return_history else np.array([sali_val])
-
-
-# @njit(cache=True)
 
 
 def LDI_k(
@@ -695,9 +696,9 @@ def LDI_k(
     seed: int = 13,
 ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
     """
-    Compute the Generalized Alignment Index (GALI) for a dynamical system.
+    Compute the linear dependence index (LDI) for a dynamical system.
 
-    GALI is a measure of chaos in dynamical systems, calculated using the evolution
+    LDI is a measure of chaos in dynamical systems, calculated using the evolution
     of `k` initially orthonormal deviation vectors under the system's Jacobian.
 
     Parameters
@@ -728,8 +729,8 @@ def LDI_k(
     Returns
     -------
     Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
-        - If `return_history=False`: Final GALI value (shape: `(1,)`).
-        - If `return_history=True`: Array of GALI values at each sampled time.
+        - If `return_history=False`: Final LDI value (shape: `(1,)`).
+        - If `return_history=True`: Array of LDI values at each sampled time.
 
     Raises
     ------
@@ -738,8 +739,7 @@ def LDI_k(
 
     Notes
     -----
-    - The function uses QR decomposition to maintain orthonormality of deviation vectors.
-    - Early termination occurs if GALI < `tol` (indicating chaotic behavior).
+    - Early termination occurs if LDI < `tol` (indicating chaotic behavior).
     - For performance, the function is optimized with `@njit(cache=True)`.
     """
 
@@ -759,47 +759,46 @@ def LDI_k(
     else:
         sample_size = total_time
 
+    # Initialize history tracking
     if return_history:
         if sample_times is not None:
             if sample_times.max() > sample_size:
-                raise ValueError(
-                    "Maximum sample time should be smaller than the total time."
-                )
-            count = 0
+                raise ValueError("sample_times must be ≤ total_time - transient_time")
             history = np.zeros(len(sample_times))
+
         else:
+            sample_times = np.arange(sample_size) + 1
             history = np.zeros(sample_size)
 
-    for j in range(sample_size):
-        # Update the state
-        u = mapping(u, parameters)
+    sample_idx = 0
+    prev_j = 0
+    for st in sample_times:
+        steps = st - prev_j
+        for _ in range(steps):
+            u = mapping(u, parameters)
+            J = np.ascontiguousarray(jacobian(u, parameters, mapping))
 
-        # Compute the Jacobian
-        J = np.ascontiguousarray(jacobian(u, parameters, mapping))
+            # Update deviation vectors
+            for i in range(k):
+                v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
+                v[:, i] = v[:, i] / np.linalg.norm(v[:, i])
 
-        # Update deviation vectors
-        for i in range(k):
-            v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
-            v[:, i] = v[:, i] / np.linalg.norm(v[:, i])
-
-        # Compute GALI
-        S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
-        gali = np.prod(S)  # GALI is the product of the singular values
+            # Compute LDI
+            S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
+            ldi = np.prod(S)  # LDI is the product of the singular values
 
         if return_history:
-            if sample_times is None:
-                history[j] = gali
-            elif (j + 1) in sample_times:
-                history[count] = gali
-                count += 1
+            history[sample_idx] = ldi
+            sample_idx += 1
+        prev_j = st
 
-        if gali < tol:
+        if ldi < tol:
             break
 
     if return_history:
         return history
     else:
-        return np.array([gali])
+        return np.array([ldi])
 
 
 @njit(cache=True)
