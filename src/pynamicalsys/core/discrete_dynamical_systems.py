@@ -2461,7 +2461,6 @@ class DiscreteDynamicalSystem:
                 compute_func = lambda *args, **kwargs: lyapunov_qr(
                     *args, QR=householder_qr, **kwargs
                 )
-        print(u, parameters, sample_times, return_history)
         result = compute_func(
             u,
             parameters,
