@@ -2440,7 +2440,10 @@ class DiscreteDynamicalSystem:
         if method == "QR" and self.__system_dimension == 2:
             method = "ER"  # Fallback to QR for higher dimensions
 
-        sample_times = validate_sample_times(sample_times, total_time)
+        if return_history:
+            sample_times = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times = np.zeros(2, dtype=np.int64)
 
         validate_non_negative(log_base, "log_base", Real)
         if log_base == 1:
@@ -2458,7 +2461,7 @@ class DiscreteDynamicalSystem:
                 compute_func = lambda *args, **kwargs: lyapunov_qr(
                     *args, QR=householder_qr, **kwargs
                 )
-
+        print(u, parameters, sample_times, return_history)
         result = compute_func(
             u,
             parameters,
