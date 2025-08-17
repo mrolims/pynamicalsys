@@ -41,8 +41,8 @@ def lyapunov_1D(
     derivative_mapping: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.int32]] = None,
     transient_time: Optional[int] = None,
     log_base: float = np.e,
 ) -> Union[NDArray[np.float64], float]:
@@ -64,10 +64,10 @@ def lyapunov_1D(
         Function defining the system's evolution: `u_next = mapping(u, parameters)`.
     derivative_mapping : Callable[[NDArray, NDArray, Callable], NDArray]
         Function returning the derivative of `mapping` (Jacobian for 1D systems).
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+        Specific time steps to record the exponent (if `return_history=True`).
     return_history : bool, optional
         If True, returns the Lyapunov exponent estimate at each step (default: False).
-    sample_times : Optional[NDArray[np.int32]], optional
-        Specific time steps to record the exponent (if `return_history=True`).
     transient_time : Optional[int], optional
         Number of initial iterations to discard as transient (default: None).
     log_base : float, optional
@@ -96,16 +96,12 @@ def lyapunov_1D(
         sample_size = total_time
 
     # Initialize history tracking
-    exponent = 0.0
     if return_history:
-        if sample_times is not None:
-            if sample_times.max() > sample_size:
-                raise ValueError("sample_times must be ≤ total_time")
-            history = np.zeros(len(sample_times))
-            count = 0
-        else:
-            history = np.zeros(sample_size)
+        if sample_times.max() > sample_size:
+            raise ValueError("sample_times must be ≤ total_time - transient_time")
+        history = np.zeros(len(sample_times))
 
+    exponent = 0.0
     # Main computation loop
     for i in range(1, sample_size + 1):
         u = mapping(u, parameters)
@@ -131,8 +127,8 @@ def lyapunov_er(
     jacobian: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.int32]] = None,
     transient_time: Optional[int] = None,
     log_base: float = np.e,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -154,10 +150,10 @@ def lyapunov_er(
         System evolution function: `u_next = mapping(u, parameters)`.
     jacobian : Callable[[NDArray, NDArray, Callable], NDArray]
         Function returning the Jacobian matrix (shape: `(2, 2)`).
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+        Specific time steps to record exponents (if `return_history=True`).
     return_history : bool, optional
         If True, returns exponent convergence history (default: False).
-    sample_times : Optional[NDArray[np.int32]], optional
-        Specific time steps to record exponents (if `return_history=True`).
     transient_time : Optional[int], optional
         Number of initial iterations to discard as transient (default: None).
     log_base : float, optional
@@ -202,14 +198,9 @@ def lyapunov_er(
 
     # Initialize history tracking
     if return_history:
-        if sample_times is not None:
-            if sample_times.max() > sample_size:
-                raise ValueError("sample_times must be ≤ total_time - transient_time")
-            history = np.zeros((len(sample_times), neq))
-
-        else:
-            sample_times = np.arange(sample_size) + 1
-            history = np.zeros((sample_size, neq))
+        if sample_times.max() > sample_size:
+            raise ValueError("sample_times must be ≤ total_time - transient_time")
+        history = np.zeros((len(sample_times), neq))
 
     sample_idx = 0
     eigvals = np.zeros(neq)
@@ -261,11 +252,11 @@ def lyapunov_qr(
     jacobian: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     QR: Callable[
         [NDArray[np.float64]], Tuple[NDArray[np.float64], NDArray[np.float64]]
     ] = qr,
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.int32]] = None,
     transient_time: Optional[int] = None,
     log_base: float = np.e,
     seed: int = 13,
@@ -340,14 +331,9 @@ def lyapunov_qr(
 
     # Initialize history tracking
     if return_history:
-        if sample_times is not None:
-            if sample_times.max() > sample_size:
-                raise ValueError("sample_times must be ≤ total_time - transient_time")
-            history = np.zeros((len(sample_times), neq))
-
-        else:
-            sample_times = np.arange(sample_size) + 1
-            history = np.zeros((sample_size, neq))
+        if sample_times.max() > sample_size:
+            raise ValueError("sample_times must be ≤ total_time - transient_time")
+        history = np.zeros((len(sample_times), neq))
 
     sample_idx = 0
     log_base_inv = 1.0 / np.log(log_base)
@@ -571,8 +557,8 @@ def SALI(
     jacobian: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.int32]] = None,
     tol: float = 1e-16,
     transient_time: Optional[int] = None,
     seed: int = 13,
@@ -595,10 +581,10 @@ def SALI(
         Function representing the system's time evolution: `u_next = mapping(u, parameters)`.
     jacobian : Callable[[NDArray, NDArray, Callable], NDArray]
         Function computing the Jacobian matrix of `mapping` at state `u`.
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+        Specific time steps at which to record SALI (if `return_history=True`). Must be sorted.
     return_history : bool, optional
         If True, return SALI values at each time step (or `sample_times`). Default: False.
-    sample_times : Optional[NDArray[np.int32]], optional
-        Specific time steps at which to record SALI (if `return_history=True`). Must be sorted.
     tol : float, optional
         Tolerance for early stopping if SALI < `tol` (default: 1e-16).
     transient_time : Optional[int], optional
@@ -643,14 +629,9 @@ def SALI(
 
     # Initialize history tracking
     if return_history:
-        if sample_times is not None:
-            if sample_times.max() > sample_size:
-                raise ValueError("sample_times must be ≤ total_time - transient_time")
-            history = np.zeros(len(sample_times))
-
-        else:
-            sample_times = np.arange(sample_size) + 1
-            history = np.zeros(sample_size)
+        if sample_times.max() > sample_size:
+            raise ValueError("sample_times must be ≤ total_time - transient_time")
+        history = np.zeros(len(sample_times))
 
     sample_idx = 0
     prev_i = 0
@@ -688,9 +669,9 @@ def LDI_k(
     jacobian: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
-    k: int = 2,
+    k: int,
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     return_history: bool = False,
-    sample_times: Optional[NDArray[np.int32]] = None,
     tol: float = 1e-16,
     transient_time: Optional[int] = None,
     seed: int = 13,
@@ -713,12 +694,12 @@ def LDI_k(
         Function representing the system's time evolution (maps state `u` to next state).
     jacobian : Callable[[NDArray, NDArray, Callable], NDArray]
         Function computing the Jacobian matrix of `mapping` at state `u`.
-    k : int, optional
-        Number of deviation vectors to track (default: 2).
+    k : int
+        Number of deviation vectors to track.
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+        Specific time steps at which to record LDI (if `return_history=True`).
     return_history : bool, optional
         If True, return GALI values at each time step (or `sample_times`). Default: False.
-    sample_times : Optional[NDArray[np.int32]], optional
-        Specific time steps at which to record GALI (if `return_history=True`).
     tol : float, optional
         Tolerance for early stopping if GALI drops below this value (default: 1e-16).
     transient_time : Optional[int], optional
@@ -761,14 +742,9 @@ def LDI_k(
 
     # Initialize history tracking
     if return_history:
-        if sample_times is not None:
-            if sample_times.max() > sample_size:
-                raise ValueError("sample_times must be ≤ total_time - transient_time")
-            history = np.zeros(len(sample_times))
-
-        else:
-            sample_times = np.arange(sample_size) + 1
-            history = np.zeros(sample_size)
+        if sample_times.max() > sample_size:
+            raise ValueError("sample_times must be ≤ total_time - transient_time")
+        history = np.zeros(len(sample_times))
 
     sample_idx = 0
     prev_j = 0

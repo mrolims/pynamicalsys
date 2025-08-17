@@ -2440,7 +2440,12 @@ class DiscreteDynamicalSystem:
         if method == "QR" and self.__system_dimension == 2:
             method = "ER"  # Fallback to QR for higher dimensions
 
-        sample_times = validate_sample_times(sample_times, total_time)
+        if return_history and sample_times is not None:
+            sample_times = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times = np.arange(
+                1, total_time - (transient_time or 0) + 1, dtype=np.int64
+            )
 
         validate_non_negative(log_base, "log_base", Real)
         if log_base == 1:
@@ -2458,15 +2463,14 @@ class DiscreteDynamicalSystem:
                 compute_func = lambda *args, **kwargs: lyapunov_qr(
                     *args, QR=householder_qr, **kwargs
                 )
-
         result = compute_func(
             u,
             parameters,
             total_time,
             self.__mapping,
             self.__jacobian,
+            sample_times,
             return_history=return_history,
-            sample_times=sample_times,
             transient_time=transient_time,
             log_base=log_base,
         )
@@ -2883,7 +2887,12 @@ class DiscreteDynamicalSystem:
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
 
-        sample_times = validate_sample_times(sample_times, total_time)
+        if return_history and sample_times is not None:
+            sample_times = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times = np.arange(
+                1, total_time - (transient_time or 0) + 1, dtype=np.int64
+            )
 
         validate_non_negative(tol, "tol", Real)
 
@@ -2896,8 +2905,8 @@ class DiscreteDynamicalSystem:
             total_time,
             self.__mapping,
             self.__jacobian,
+            sample_times,
             return_history=return_history,
-            sample_times=sample_times,
             transient_time=transient_time,
             tol=tol,
             seed=seed,
@@ -3011,7 +3020,12 @@ class DiscreteDynamicalSystem:
         if k < 2 or k > self.__system_dimension:
             raise ValueError(f"k must be in range [2, {self.__system_dimension}]")
 
-        sample_times = validate_sample_times(sample_times, total_time)
+        if return_history and sample_times is not None:
+            sample_times = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times = np.arange(
+                1, total_time - (transient_time or 0) + 1, dtype=np.int64
+            )
 
         validate_non_negative(tol, "tol", Real)
 
@@ -3025,9 +3039,9 @@ class DiscreteDynamicalSystem:
             total_time,
             self.__mapping,
             self.__jacobian,
-            k=k,
+            k,
+            sample_times,
             return_history=return_history,
-            sample_times=sample_times,
             transient_time=transient_time,
             tol=tol,
             seed=seed,
