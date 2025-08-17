@@ -10,7 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `DiscreteDynamicalSystem` class:
-  - `step` method that returns the next step of the system.
+  - step method that returns the next step of the system.
+
+### Modified
+
+- `DiscreteDynamicalSystem` class:
+    - Optimized methods to check sampling points without repeatedly searching through sample_times, improving performance for large sampling lists.
+
+- `ContinuousDynamicalSystem` class:
+    - Centralized the integration step logic previously duplicated across functions like trajectory, lyapunov_exponents, etc., into a new step() function.
+
+[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.2.2...HEAD
 
 ## [v1.2.2] - 2025-06-29
 
@@ -23,7 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Lyapunov exponents calculation.
   - The smallest aligment index (SALI) and linear dependence index (LDI) for chaos detection.
 
-## [v1.0.0] - 2025-06-16
+[v1.2.2]: https://github.com/mrolims/pynamicalsys/compare/v1.0.0...v1.2.2
+
+## v1.0.0 - 2025-06-16
 
 ### Added
 
@@ -42,8 +54,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TimeSeriesMetrics` class to compute metrics related to time series analysis.
 
 - `PlotStyler` utility class to globally configure and apply consistent styling for Matplotlib plots.
-
----
 
 <!-- Dummy heading to avoid ending on a transition -->
 
