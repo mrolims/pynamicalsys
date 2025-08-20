@@ -21,6 +21,9 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from numpy.typing import NDArray
+import warnings
+from numba.core.errors import NumbaExperimentalFeatureWarning
+
 
 from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
 from pynamicalsys.common.utils import finite_difference_jacobian, householder_qr
@@ -28,6 +31,7 @@ from pynamicalsys.discrete_time.dynamical_indicators import (
     RTE,
     SALI,
     LDI_k,
+    GALI_k,
     dig,
     finite_time_hurst_exponent,
     finite_time_lyapunov,
@@ -321,6 +325,8 @@ class DiscreteDynamicalSystem:
         >>> # Using custom mappings
         >>> system = DynamicalSystem(mapping=my_map, jacobian=my_jacobian, system_dimension=dim)
         """
+
+        warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
         if model is not None and mapping is not None:
             raise ValueError("Cannot specify both model and custom mapping")
@@ -2928,7 +2934,7 @@ class DiscreteDynamicalSystem:
         transient_time: Optional[int] = None,
         seed: int = 13,
     ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute Linear Dependence Index(LDI_k) for chaos detection.
+        """Compute the Linear Dependence Index (LDI_k) for chaos detection.
 
         Parameters
         ----------
@@ -2955,7 +2961,7 @@ class DiscreteDynamicalSystem:
         -------
         Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
             - If return_history = False: Final LDI_k value(scalar)
-            - If return_history = True: Tuple of(LDI_history, final_state) where LDI_history is 1D array of values
+            - If return_history = True: Tuple of (LDI_history, final_state) where LDI_history is 1D array of values
 
         Raises
         ------
@@ -2985,7 +2991,7 @@ class DiscreteDynamicalSystem:
         - LDI_k behavior:
         - → 0 exponentially for chaotic orbits(rate depends on k)
         - → positive constant for regular orbits
-        - LDI_2 ~ SALI(same convergence rate)
+        - LDI_2 ~ SALI (same convergence rate)
         - Higher k indices decay faster for chaotic orbits
         - For Hamiltonian systems, k should be ≤ d/2
         - Early termination when LDI_k < tol
@@ -3034,6 +3040,141 @@ class DiscreteDynamicalSystem:
 
         # Call underlying implementation
         result = LDI_k(
+            u,
+            parameters,
+            total_time,
+            self.__mapping,
+            self.__jacobian,
+            k,
+            sample_times,
+            return_history=return_history,
+            transient_time=transient_time,
+            tol=tol,
+            seed=seed,
+        )
+
+        return result if return_history else result[0]
+
+    def GALI(
+        self,
+        u: Union[NDArray[np.float64], Sequence[float]],
+        total_time: int,
+        k: int,
+        parameters: Union[
+            None, float, Sequence[np.float64], NDArray[np.float64]
+        ] = None,
+        return_history: bool = False,
+        sample_times: Optional[Union[NDArray[np.int32], Sequence[int]]] = None,
+        tol: float = 1e-16,
+        transient_time: Optional[int] = None,
+        seed: int = 13,
+    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
+        """Compute the Generalized Aligment Index (GALI_k) for chaos detection.
+
+        Parameters
+        ----------
+        u: Union[NDArray[np.float64], Sequence[float]]
+            Initial condition of shape(d,) where d is system dimension
+        total_time: int
+            Maximum number of iterations(must be ≥ 1)
+        k: int
+            Number of deviation vectors to use(2 ≤ k ≤ d, default 2)
+        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
+            System parameters of shape(p,) passed to mapping function
+        return_history: bool, optional
+            If True, returns full evolution(default False)
+        sample_times: Optional[Union[NDArray[np.float64], Sequence[int]]], optional
+            Specific times to sample(must be sorted, default None)
+        tol: float, optional
+            Early termination threshold(default 1e-16)
+        transient_time: Optional[int], optional
+            Initial iterations to discard(default None → total_time//10)
+        seed: int, optional
+            Random seed for reproducibility(default 13)
+
+        Returns
+        -------
+        Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
+            - If return_history = False: Final GALI_k value(scalar)
+            - If return_history = True: Tuple of (GALI_history, final_state) where GALI_history is 1D array of values
+
+        Raises
+        ------
+        ValueError
+            - If `u` is not an 1D array, or if its shape does not match the expected system dimension.
+            - If `parameters` is not None and does not match the expected number of parameters.
+            - If `parameters` is None but the system expects parameters.
+            - If `parameters` is a scalar or array-like but not 1D.
+            - If `total_time` is negative.
+            - If `trasient_time` is negative.
+            - If `transient_time` is greater than or equal to total_time.
+            - If `sample_times` is not a 1D array of integers.
+            - If `k` is less than 2 or greater than system dimension.
+
+        TypeError
+            - If `u` is not a scalar or array-like type.
+            - If `parameters` is not a scalar or array-like type.
+            - If `total_time` is not int.
+            - If `transient_time` is not int.
+            - If sample_times cannot be converted to a 1D array of integers.
+            - If `tol` is not a positive float.
+            - If `seed` is not an integer.
+            - If `k` is not a positive integer.
+
+        Notes
+        -----
+        - GALI_k behavior:
+        - → 0 exponentially for chaotic orbits(rate depends on k)
+        - → positive constant for regular orbits
+        - GALI_2 ~ SALI (same convergence rate)
+        - Higher k indices decay faster for chaotic orbits
+        - For Hamiltonian systems, k should be ≤ d/2
+        - Early termination when GALI_k < tol
+
+        Examples
+        --------
+        >>>  # Basic usage (LDI_2 final value)
+        >>> u0 = np.array([0.1, 0.2, 0.0, 0.0])
+        >>> params = np.array([0.5, 1.0])
+        >>> LDI = system.LDI(u0, params, 10000, k=2)
+
+        >>>  # LDI_3 with full history
+        >>> LDI_hist, final = system.LDI(
+        ...     u0, params, 10000, k=3, return_history=True)
+
+        >>>  # With custom sampling
+        >>> times = np.array([100, 1000, 5000])
+        >>> LDI_samples, _ = system.LDI(
+        ...     u0, params, 10000, k=2, sample_times=times, return_history=True)
+        """
+
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(total_time, "total_time", Integral)
+        validate_transient_time(transient_time, total_time, Integral)
+
+        validate_positive(k, "k", Integral)
+        if k < 2 or k > self.__system_dimension:
+            raise ValueError(f"k must be in range [2, {self.__system_dimension}]")
+
+        if return_history and sample_times is not None:
+            sample_times = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times = np.arange(
+                1, total_time - (transient_time or 0) + 1, dtype=np.int64
+            )
+
+        validate_non_negative(tol, "tol", Real)
+
+        if not isinstance(seed, Integral):
+            raise TypeError("seed must be an integer")
+
+        # Call underlying implementation
+        result = GALI_k(
             u,
             parameters,
             total_time,
