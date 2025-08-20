@@ -25,6 +25,7 @@ from pynamicalsys.common.utils import householder_qr, qr
 from pynamicalsys.continuous_time.chaotic_indicators import (
     LDI,
     SALI,
+    GALI,
     lyapunov_exponents,
 )
 from pynamicalsys.continuous_time.models import (
@@ -761,7 +762,6 @@ class ContinuousDynamicalSystem:
 
             - If `return_history = False`, return time and LDI, where time is the time at the end of the execution. time < total_time if LDI becomes less than `threshold` before `total_time`.
             - If `return_history = True`, return the sampled times and the LDI values.
-            - If `sample_times` is provided, return the LDI at the specified times.
 
         Raises
         ------
@@ -785,7 +785,7 @@ class ContinuousDynamicalSystem:
         >>> transient_time = 500
         >>> parameters = [16.0, 45.92, 4.0]
         >>> ds.LDI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
-        (521.8099999999802, 7.328757804386809e-17)
+        array([5.23170000e+02, 6.93495605e-17])
         >>> ds.LDI(u, total_time, 3, parameters=parameters, transient_time=transient_time)
         (501.26999999999884, 9.984145370766051e-17)
         >>> # Returning the history
@@ -816,6 +816,121 @@ class ContinuousDynamicalSystem:
             total_time += time_step
 
         result = LDI(
+            u,
+            parameters,
+            total_time,
+            self.__equations_of_motion,
+            self.__jacobian,
+            k,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            return_history=return_history,
+            seed=seed,
+            threshold=threshold,
+        )
+
+        if return_history:
+            return np.array(result)
+        else:
+            return np.array(result[0])
+
+    def GALI(
+        self,
+        u: NDArray[np.float64],
+        total_time: float,
+        k: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        return_history: bool = False,
+        seed: int = 13,
+        threshold: float = 1e-16,
+        endpoint: bool = True,
+    ) -> NDArray[np.float64]:
+        """Calculate the Generalized Aligment Index (GALI) for a given dynamical system.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        total_time : float
+            Total time over which to evolve the system (including transient).
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
+        transient_time : Optional[float], optional
+            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        return_history : bool, optional
+            Whether to return or not the Lyapunov exponents history in time, by default False.
+        seed : int, optional
+            The seed to randomly generate the deviation vectors, by default 13.
+        threshold : float, optional
+            The threhshold for early termination, by default 1e-16. When SALI becomes less than `threshold`, stops the execution.
+        endpoint : bool, optional
+            Whether to include the endpoint time = total_time in the calculation, by default True.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            The GALI value
+
+            - If `return_history = False`, return time and GALI, where time is the time at the end of the execution. time < total_time if GALI becomes less than `threshold` before `total_time`.
+            - If `return_history = True`, return the sampled times and the GALI values.
+
+        Raises
+        ------
+        ValueError
+            - If the Jacobian function is not provided.
+            - If the initial condition is not valid, i.e., if the dimensions do not match.
+            - If the number of parameters does not match.
+            - If `parameters` is not a scalar, 1D list, or 1D array.
+            - If `total_time`, `transient_time`, or `threshold` are negative.
+            - If `k` < 2.
+        TypeError
+            - If `total_time`, `transient_time`, or `threshold` are not valid numbers.
+            - If `seed` is not an integer.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]
+        >>> total_time = 1000
+        >>> transient_time = 500
+        >>> parameters = [16.0, 45.92, 4.0]
+        >>> ds.GALI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
+        (521.8099999999802, 7.328757804386809e-17)
+        >>> ds.GALI(u, total_time, 3, parameters=parameters, transient_time=transient_time)
+        (501.26999999999884, 9.984145370766051e-17)
+        >>> # Returning the history
+        >>> gali = ds.GALI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
+        >>> gali.shape
+        (2181, 2)
+        """
+
+        if self.__jacobian is None:
+            raise ValueError(
+                "Jacobian function is required to compute Lyapunov exponents"
+            )
+
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        transient_time, total_time = validate_times(transient_time, total_time)
+
+        time_step = self.__get_initial_time_step(u, parameters)
+
+        validate_non_negative(threshold, "threshold", type_=Real)
+
+        if endpoint:
+            total_time += time_step
+
+        result = GALI(
             u,
             parameters,
             total_time,
