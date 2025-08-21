@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `DiscreteDynamicalSystem` class:
   - step method that returns the next step of the system.
+  - `GALI` method that computes the generalized alignment index (GALI).
+
+- `ContinuousDynamicalSystem` class:
+    - `GALI` method that computes the generalized alignment index (GALI).
 
 ### Modified
 
