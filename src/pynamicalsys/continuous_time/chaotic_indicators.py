@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 import numpy as np
 from numba import njit
 
-from pynamicalsys.common.utils import qr
+from pynamicalsys.common.utils import qr, wedge_norm
 from pynamicalsys.continuous_time.trajectory_analysis import step, evolve_system
 from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
 
@@ -320,7 +320,10 @@ def LDI(
 
         # Calculate the singular values
         S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
-        ldi = np.prod(S)
+        ldi = np.exp(np.sum(np.log(S)))  # LDI is the product of all singular values
+        # Instead of computing prod(S) directly, which could lead to underflows
+        # or overflows, we compute the sum_{i=1}^k log(S_i) and then take the
+        # exponential of this sum.
 
         if return_history:
             result = [time, ldi]
@@ -337,3 +340,103 @@ def LDI(
         return history
     else:
         return [[time, ldi]]
+
+
+def GALI(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    total_time: float,
+    equations_of_motion: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    jacobian: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    number_deviation_vectors: int,
+    transient_time: Optional[float] = None,
+    time_step: float = 0.01,
+    atol: float = 1e-6,
+    rtol: float = 1e-3,
+    integrator=rk4_step_wrapped,
+    return_history: bool = False,
+    seed: int = 13,
+    threshold: float = 1e-16,
+) -> NDArray[np.float64]:
+
+    neq = len(u)  # Number of equations of the system
+    ndv = number_deviation_vectors  # Number of deviation vectors
+    nt = neq + neq * ndv  # Total number of equations including variational equations
+
+    u = u.copy()
+
+    # Handle transient time
+    if transient_time is not None:
+        u = evolve_system(
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+        )
+        time = transient_time
+    else:
+        time = 0
+
+    # State + deviation vectors
+    uv = np.zeros(nt)
+    uv[:neq] = u.copy()
+
+    # Randomly define the deviation vectors and orthonormalize them
+    np.random.seed(seed)
+    uv[neq:] = -1 + 2 * np.random.rand(nt - neq)
+    v = uv[neq:].reshape(neq, ndv)
+    v, _ = qr(v)
+    uv[neq:] = v.reshape(neq * ndv)
+
+    history = []
+
+    while time < total_time:
+        if time + time_step > total_time:
+            time_step = total_time - time
+
+        uv, time, time_step = step(
+            time,
+            uv,
+            parameters,
+            equations_of_motion,
+            jacobian=jacobian,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+            number_of_deviation_vectors=ndv,
+        )
+
+        # Reshape the deviation vectors into a neq x ndv matrix
+        v = uv[neq:].reshape(neq, ndv)
+
+        # Normalize the deviation vectors
+        for i in range(ndv):
+            v[:, i] /= np.linalg.norm(v[:, i])
+
+        # Calculate GALI
+        gali = wedge_norm(v)
+
+        if return_history:
+            result = [time, gali]
+            history.append(result)
+
+        # Early termination
+        if gali <= threshold:
+            break
+
+        # Reshape v back to uv
+        uv[neq:] = v.reshape(neq * ndv)
+
+    if return_history:
+        return history
+    else:
+        return [[time, gali]]

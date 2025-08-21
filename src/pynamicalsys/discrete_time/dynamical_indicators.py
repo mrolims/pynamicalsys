@@ -29,7 +29,7 @@ from pynamicalsys.discrete_time.trajectory_analysis import (
     iterate_mapping,
     generate_trajectory,
 )
-from pynamicalsys.common.utils import qr, householder_qr, fit_poly
+from pynamicalsys.common.utils import qr, householder_qr, fit_poly, wedge_norm
 
 
 @njit(cache=True)
@@ -721,7 +721,6 @@ def LDI_k(
     Notes
     -----
     - Early termination occurs if LDI < `tol` (indicating chaotic behavior).
-    - For performance, the function is optimized with `@njit(cache=True)`.
     """
 
     np.random.seed(seed)  # For reproducibility
@@ -761,7 +760,11 @@ def LDI_k(
 
             # Compute LDI
             S = np.linalg.svd(v, full_matrices=False, compute_uv=False)
-            ldi = np.prod(S)  # LDI is the product of the singular values
+            # ldi = np.prod(S)  # LDI is the product of the singular values
+            ldi = np.exp(np.sum(np.log(S)))  # LDI is the product of all singular values
+            # Instead of computing prod(S) directly, which could lead to underflows
+            # or overflows, we compute the sum_{i=1}^k log(S_i) and then take the
+            # exponential of this sum.
 
         if return_history:
             history[sample_idx] = ldi
@@ -775,6 +778,120 @@ def LDI_k(
         return history
     else:
         return np.array([ldi])
+
+
+def GALI_k(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    total_time: int,
+    mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
+    jacobian: Callable[
+        [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
+    ],
+    k: int,
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+    return_history: bool = False,
+    tol: float = 1e-16,
+    transient_time: Optional[int] = None,
+    seed: int = 13,
+) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
+    """
+    Compute the Generalized Aligment Index (GALI) for a dynamical system.
+
+    GALI is a measure of chaos in dynamical systems, calculated using the evolution
+    of `k` initially orthonormal deviation vectors under the system's Jacobian.
+
+    Parameters
+    ----------
+    u : NDArray[np.float64]
+        Initial state vector of the system (shape: `(neq,)`).
+    parameters : NDArray[np.float64]
+        System parameters (shape: arbitrary, passed to `mapping` and `jacobian`).
+    total_time : int
+        Total number of iterations (time steps) to simulate.
+    mapping : Callable[[NDArray, NDArray], NDArray]
+        Function representing the system's time evolution (maps state `u` to next state).
+    jacobian : Callable[[NDArray, NDArray, Callable], NDArray]
+        Function computing the Jacobian matrix of `mapping` at state `u`.
+    k : int
+        Number of deviation vectors to track.
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+        Specific time steps at which to record LDI (if `return_history=True`).
+    return_history : bool, optional
+        If True, return GALI values at each time step (or `sample_times`). Default: False.
+    tol : float, optional
+        Tolerance for early stopping if GALI drops below this value (default: 1e-16).
+    transient_time : Optional[int], optional
+        Number of initial iterations to discard as transient (default: None).
+    seed : int, optional
+        Random seed for reproducibility (default 13)
+
+    Returns
+    -------
+    Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
+        - If `return_history=False`: Final GALI value (shape: `(1,)`).
+        - If `return_history=True`: Array of GALI values at each sampled time.
+
+    Raises
+    ------
+    ValueError
+        If `sample_times` contains values exceeding `total_time`.
+
+    Notes
+    -----
+    - Early termination occurs if GALI < `tol` (indicating chaotic behavior).
+    """
+
+    np.random.seed(seed)  # For reproducibility
+
+    neq = len(u)
+
+    # Generate random orthonormal deviation vectors
+    v = np.ascontiguousarray(np.random.rand(neq, k))
+    v, _ = qr(v)
+
+    if transient_time is not None:
+        # Discard transient time
+        sample_size = total_time - transient_time
+        for i in range(transient_time):
+            u = mapping(u, parameters)
+    else:
+        sample_size = total_time
+
+    # Initialize history tracking
+    if return_history:
+        if sample_times.max() > sample_size:
+            raise ValueError("sample_times must be ≤ total_time - transient_time")
+        history = np.zeros(len(sample_times))
+
+    sample_idx = 0
+    prev_j = 0
+    for st in sample_times:
+        steps = st - prev_j
+        for _ in range(steps):
+            u = mapping(u, parameters)
+            J = np.ascontiguousarray(jacobian(u, parameters, mapping))
+
+            # Update deviation vectors
+            for i in range(k):
+                v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
+                v[:, i] = v[:, i] / np.linalg.norm(v[:, i])
+
+            # Compute GALI
+            gali = wedge_norm(v)
+
+        if return_history:
+            history[sample_idx] = gali
+            sample_idx += 1
+        prev_j = st
+
+        if gali < tol:
+            break
+
+    if return_history:
+        return history
+    else:
+        return np.array([gali])
 
 
 @njit(cache=True)

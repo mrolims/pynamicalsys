@@ -257,7 +257,7 @@ def finite_difference_jacobian(
 
 
 @njit
-def wedge_product_norm(vectors: NDArray[np.float64]) -> float:
+def wedge_norm_2(vectors: NDArray[np.float64]) -> float:
     """
     Computes the norm of the wedge product of n m-dimensional vectors using the Gram determinant.
 
@@ -295,6 +295,25 @@ def wedge_product_norm(vectors: NDArray[np.float64]) -> float:
     return norm
 
 
+def wedge_norm(V: NDArray[np.float64]) -> float:
+    """
+    Computes the norm of the wedge product of k d-dimensional vectors using the Gram determinant.
+
+    Parameters:
+    vectors : NDArray[np.float64]
+        A (d, k) array where d is the dimension and k is the number of vectors.
+
+    Returns:
+    norm : float
+        The norm (magnitude) of the wedge product.
+    """
+    G = V.T @ V  # Gram matrix, shape (k, k)
+
+    det = np.linalg.det(G)
+
+    return 0 if det < 0 else np.sqrt(det)
+
+
 @njit
 def _coeff_mat(x: NDArray[np.float64], deg: int) -> NDArray[np.float64]:
     mat_ = np.zeros(shape=(x.shape[0], deg + 1))
@@ -322,23 +341,3 @@ def fit_poly(
     p = _fit_x(a, y)
     # Reverse order so p[0] is coefficient of highest order
     return p[::-1]
-
-
-if __name__ == "__main__":
-
-    v = np.random.rand(2, 2)
-    w = v.copy()
-
-    q, r = qr(v)
-    print("Q:\n", q)
-    print("R:\n", r)
-    print("QR Product:\n", np.dot(q, r))
-    print("Original Matrix:\n", v)
-
-    print()
-
-    q, r = householder_qr(v)
-    print("Q:\n", q)
-    print("R:\n", r)
-    print("QR Product:\n", np.dot(q, r))
-    print("Original Matrix:\n", v)
