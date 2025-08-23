@@ -486,6 +486,7 @@ class ContinuousDynamicalSystem:
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
+        num_exponents: Optional[int] = None,
         return_history: bool = False,
         seed: int = 13,
         log_base: float = np.e,
@@ -506,6 +507,8 @@ class ContinuousDynamicalSystem:
             Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
         transient_time : Optional[float], optional
             Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        num_exponents : Optional[int], optional
+            The number of Lyapunov exponents to be calculated, by default None. If None, the method calculates the whole spectrum.
         return_history : bool, optional
             Whether to return or not the Lyapunov exponents history in time, by default False.
         seed : int, optional
@@ -536,6 +539,7 @@ class ContinuousDynamicalSystem:
         TypeError
             - If `method` is not a string.
             - If `total_time`, `transient_time`, or `log_base` are not valid numbers.
+            - If `num_exponents` is not an positive integer.
             - If `seed` is not an integer.
 
         Notes
@@ -547,13 +551,15 @@ class ContinuousDynamicalSystem:
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
         >>> u = [0.1, 0.1, 0.1]
-        >>> total_time = 1000
-        >>> transient_time = 500
+        >>> total_time = 10000
+        >>> transient_time = 5000
         >>> parameters = [16.0, 45.92, 4.0]
-        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2)
-        array([ 2.15920769e+00, -4.61882314e-03, -3.24498622e+01])
+        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time)
+        array([ 1.49885208e+00, -1.65186396e-04, -2.24977688e+01])
+        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, num_exponents=2)
+        array([1.49873694e+00, 1.31950729e-04])
         >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2, method="QR_HH")
-        array([ 2.15920769e+00, -4.61882314e-03, -3.24498622e+01])
+        array([ 2.16664847e+00, -6.80920729e-04, -3.24625604e+01])
         """
 
         if self.__jacobian is None:
@@ -571,6 +577,13 @@ class ContinuousDynamicalSystem:
         transient_time, total_time = validate_times(transient_time, total_time)
 
         time_step = self.__get_initial_time_step(u, parameters)
+
+        if num_exponents is None:
+            num_exponents = self.__system_dimension
+        elif num_exponents > self.__system_dimension:
+            raise ValueError("num_exponents must be <= system_dimension")
+        else:
+            validate_non_negative(num_exponents, "num_exponents", Integral)
 
         if endpoint:
             total_time += time_step
@@ -596,6 +609,7 @@ class ContinuousDynamicalSystem:
             total_time,
             self.__equations_of_motion,
             self.__jacobian,
+            num_exponents,
             transient_time=transient_time,
             time_step=time_step,
             atol=self.__atol,

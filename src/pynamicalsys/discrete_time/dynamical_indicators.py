@@ -41,6 +41,7 @@ def lyapunov_1D(
     derivative_mapping: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    num_exponents: int,  # Added just to match signature
     sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     return_history: bool = False,
     transient_time: Optional[int] = None,
@@ -101,19 +102,20 @@ def lyapunov_1D(
             raise ValueError("sample_times must be ≤ total_time - transient_time")
         history = np.zeros(len(sample_times))
 
+    sample_idx = 0
     exponent = 0.0
-    # Main computation loop
-    for i in range(1, sample_size + 1):
-        u = mapping(u, parameters)
-        du = derivative_mapping(u, parameters, mapping)
-        exponent += np.log(np.abs(du[0, 0])) / np.log(log_base)
+    prev_i = 0
+    for st in sample_times:
+        steps = st - prev_i
+        for _ in range(steps):
+            u = mapping(u, parameters)
+            du = derivative_mapping(u, parameters, mapping)
+            exponent += np.log(np.abs(du[0, 0])) / np.log(log_base)
 
         if return_history:
-            if sample_times is None:
-                history[i - 1] = exponent / i
-            elif i in sample_times:
-                history[count] = exponent / i
-                count += 1
+            history[sample_idx] = exponent / st
+            sample_idx += 1
+        prev_i = st
 
     return history if return_history else np.array([exponent / sample_size])
 
@@ -127,6 +129,7 @@ def lyapunov_er(
     jacobian: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    num_exponents: int,  # Added just to match signature
     sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     return_history: bool = False,
     transient_time: Optional[int] = None,
@@ -244,6 +247,127 @@ def lyapunov_er(
 
 
 @njit(cache=True)
+def maximum_lyapunov_er(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    total_time: int,
+    mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
+    jacobian: Callable[
+        [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
+    ],
+    num_exponents: int,  # Added just to match signature
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+    return_history: bool = False,
+    transient_time: Optional[int] = None,
+    log_base: float = np.e,
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Compute the maximum Lyapunov exponent using the Eckmann-Ruelle (ER) method for 2D systems.
+
+    This method tracks the evolution of perturbations via continuous QR decomposition
+    using rotational angles, providing numerically stable exponent estimates.
+
+    Parameters
+    ----------
+    u : NDArray[np.float64]
+        Initial state vector (shape: `(2,)` for 2D systems).
+    parameters : NDArray[np.float64]
+        System parameters passed to `mapping` and `jacobian`.
+    total_time : int
+        Total number of iterations (time steps) to compute.
+    mapping : Callable[[NDArray, NDArray], NDArray]
+        System evolution function: `u_next = mapping(u, parameters)`.
+    jacobian : Callable[[NDArray, NDArray, Callable], NDArray]
+        Function returning the Jacobian matrix (shape: `(2, 2)`).
+    sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
+        Specific time steps to record exponents (if `return_history=True`).
+    return_history : bool, optional
+        If True, returns exponent convergence history (default: False).
+    transient_time : Optional[int], optional
+        Number of initial iterations to discard as transient (default: None).
+    log_base : float, optional
+        Logarithm base for exponent calculation (default: e).
+
+    Returns
+    -------
+    Tuple[NDArray[np.float64], NDArray[np.float64]]
+        - If `return_history=True`:
+            - `history`: Array of exponent estimates (shape: `(sample_size, 2)` or `(len(sample_times), 2)`)
+            - `final_state`: System state at termination (shape: `(2,)`)
+        - If `return_history=False`:
+            - `exponents`: Final Lyapunov exponents (shape: `(2, 1)`)
+            - `final_state`: System state at termination (shape: `(2,)`)
+
+    Notes
+    -----
+    - **Method**: Uses rotation angles for continuous QR decomposition [1].
+    - **Stability**: More robust than Gram-Schmidt for 2D systems.
+    - **Limitation**: Designed specifically for 2D maps (`neq=2`).
+    - **Numerics**: Exponents are averaged as:
+        λ_i = (1/N) Σ log|T_ii|, where T is the transformation matrix.
+
+    References
+    ----------
+    [1] J. Eckmann & D. Ruelle, "Ergodic theory of chaos and strange attractors",
+        Rev. Mod. Phys. 57, 617 (1985).
+    """
+
+    neq = len(u)
+    exponent = 0.0
+    beta0 = 0.0  # Initial rotation angle
+    u_contig = np.ascontiguousarray(u)
+
+    # Handle transient time
+    if transient_time is not None:
+        sample_size = total_time - transient_time
+        for _ in range(transient_time):
+            u_contig = mapping(u_contig, parameters)
+    else:
+        sample_size = total_time
+
+    # Initialize history tracking
+    if return_history:
+        if sample_times.max() > sample_size:
+            raise ValueError("sample_times must be ≤ total_time - transient_time")
+        history = np.zeros(len(sample_times))
+
+    sample_idx = 0
+    eigval = 0.0
+    log_base_inv = 1.0 / np.log(log_base)
+    prev_i = 0
+    for st in sample_times:
+        steps = st - prev_i
+        for _ in range(steps):
+            u_contig = mapping(u_contig, parameters)
+            J = jacobian(u_contig, parameters, mapping)
+
+            cb0, sb0 = np.cos(beta0), np.sin(beta0)
+            beta = np.arctan2(
+                -J[1, 0] * cb0 + J[1, 1] * sb0, J[0, 0] * cb0 - J[0, 1] * sb0
+            )
+
+            cb, sb = np.cos(beta), np.sin(beta)
+            eigval = (J[0, 0] * cb - J[1, 0] * sb) * cb0 - (
+                J[0, 1] * cb - J[1, 1] * sb
+            ) * sb0
+
+            exponent += np.log(np.abs(eigval)) * log_base_inv
+
+            beta0 = beta
+
+        if return_history:
+            history[sample_idx] = exponent / st
+            sample_idx += 1
+        prev_i = st
+
+    # Format output
+    if return_history:
+        return history, u_contig
+    else:
+        return np.array([exponent / sample_size]), u_contig
+
+
+@njit(cache=True)
 def lyapunov_qr(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -252,6 +376,7 @@ def lyapunov_qr(
     jacobian: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    num_exponents: int,
     sample_times: Union[NDArray[np.int32], NDArray[np.int64]],
     QR: Callable[
         [NDArray[np.float64]], Tuple[NDArray[np.float64], NDArray[np.float64]]
@@ -316,9 +441,9 @@ def lyapunov_qr(
 
     np.random.seed(seed)
     neq = len(u)
-    v = np.ascontiguousarray(np.random.rand(neq, neq))
+    v = np.ascontiguousarray(np.random.rand(neq, num_exponents))
     v, _ = qr(v)  # Initialize orthonormal vectors
-    exponents = np.zeros(neq)
+    exponents = np.zeros(num_exponents)
     u_contig = np.ascontiguousarray(u.copy())
 
     # Handle transient time
@@ -333,7 +458,7 @@ def lyapunov_qr(
     if return_history:
         if sample_times.max() > sample_size:
             raise ValueError("sample_times must be ≤ total_time - transient_time")
-        history = np.zeros((len(sample_times), neq))
+        history = np.zeros((len(sample_times), num_exponents))
 
     sample_idx = 0
     log_base_inv = 1.0 / np.log(log_base)
@@ -344,7 +469,7 @@ def lyapunov_qr(
             u_contig = mapping(u_contig, parameters)
             J = np.ascontiguousarray(jacobian(u_contig, parameters, mapping))
             # Evolve and orthogonalize vectors
-            for i in range(neq):
+            for i in range(num_exponents):
                 v[:, i] = np.ascontiguousarray(J) @ np.ascontiguousarray(v[:, i])
             v, R = QR(v)
             exponents += np.log(np.abs(np.diag(R))) * log_base_inv
@@ -358,7 +483,7 @@ def lyapunov_qr(
     if return_history:
         return history, u_contig
     else:
-        aux_exponents = np.zeros((neq, 1))
+        aux_exponents = np.zeros((num_exponents, 1))
         aux_exponents[:, 0] = exponents / sample_size
         return aux_exponents, u_contig
 
@@ -372,6 +497,7 @@ def finite_time_lyapunov(
     jacobian: Callable[
         [NDArray[np.float64], NDArray[np.float64], Callable], NDArray[np.float64]
     ],
+    num_exponents: int,
     method: str = "QR",
     transient_time: Optional[int] = None,
     log_base: float = np.e,
@@ -441,18 +567,43 @@ def finite_time_lyapunov(
 
     neq = len(u)
     num_windows = sample_size // finite_time
-    exponents = np.zeros((num_windows, neq))
+    exponents = np.zeros((num_windows, num_exponents))
     phase_space_points = np.zeros((num_windows, neq))
-
+    sample_times = np.arange(finite_time)
     # Compute exponents for each window
     for i in range(num_windows):
-        if method == "ER":
+        if num_exponents == 1 and method == "ER":
+            window_exponents, u_new = maximum_lyapunov_er(
+                u,
+                parameters,
+                finite_time,
+                mapping,
+                jacobian,
+                num_exponents,
+                sample_times,
+                log_base=log_base,
+            )
+        elif num_exponents > 1 and method == "ER":
             window_exponents, u_new = lyapunov_er(
-                u, parameters, finite_time, mapping, jacobian, log_base=log_base
+                u,
+                parameters,
+                finite_time,
+                mapping,
+                jacobian,
+                num_exponents,
+                sample_times,
+                log_base=log_base,
             )
         elif method == "QR":
             window_exponents, u_new = lyapunov_qr(
-                u, parameters, finite_time, mapping, jacobian, log_base=log_base
+                u,
+                parameters,
+                finite_time,
+                mapping,
+                jacobian,
+                num_exponents,
+                sample_times,
+                log_base=log_base,
             )
         elif method == "QR_HH":
             window_exponents, u_new = lyapunov_qr(
@@ -461,6 +612,8 @@ def finite_time_lyapunov(
                 finite_time,
                 mapping,
                 jacobian,
+                num_exponents,
+                sample_times,
                 QR=householder_qr,
                 log_base=log_base,
             )

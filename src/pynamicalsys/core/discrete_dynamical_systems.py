@@ -40,6 +40,7 @@ from pynamicalsys.discrete_time.dynamical_indicators import (
     lagrangian_descriptors,
     lyapunov_1D,
     lyapunov_er,
+    maximum_lyapunov_er,
     lyapunov_qr,
 )
 from pynamicalsys.discrete_time.models import (
@@ -2339,6 +2340,7 @@ class DiscreteDynamicalSystem:
         return_history: bool = False,
         sample_times: Optional[Union[NDArray[np.int32], Sequence[int]]] = None,
         transient_time: Optional[int] = None,
+        num_exponents: Optional[int] = None,
         log_base: float = np.e,
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Compute Lyapunov exponents using specified numerical method.
@@ -2360,7 +2362,9 @@ class DiscreteDynamicalSystem:
         sample_times : Optional[Union[NDArray[np.float64], Sequence[int]]], optional
             Specific times to sample when return_history=True
         transient_time : Optional[int], optional
-            Initial iterations to discard (default None → total_time//10)
+            Initial iterations to discard
+        num_exponents : Optional[int], optional
+            Number of Lyapunov exponents to compute, by default None. If None, compute the whole spectrum.
         log_base : float, optional (default np.e)
             Logarithm base for exponents (e.g. e, 2, or 10)
 
@@ -2384,13 +2388,15 @@ class DiscreteDynamicalSystem:
             - If `transient_time` is greater than or equal to total_time.
             - If `method` is not "QR" or "QR_HH".
             - If `sample_times` is not a 1D array of integers.
-            - If `log_base` is not positive
+            - If `log_base` is not positive.
+            - If `num_exponents` is larger then the system's dimension.
         TypeError
             - If `u` is not a scalar or array-like type.
             - If `parameters` is not a scalar or array-like type.
             - If `total_time` is not int.
             - If `transient_time` is not int.
             - If `log_base` is not float.
+            - If `num_exponents` is not an positive integer.
             - If sample_times cannot be converted to a 1D array of integers.
             - If `method` is not a string.
 
@@ -2453,6 +2459,13 @@ class DiscreteDynamicalSystem:
                 1, total_time - (transient_time or 0) + 1, dtype=np.int64
             )
 
+        if num_exponents is None:
+            num_exponents = self.__system_dimension
+        elif num_exponents > self.__system_dimension:
+            raise ValueError("num_exponents must be <= system_dimension")
+        else:
+            validate_non_negative(num_exponents, "num_exponents", Integral)
+
         validate_non_negative(log_base, "log_base", Real)
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1.")
@@ -2462,7 +2475,10 @@ class DiscreteDynamicalSystem:
             compute_func = lyapunov_1D
         else:
             if method == "ER":
-                compute_func = lyapunov_er
+                if num_exponents == 1:
+                    compute_func = maximum_lyapunov_er
+                else:
+                    compute_func = lyapunov_er
             elif method == "QR":
                 compute_func = lyapunov_qr
             else:  # QR_HH
@@ -2475,6 +2491,7 @@ class DiscreteDynamicalSystem:
             total_time,
             self.__mapping,
             self.__jacobian,
+            num_exponents,
             sample_times,
             return_history=return_history,
             transient_time=transient_time,
@@ -2482,9 +2499,14 @@ class DiscreteDynamicalSystem:
         )
 
         if return_history:
-            return result[0]
+            return result if self.__system_dimension == 1 else result[0]
         else:
-            return result[0][:, 0] if self.__system_dimension > 1 else result[0]
+            if self.__system_dimension == 1:
+                return result[0]
+            elif self.__system_dimension > 1 and num_exponents > 1:
+                return result[0][:, 0]
+            else:
+                return result[0][0]
 
     def finite_time_lyapunov(
         self,
@@ -2494,6 +2516,7 @@ class DiscreteDynamicalSystem:
         parameters: Union[
             None, float, Sequence[np.float64], NDArray[np.float64]
         ] = None,
+        num_exponents: Optional[int] = None,
         method: str = "QR",
         transient_time: Optional[int] = None,
         log_base: float = np.e,
@@ -2593,6 +2616,11 @@ class DiscreteDynamicalSystem:
         if method not in ("QR", "QR_HH"):
             raise ValueError("method must be 'QR' or 'QR_HH'")
 
+        if num_exponents is None:
+            num_exponents = self.__system_dimension
+        elif num_exponents > self.__system_dimension:
+            raise ValueError("num_exponents must be <= system_dimension")
+
         # Validate method for system dimension
         if method == "QR" and self.__system_dimension == 2:
             method = "ER"  # Fallback to QR for higher dimensions
@@ -2611,6 +2639,7 @@ class DiscreteDynamicalSystem:
             finite_time,
             self.__mapping,
             self.__jacobian,
+            num_exponents,
             method=method,
             transient_time=transient_time,
             log_base=log_base,
