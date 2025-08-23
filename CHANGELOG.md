@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.3.0] 2025-08-23
 
 ### Added
 
@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Unified integration step logic (previously duplicated across methods like trajectory and lyapunov_exponents) into a single step function.
     - Refactored the `lyapunov` method to allow computing only a subset of the Lyapunov spectrum.
 
-[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.2.2...HEAD
+[v1.3.0]: https://github.com/mrolims/pynamicalsys/compare/v1.2.2...v1.3.0
 
 ## [v1.2.2] - 2025-06-29
 
