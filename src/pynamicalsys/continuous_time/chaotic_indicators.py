@@ -25,7 +25,7 @@ from pynamicalsys.continuous_time.trajectory_analysis import step, evolve_system
 from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
 
 
-@njit(cache=True)
+# @njit(cache=True)
 def lyapunov_exponents(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -36,6 +36,7 @@ def lyapunov_exponents(
     jacobian: Callable[
         [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
     ],
+    num_exponents: int,
     transient_time: Optional[float] = None,
     time_step: float = 0.01,
     atol: float = 1e-6,
@@ -50,7 +51,7 @@ def lyapunov_exponents(
 ) -> NDArray[np.float64]:
 
     neq = len(u)  # Number of equations of the system
-    nt = neq + neq**2  # Total number of equations including variational equations
+    nt = neq + neq * num_exponents  # system + variational equations
 
     u = u.copy()
 
@@ -79,11 +80,11 @@ def lyapunov_exponents(
     # Randomly define the deviation vectors and orthonormalize them
     np.random.seed(seed)
     uv[neq:] = -1 + 2 * np.random.rand(nt - neq)
-    v = uv[neq:].reshape(neq, neq)
+    v = uv[neq:].reshape(neq, num_exponents)
     v, _ = QR(v)
-    uv[neq:] = v.reshape(neq**2)
+    uv[neq:] = v.reshape(neq * num_exponents)
 
-    exponents = np.zeros(neq, dtype=np.float64)
+    exponents = np.zeros(num_exponents, dtype=np.float64)
     history = []
 
     while time < total_time:
@@ -100,20 +101,20 @@ def lyapunov_exponents(
             atol=atol,
             rtol=rtol,
             integrator=integrator,
+            number_of_deviation_vectors=num_exponents,
         )
 
         #  Reshape the deviation vectors into a neq x neq matrix
-        v = uv[neq:].reshape(neq, neq).copy()
+        v = uv[neq:].reshape(neq, num_exponents).copy()
 
         # Perform the QR decomposition
         v, R = QR(v)
-
         # Accumulate the log
         exponents += np.log(np.abs(np.diag(R))) / np.log(log_base)
 
         if return_history:
             result = [time]
-            for i in range(neq):
+            for i in range(num_exponents):
                 result.append(
                     exponents[i]
                     / (time - (transient_time if transient_time is not None else 0))
@@ -121,13 +122,13 @@ def lyapunov_exponents(
             history.append(result)
 
         # Reshape v back to uv
-        uv[neq:] = v.reshape(neq**2)
+        uv[neq:] = v.reshape(neq * num_exponents)
 
     if return_history:
         return history
     else:
         result = []
-        for i in range(neq):
+        for i in range(num_exponents):
             result.append(
                 exponents[i]
                 / (time - (transient_time if transient_time is not None else 0))
