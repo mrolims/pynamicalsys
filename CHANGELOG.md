@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `DiscreteDynamicalSystem` class:
-  - step method that returns the next step of the system.
-  - `GALI` method that computes the generalized alignment index (GALI).
+  - `step` method: returns the next state of the system.
+  - `GALI` method: computes the generalized alignment index (GALI).
 
 - `ContinuousDynamicalSystem` class:
     - `GALI` method that computes the generalized alignment index (GALI).
@@ -19,10 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Modified
 
 - `DiscreteDynamicalSystem` class:
-    - Optimized methods to check sampling points without repeatedly searching through sample_times, improving performance for large sampling lists.
+    - Improved performance when checking sampling points by avoiding repeated searches in sample_times.
+    - Refactored the `lyapunov` method to allow computing only a subset of the Lyapunov spectrum.
 
 - `ContinuousDynamicalSystem` class:
-    - Centralized the integration step logic previously duplicated across functions like trajectory, lyapunov_exponents, etc., into a new step() function.
+    - Unified integration step logic (previously duplicated across methods like trajectory and lyapunov_exponents) into a single step function.
+    - Refactored the `lyapunov` method to allow computing only a subset of the Lyapunov spectrum.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.2.2...HEAD
 
