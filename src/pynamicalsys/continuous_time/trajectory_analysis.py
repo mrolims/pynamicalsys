@@ -24,7 +24,7 @@ from numpy.typing import NDArray
 from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
 
 
-@njit(cache=True)
+@njit
 def step(
     time: np.float64,
     u: NDArray[np.float64],
@@ -68,7 +68,7 @@ def step(
     return u_new, time_new, time_step_new
 
 
-@njit(cache=True)
+@njit
 def evolve_system(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -102,7 +102,7 @@ def evolve_system(
     return u
 
 
-@njit(cache=True)
+@njit
 def generate_trajectory(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],

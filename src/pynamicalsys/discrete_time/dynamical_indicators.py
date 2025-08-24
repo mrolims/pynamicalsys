@@ -32,7 +32,7 @@ from pynamicalsys.discrete_time.trajectory_analysis import (
 from pynamicalsys.common.utils import qr, householder_qr, fit_poly, wedge_norm
 
 
-@njit(cache=True)
+@njit
 def lyapunov_1D(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -120,7 +120,7 @@ def lyapunov_1D(
     return history if return_history else np.array([exponent / sample_size])
 
 
-@njit(cache=True)
+@njit
 def lyapunov_er(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -246,7 +246,7 @@ def lyapunov_er(
         return aux_exponents, u_contig
 
 
-@njit(cache=True)
+@njit
 def maximum_lyapunov_er(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -367,7 +367,7 @@ def maximum_lyapunov_er(
         return np.array([exponent / sample_size]), u_contig
 
 
-@njit(cache=True)
+@njit
 def lyapunov_qr(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -701,7 +701,7 @@ def dig(
     return -np.log10(abs(WB0 - WB1))
 
 
-@njit(cache=True)
+@njit
 def SALI(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -761,7 +761,7 @@ def SALI(
     - Uses QR decomposition to initialize orthonormal deviation vectors.
     - Computes both Parallel (PAI) and Antiparallel (AAI) Alignment Indices.
     - Early termination occurs if SALI < `tol` (indicating chaotic behavior).
-    - Optimized with `@njit(cache=True)` for performance.
+    - Optimized with `@njit` for performance.
     """
 
     np.random.seed(seed)  # For reproducibility
@@ -1047,7 +1047,7 @@ def GALI_k(
         return np.array([gali])
 
 
-@njit(cache=True)
+@njit
 def hurst_exponent(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -1224,13 +1224,13 @@ def finite_time_hurst_exponent(
         return H_values
 
 
-@njit(cache=True)
+@njit
 def lyapunov_vectors():
     # ! To be implemented...
     pass
 
 
-@njit(cache=True)
+@njit
 def lagrangian_descriptors(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],

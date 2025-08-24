@@ -408,7 +408,7 @@ def logistic_map_jacobian(
 # ! ------------------ !
 
 
-@njit(cache=True)
+@njit
 def rulkov_map(
     u: NDArray[np.float64], parameters: Union[NDArray[np.float64], Sequence[float]]
 ) -> NDArray[np.float64]:
@@ -419,7 +419,7 @@ def rulkov_map(
     return np.array([x_new, y_new])
 
 
-@njit(cache=True)
+@njit
 def rulkov_map_jacobian(
     u: NDArray[np.float64],
     parameters: Union[NDArray[np.float64], Sequence[float]],

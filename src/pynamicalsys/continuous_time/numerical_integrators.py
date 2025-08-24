@@ -23,7 +23,7 @@ from numba import njit, prange
 from pynamicalsys.continuous_time.models import variational_equations
 
 
-@njit(cache=True)
+@njit
 def rk4_step(
     t: float,
     u: NDArray[np.float64],
@@ -43,7 +43,7 @@ def rk4_step(
     return u_next
 
 
-@njit(cache=True)
+@njit
 def variational_rk4_step(
     t: float,
     u: NDArray[np.float64],
@@ -115,7 +115,7 @@ RK45_B4 = np.array(
 )
 
 
-@njit(cache=True)
+@njit
 def rk45_step(t, u, parameters, equations_of_motion, time_step, atol=1e-6, rtol=1e-3):
     """Single adaptive step of RK45 (Dormand-Prince).
 
@@ -163,7 +163,7 @@ def rk45_step(t, u, parameters, equations_of_motion, time_step, atol=1e-6, rtol=
     return u5, t + time_step, time_step_new, accept
 
 
-@njit(cache=True)
+@njit
 def variational_rk45_step(
     t,
     u,
@@ -227,7 +227,7 @@ def variational_rk45_step(
     return u5, t + time_step, time_step_new, accept
 
 
-@njit(cache=True)
+@njit
 def rk4_step_wrapped(
     t: float,
     u: NDArray[np.float64],
@@ -265,7 +265,7 @@ def rk4_step_wrapped(
     return u_next, t_next, h_next, accept
 
 
-@njit(cache=True)
+@njit
 def rk45_step_wrapped(
     t: float,
     u: NDArray[np.float64],
@@ -302,7 +302,7 @@ def rk45_step_wrapped(
         )
 
 
-@njit(cache=True)
+@njit
 def estimate_initial_step(
     t0: float,
     u0: np.ndarray,

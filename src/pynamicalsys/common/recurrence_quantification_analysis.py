@@ -91,7 +91,7 @@ class RTEConfig:
             raise ValueError("metric must be 'supremum', 'euclidean' or 'manhattan'")
 
 
-@njit(cache=True)
+@njit
 def _recurrence_matrix(
     arr: NDArray[np.float64], threshold: float, metric_id: int
 ) -> NDArray[np.uint8]:

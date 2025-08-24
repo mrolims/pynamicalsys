@@ -21,7 +21,7 @@ from numpy.typing import NDArray
 from numba import njit
 
 
-@njit(cache=True)
+@njit
 def qr(M: NDArray[np.float64]) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Perform numerically stable QR decomposition using modified Gram-Schmidt with reorthogonalization.
@@ -92,7 +92,7 @@ def qr(M: NDArray[np.float64]) -> Tuple[NDArray[np.float64], NDArray[np.float64]
     return Q, R
 
 
-@njit(cache=True)
+@njit
 def householder_qr(
     M: NDArray[np.float64],
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -184,7 +184,7 @@ def householder_qr(
     return Q, R
 
 
-@njit(cache=True)
+@njit
 def finite_difference_jacobian(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],

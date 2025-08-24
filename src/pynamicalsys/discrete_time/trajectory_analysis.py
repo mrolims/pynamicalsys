@@ -22,7 +22,7 @@ from numba import njit, prange
 from numpy.typing import NDArray
 
 
-@njit(cache=True)
+@njit
 def iterate_mapping(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -78,7 +78,7 @@ def iterate_mapping(
     return u
 
 
-@njit(cache=True)
+@njit
 def generate_trajectory(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -331,7 +331,7 @@ def bifurcation_diagram(
         return param_values, results
 
 
-@njit(cache=True)
+@njit
 def period_counter(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -415,7 +415,7 @@ def period_counter(
     return -1
 
 
-@njit(cache=True)
+@njit
 def rotation_number(
     u: Union[NDArray[np.float64], Sequence[float], float],
     parameters: Union[NDArray[np.float64], Sequence[float], float],
@@ -438,7 +438,7 @@ def rotation_number(
     return rn
 
 
-@njit(cache=True)
+@njit
 def escape_basin_and_time_entering(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -515,7 +515,7 @@ def escape_basin_and_time_entering(
     return -1, max_time
 
 
-@njit(cache=True)
+@njit
 def escape_time_exiting(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -584,7 +584,7 @@ def escape_time_exiting(
     return -1, max_time  # No escape
 
 
-@njit(cache=True)
+@njit
 def survival_probability(
     escape_times: NDArray[np.int32],
     max_time: np.int32,
@@ -659,7 +659,7 @@ def survival_probability(
     return t_values, survival_probs
 
 
-@njit(cache=True)
+@njit
 def is_periodic(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -811,7 +811,7 @@ def scan_phase_space(
     return result
 
 
-@njit(cache=True)
+@njit
 def scan_symmetry_line(
     points: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -1095,7 +1095,7 @@ def find_periodic_orbit(
     return periodic_orbit
 
 
-@njit(cache=True)
+@njit
 def eigenvalues_and_eigenvectors(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],

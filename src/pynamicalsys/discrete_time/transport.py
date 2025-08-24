@@ -390,7 +390,7 @@ def mean_squared_displacement(
     return output
 
 
-@njit(cache=True)
+@njit
 def recurrence_times(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
