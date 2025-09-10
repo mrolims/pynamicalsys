@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContinuousDynamicalSystem` class:
     - `poincare_section` method: return the Poincaré section of a given initial condition or of an ensemble of initial conditions.
     - `stroboscopic_map` method: return the stroboscopic map of a given initial condition or of an ensemble of initial conditions.
+    - `basin_of_attraction` method: given an ensemble of initial conditions, detect and label the attractors in the system.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.3.1...HEAD
 

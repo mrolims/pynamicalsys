@@ -412,3 +412,98 @@ def ensemble_stroboscopic_map(
         )
 
     return strobe_points
+
+
+def basin_of_attraction(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    equations_of_motion: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    transient_time: float,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator: Callable,
+    select_map: str,
+    total_time: float = None,
+    num_intersections: int = None,
+    section_index: int = None,
+    section_value: float = None,
+    crossing: int = None,
+    sampling_time: float = None,
+    eps: float = 0.05,
+    min_samples: int = 1,
+) -> NDArray[np.int32]:
+
+    if select_map == "PS":
+        if (
+            num_intersections is None
+            or section_index is None
+            or section_value is None
+            or crossing is None
+        ):
+            raise ValueError(
+                "You must provide num_intersections, section_index, section_value, and crossing"
+            )
+        data = ensemble_poincare_section(
+            u,
+            parameters,
+            num_intersections,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+            section_index,
+            section_value,
+            crossing,
+        )
+
+        traj_data = data[:, :, 1:]
+        trajectory_centroids = traj_data.mean(axis=1)  # shape (num_ic, 2)
+    elif select_map == "SM":
+        if num_intersections is None or sampling_time is None:
+            raise ValueError("You must provide num_intersections and sampling_time")
+
+        data = ensemble_stroboscopic_map(
+            u,
+            parameters,
+            num_intersections,
+            sampling_time,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+        traj_data = data[:, :, 1:]
+        trajectory_centroids = traj_data.mean(axis=1)  # shape (num_ic, 2)
+    else:
+        if total_time is None:
+            raise ValueError("You must provide total_time")
+
+        trajectories = ensemble_trajectories(
+            u,
+            parameters,
+            total_time,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+
+        for i, traj in enumerate(trajectories):
+            x = traj[:, 1]  # x coordinate
+            v = traj[:, 2]  # v coordinate
+            trajectory_centroids[i, 0] = np.mean(x)
+            trajectory_centroids[i, 1] = np.mean(v)
+
+    db = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(trajectory_centroids)
+    labels = db.labels_  # shape (num_ic,)
+
+    return labels
