@@ -5,11 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `HamiltonianSystem` class for simulating and analyzing continuous-time Hamiltonian systems.
+  - Support for symplectic integration:
+    - 2nd-order velocity–Verlet
+    - 4th-order Yoshida
+  - Trajectory computation and ensemble trajectories.
+  - Poincaré section generation (single and ensemble).
+  - Chaos indicators:
+    - Lyapunov spectrum and maximum Lyapunov exponent.
+    - Smaller Alignment Index (SALI).
+    - Generalized Alignment Index (GALI).
+    - Linear Dependence Index (LDI).
+
+[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.3.1...HEAD
+
 ## [v1.3.1] - 2025-08-24
 
 ### Modified
 
 - Removed `cache=True` from the low level methods that was leading to cache compilation errors.
+
+[v1.3.0]: https://github.com/mrolims/pynamicalsys/compare/v1.3.0...v1.3.1
 
 ## [v1.3.0] - 2025-08-23
 
@@ -43,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integration using the adaptive 4th/5th order Runge-Kutta method with adaptive time step.
   - Trajectory computation.
   - Lyapunov exponents calculation.
-  - The smallest aligment index (SALI) and linear dependence index (LDI) for chaos detection.
+  - The smaller aligment index (SALI) and linear dependence index (LDI) for chaos detection.
 
 [v1.2.2]: https://github.com/mrolims/pynamicalsys/compare/v1.0.0...v1.2.2
 
