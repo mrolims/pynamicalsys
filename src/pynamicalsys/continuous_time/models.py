@@ -197,6 +197,31 @@ def rossler_system_4D_jacobian(
 
 
 @njit
+def duffing(time, u, parameters):
+    delta, alpha, beta, gamma, omega = parameters
+    dudt = np.zeros_like(u)
+    dudt[0] = u[1]
+    dudt[1] = (
+        -delta * u[1] + alpha * u[0] - beta * u[0] ** 3 + gamma * np.cos(omega * time)
+    )
+
+    return dudt
+
+
+@njit
+def duffing_jacobian(time, u, parameters):
+    delta, alpha, beta, gamma, omega = parameters
+    neq = len(u)
+    J = np.zeros((neq, neq), dtype=np.float64)
+
+    J[0, 0] = 0
+    J[0, 1] = 1
+    J[1, 0] = alpha - 3 * beta * u[0] ** 2
+    J[1, 1] = -delta
+    return J
+
+
+@njit
 def variational_equations(
     time: float,
     state: NDArray[np.float64],

@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Generalized Alignment Index (GALI).
     - Linear Dependence Index (LDI).
 
+- `ContinuousDynamicalSystem` class:
+    - `poincare_section` method: return the Poincaré section of a given initial condition or of an ensemble of initial conditions.
+    - `stroboscopic_map` method: return the stroboscopic map of a given initial condition or of an ensemble of initial conditions.
+
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.3.1...HEAD
 
 ## [v1.3.1] - 2025-08-24
