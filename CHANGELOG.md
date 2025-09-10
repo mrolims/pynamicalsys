@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed `cache=True` from the low level methods that was leading to cache compilation errors.
 
-[v1.3.0]: https://github.com/mrolims/pynamicalsys/compare/v1.3.0...v1.3.1
+[v1.3.1]: https://github.com/mrolims/pynamicalsys/compare/v1.3.0...v1.3.1
 
 ## [v1.3.0] - 2025-08-23
 
