@@ -496,7 +496,7 @@ class ContinuousDynamicalSystem:
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]  # Initial condition
+        >>> u = [0.1, 0.1, 0.1]  # Initial condition
         >>> parameters = [10, 28, 8/3]
         >>> total_time = 700
         >>> transient_time = 500
@@ -554,6 +554,65 @@ class ContinuousDynamicalSystem:
         transient_time: Optional[float] = None,
         crossing: int = 1,
     ) -> NDArray[np.float64]:
+        """
+        Compute the Poincaré section of the dynamical system for given initial conditions.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        num_intersections : int
+            Number of intersections to record in the Poincaré section.
+        section_index : int
+            Index of the coordinate to define the Poincaré section (0-based).
+        section_value : float
+            Value of the coordinate at which the section is defined.
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats, or a numpy array.
+        transient_time : float, optional
+            Initial time to discard before recording the section.
+        crossing : int, default=1
+            Specifies the type of crossing to consider:
+            - 1 : positive crossing (from below to above section_value)
+            - -1 : negative crossing (from above to below section_value)
+            - 0 : all crossings
+
+        Returns
+        -------
+        result : NDArray[np.float64]
+            The Poincaré section points.
+
+            - For a single initial condition (u.ndim = 1), returns a 2D array of shape
+              (num_intersections, neq), where each row is a system state at a crossing.
+            - For multiple initial conditions (u.ndim = 2), returns a 3D array of shape
+              (num_ic, num_intersections, neq).
+
+        Raises
+        ------
+        ValueError
+            - If the initial condition dimension does not match the system dimension.
+            - If the number of parameters does not match the system.
+            - If section_index is larger than the system dimension.
+        TypeError
+            - If `section_value` is not a real number.
+            - If `num_intersections` or `transient_time` are not valid numbers.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]  # Initial condition
+        >>> parameters = [10, 28, 8/3]
+        >>> num_intersections = 500
+        >>> section_index = 2
+        >>> section_value = 25.0
+        >>> ps = ds.poincare_section(u, num_intersections, section_index, section_value, parameters=parameters)
+        (500, 3)
+        >>> u = [[0.1, 0.1, 0.1],
+        ...      [0.2, 0.2, 0.2]]  # Two initial conditions
+        >>> ps_ensemble = ds.poincare_section(u, num_intersections, section_index, section_value, parameters=parameters)
+        (2, 500, 3)
+        """
 
         u = validate_initial_conditions(u, self.__system_dimension)
         u = u.copy()
@@ -613,6 +672,57 @@ class ContinuousDynamicalSystem:
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
     ) -> NDArray[np.float64]:
+        """
+        Compute the stroboscopic map of the dynamical system for given initial conditions.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions of the system. Must match the system's dimension.
+        num_samples : int
+            Number of samples to record in the stroboscopic map.
+        sampling_time : float
+            Time interval between consecutive samples.
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats, or a numpy array.
+        transient_time : float, optional
+            Initial time to discard before recording the map.
+
+        Returns
+        -------
+        result : NDArray[np.float64]
+            The stroboscopic map points.
+
+            - For a single initial condition (u.ndim = 1), returns a 2D array of shape
+              (num_samples, neq + 1), where the first column is the time and the remaining
+              columns are the system coordinates at each sampled time.
+            - For multiple initial conditions (u.ndim = 2), returns a 3D array of shape
+              (num_ic, num_samples, neq + 1).
+
+        Raises
+        ------
+        ValueError
+            - If the initial condition dimension does not match the system dimension.
+            - If the number of parameters does not match the system.
+        TypeError
+            - If `num_samples` or `sampling_time` are not valid numbers.
+            - If `transient_time` is provided and is not a valid number.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]  # Initial condition
+        >>> parameters = [10, 28, 8/3]
+        >>> num_samples = 500
+        >>> sampling_time = 0.1
+        >>> smap = ds.stroboscopic_map(u, num_samples, sampling_time, parameters=parameters)
+        (500, 4)
+        >>> u = [[0.1, 0.1, 0.1],
+        ...      [0.2, 0.2, 0.2]]  # Two initial conditions
+        >>> smap_ensemble = ds.stroboscopic_map(u, num_samples, sampling_time, parameters=parameters)
+        (2, 500, 4)
+        """
 
         u = validate_initial_conditions(u, self.__system_dimension)
         u = u.copy()
