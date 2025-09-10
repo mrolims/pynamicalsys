@@ -2,3 +2,4 @@ sphinx
 sphinx_rtd_theme
 setuptools_scm
 myst-parser
+IPython
