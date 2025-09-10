@@ -58,6 +58,7 @@ from pynamicalsys.continuous_time.trajectory_analysis import (
     ensemble_poincare_section,
     generate_stroboscopic_map,
     ensemble_stroboscopic_map,
+    basin_of_attraction,
 )
 
 from pynamicalsys.continuous_time.validators import (
@@ -631,6 +632,13 @@ class ContinuousDynamicalSystem:
         if transient_time is not None:
             validate_non_negative(transient_time, "transient_time", Real)
 
+        if not isinstance(crossing, Integral):
+            raise TypeError("crossing must be an integer number")
+        elif crossing not in [-1, 0, 1]:
+            raise ValueError(
+                "crossing must be -1 (downward crossings), 0 (all crossings), or 1 (upward crossing)"
+            )
+
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
@@ -764,6 +772,134 @@ class ContinuousDynamicalSystem:
                 self.__rtol,
                 self.__integrator_func,
             )
+
+    def basin_of_attraction(
+        self,
+        u: NDArray[np.float64],
+        num_intersections: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        map_type: str = "SM",
+        section_index: Optional[int] = None,
+        section_value: Optional[float] = None,
+        crossing: Optional[int] = None,
+        sampling_time: Optional[float] = None,
+        eps: float = 0.05,
+        min_samples: int = 1,
+    ) -> NDArray[np.int32]:
+        """
+        Compute the basin of attraction for a dynamical system for a set of initial conditions.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial conditions for the dynamical system.
+        num_intersections : int
+            Number of intersections (or samples) to use in constructing the map (stroboscopic or Poincaré).
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            System parameters. If None, defaults will be used. Default is None.
+        transient_time : float, optional
+            Transient time to discard before analyzing the trajectories. Default is None.
+        map_type : str, default "SM"
+            Type of map to compute:
+            - "SM" : stroboscopic map
+            - "PS" : Poincaré section
+        section_index : int, optional
+            Index of the coordinate used for the Poincaré section (required if map_type="PS").
+        section_value : float, optional
+            Value of the section plane (required if map_type="PS").
+        crossing : int, optional
+            Crossing direction for Poincaré section:
+            - -1 : downward crossings
+            - 0  : all crossings
+            - 1  : upward crossings
+            Required if map_type="PS".
+        sampling_time : float, optional
+            Sampling time for stroboscopic map (required if map_type="SM").
+        eps : float, default 0.05
+            The maximum distance between points to be considered in the same cluster (DBSCAN parameter).
+        min_samples : int, default 1
+            The minimum number of points to form a cluster (DBSCAN parameter).
+
+        Returns
+        -------
+        NDArray[np.int32]
+            Array of integer labels indicating which attractor each initial condition belongs to.
+            Label `-1` indicates points classified as noise (not part of any attractor).
+
+        Notes
+        -----
+        The basin of attraction is determined by first constructing either a stroboscopic map
+        or a Poincaré section from the trajectories. Then, the attractors are identified by
+        clustering the trajectory centroids using the DBSCAN algorithm from scikit-learn.
+
+        DBSCAN groups points that are close to each other in phase space, with `eps` defining
+        the neighborhood radius and `min_samples` specifying the minimum number of points to
+        form a cluster. Each cluster corresponds to a distinct attractor, and initial conditions
+        whose trajectories end up in the same cluster are considered to belong to the same basin
+        of attraction.
+        """
+        u = validate_initial_conditions(u, self.__system_dimension)
+        u = u.copy()
+
+        validate_non_negative(num_intersections, "num_intersections", Integral)
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Real)
+
+        if not isinstance(map_type, str):
+            raise TypeError("map_type must a valid string")
+        if map_type not in ["SM", "PS"]:
+            raise ValueError(
+                "map_type must be either SM (stroboscopic map) or PS (Poicaré section)"
+            )
+
+        if section_index is not None:
+            validate_non_negative(section_index, "section_index", Integral)
+            if section_index > self.__system_dimension:
+                raise ValueError("section_index must be <= system_dimension")
+
+        if section_value is not None:
+            if not isinstance(section_value, Real):
+                raise TypeError("section_value must be a valid real number")
+
+        if crossing is not None:
+            if not isinstance(crossing, Integral):
+                raise TypeError("crossing must be an integer number")
+            elif crossing not in [-1, 0, 1]:
+                raise ValueError(
+                    "crossing must be -1 (downward crossings), 0 (all crossings), or 1 (upward crossing)"
+                )
+
+        if sampling_time is not None:
+            validate_non_negative(sampling_time, "sampling_time", Real)
+
+        validate_non_negative(eps, "eps", Real)
+
+        validate_non_negative(min_samples, "min_samples", Integral)
+
+        time_step = self.__get_initial_time_step(u, parameters)
+
+        return basin_of_attraction(
+            u,
+            parameters,
+            self.__equations_of_motion,
+            transient_time,
+            time_step,
+            self.__atol,
+            self.__rtol,
+            self.__integrator_func,
+            map_type,
+            num_intersections,
+            section_index,
+            section_value,
+            crossing,
+            sampling_time,
+            eps,
+            min_samples,
+        )
 
     def lyapunov(
         self,
