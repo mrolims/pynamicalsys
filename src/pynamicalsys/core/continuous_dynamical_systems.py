@@ -17,17 +17,20 @@
 
 from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from IPython.display import Math
 
 import numpy as np
 from numpy.typing import NDArray
 
 from pynamicalsys.common.utils import householder_qr, qr
+
 from pynamicalsys.continuous_time.chaotic_indicators import (
     LDI,
     SALI,
     GALI,
     lyapunov_exponents,
 )
+
 from pynamicalsys.continuous_time.models import (
     henon_heiles,
     henon_heiles_jacobian,
@@ -37,17 +40,26 @@ from pynamicalsys.continuous_time.models import (
     rossler_system_4D,
     rossler_system_4D_jacobian,
     rossler_system_jacobian,
+    duffing,
+    duffing_jacobian,
 )
+
 from pynamicalsys.continuous_time.numerical_integrators import (
     estimate_initial_step,
     rk4_step_wrapped,
     rk45_step_wrapped,
 )
+
 from pynamicalsys.continuous_time.trajectory_analysis import (
-    ensemble_trajectories,
     evolve_system,
     generate_trajectory,
+    ensemble_trajectories,
+    generate_poincare_section,
+    ensemble_poincare_section,
+    generate_stroboscopic_map,
+    ensemble_stroboscopic_map,
 )
+
 from pynamicalsys.continuous_time.validators import (
     validate_initial_conditions,
     validate_non_negative,
@@ -102,6 +114,15 @@ class ContinuousDynamicalSystem:
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
         "lorenz system": {
             "description": "3D Lorenz system",
+            "equation": Math(
+                r"""
+        \dot{x} = \sigma (y - x), \quad
+        \dot{y} = x (\rho - z) - y, \quad
+        \dot{z} = xy - \beta z
+        """
+            ),
+            "equation_readable": "x' = σ(y − x), y' = x(ρ − z) − y, z' = xy − βz",
+            "notes": "Classic Lorenz 1963 model of atmospheric convection. Exhibits chaotic dynamics for some parameter values.",
             "has_jacobian": True,
             "has_variational_equations": True,
             "equations_of_motion": lorenz_system,
@@ -111,7 +132,16 @@ class ContinuousDynamicalSystem:
             "parameters": ["sigma", "rho", "beta"],
         },
         "henon heiles": {
-            "description": "Two d.o.f. Hénon-Heiles system",
+            "description": "Two d.o.f. Hénon–Heiles system",
+            "equation": Math(
+                r"""
+        H = \frac{1}{2}(p_x^2 + p_y^2) + 
+            \frac{1}{2}(x^2 + y^2) + 
+            x^2 y - \frac{1}{3}y^3
+        """
+            ),
+            "equation_readable": "H = ½(pₓ² + pᵧ²) + ½(x² + y²) + x²y − y³/3",
+            "notes": "Hamiltonian system modeling stellar motion near a galactic center; classic example of a mixed chaotic/regular system.",
             "has_jacobian": True,
             "has_variational_equations": True,
             "equations_of_motion": henon_heiles,
@@ -122,6 +152,15 @@ class ContinuousDynamicalSystem:
         },
         "rossler system": {
             "description": "3D Rössler system",
+            "equation": Math(
+                r"""
+        \dot{x} = -y - z, \quad
+        \dot{y} = x + a y, \quad
+        \dot{z} = b + z(x - c)
+        """
+            ),
+            "equation_readable": "x' = −y − z, y' = x + a y, z' = b + z(x − c)",
+            "notes": "Continuous-time chaotic system proposed by Otto Rössler (1976).",
             "has_jacobian": True,
             "has_variational_equations": True,
             "equations_of_motion": rossler_system,
@@ -132,6 +171,16 @@ class ContinuousDynamicalSystem:
         },
         "4d rossler system": {
             "description": "4D Rössler system",
+            "equation": Math(
+                r"""
+        \dot{x} = -y - z, \quad
+        \dot{y} = x + a y + w, \quad
+        \dot{z} = b + z(x - c), \quad
+        \dot{w} = -d y
+        """
+            ),
+            "equation_readable": "x' = −y − z, y' = x + a y + w, z' = b + z(x − c), w' = −d y",
+            "notes": "A 4D generalization of the Rössler attractor with an added variable w.",
             "has_jacobian": True,
             "has_variational_equations": True,
             "equations_of_motion": rossler_system_4D,
@@ -139,6 +188,21 @@ class ContinuousDynamicalSystem:
             "dimension": 4,
             "number_of_parameters": 4,
             "parameters": ["a", "b", "c", "d"],
+        },
+        "duffing": {
+            "description": "Duffing oscillator (nonlinear forced damped oscillator)",
+            "equation": Math(
+                r"\ddot{x} + \delta \dot{x} - \alpha x + \beta x^3 = \gamma \cos(\omega t)"
+            ),
+            "equation_readable": "x'' + δ x' − α x + β x³ = γ cos(ω t)",
+            "notes": "A nonlinear oscillator with a double-well potential, forced and damped; exhibits chaos under some parameters.",
+            "has_jacobian": True,
+            "has_variational_equations": True,
+            "equations_of_motion": duffing,
+            "jacobian": duffing_jacobian,
+            "dimension": 2,
+            "number_of_parameters": 5,
+            "parameters": ["delta", "alpha", "beta", "gamma", "omega"],
         },
     }
 
@@ -478,6 +542,117 @@ class ContinuousDynamicalSystem:
                 atol=self.__atol,
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
+            )
+
+    def poincare_section(
+        self,
+        u: NDArray[np.float64],
+        num_intersections: int,
+        section_index: int,
+        section_value: float,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        crossing: int = 1,
+    ) -> NDArray[np.float64]:
+
+        u = validate_initial_conditions(u, self.__system_dimension)
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(num_intersections, "num_intersections", Integral)
+
+        validate_non_negative(section_index, "section_index", Integral)
+        if section_index > self.__system_dimension:
+            raise ValueError("section_index must be smaller than the sustem_dimension")
+
+        if not isinstance(section_value, Real):
+            raise TypeError("section_value must be a valid real number")
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Real)
+
+        time_step = self.__get_initial_time_step(u, parameters)
+
+        if u.ndim == 1:
+            return generate_poincare_section(
+                u,
+                parameters,
+                num_intersections,
+                self.__equations_of_motion,
+                transient_time,
+                time_step,
+                self.__atol,
+                self.__rtol,
+                self.__integrator_func,
+                section_index,
+                section_value,
+                crossing,
+            )
+        else:
+            return ensemble_poincare_section(
+                u,
+                parameters,
+                num_intersections,
+                self.__equations_of_motion,
+                transient_time,
+                time_step,
+                self.__atol,
+                self.__rtol,
+                self.__integrator_func,
+                section_index,
+                section_value,
+                crossing,
+            )
+
+    def stroboscopic_map(
+        self,
+        u: NDArray[np.float64],
+        num_samples: int,
+        sampling_time: float,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+    ) -> NDArray[np.float64]:
+
+        u = validate_initial_conditions(u, self.__system_dimension)
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(num_samples, "num_samples", Integral)
+
+        validate_non_negative(sampling_time, "sampling_time", Real)
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Real)
+
+        time_step = self.__get_initial_time_step(u, parameters)
+
+        if u.ndim == 1:
+            return generate_stroboscopic_map(
+                u,
+                parameters,
+                num_samples,
+                sampling_time,
+                self.__equations_of_motion,
+                transient_time,
+                time_step,
+                self.__atol,
+                self.__rtol,
+                self.__integrator_func,
+            )
+        else:
+            return ensemble_stroboscopic_map(
+                u,
+                parameters,
+                num_samples,
+                sampling_time,
+                self.__equations_of_motion,
+                transient_time,
+                time_step,
+                self.__atol,
+                self.__rtol,
+                self.__integrator_func,
             )
 
     def lyapunov(

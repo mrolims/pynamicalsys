@@ -25,7 +25,7 @@ from pynamicalsys.continuous_time.trajectory_analysis import step, evolve_system
 from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
 
 
-# @njit
+@njit
 def lyapunov_exponents(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -238,7 +238,6 @@ def SALI(
         return [[time, sali]]
 
 
-# @njit
 def LDI(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],

@@ -15,11 +15,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
+from joblib import Parallel, delayed
 import numpy as np
 from numba import njit, prange
 from numpy.typing import NDArray
+from sklearn.cluster import DBSCAN
 
 from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
 
@@ -160,7 +162,6 @@ def generate_trajectory(
     return trajectory
 
 
-@njit(cache=True, parallel=True)
 def ensemble_trajectories(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -175,15 +176,15 @@ def ensemble_trajectories(
     integrator=rk4_step_wrapped,
 ) -> NDArray[np.float64]:
 
-    if u.ndim != 2:
-        raise ValueError("Initial conditions must be 2D array (num_ic, neq)")
+    def run_one(u_i, parameters, total_time, equations_of_motion, **kwargs):
+        result = generate_trajectory(
+            u_i, parameters, total_time, equations_of_motion, **kwargs
+        )
 
-    num_ic, neq = u.shape
+        return np.array(result)
 
-    trajectories = []
-
-    for i in prange(num_ic):
-        trajectory = generate_trajectory(
+    results = Parallel(n_jobs=-1)(  # -1 = use all cores
+        delayed(run_one)(
             u[i],
             parameters,
             total_time,
@@ -194,6 +195,220 @@ def ensemble_trajectories(
             rtol=rtol,
             integrator=integrator,
         )
-        trajectories.append(np.array(trajectory))
+        for i in range(len(u))
+    )
 
-    return trajectories
+    return results
+
+
+@njit
+def generate_poincare_section(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    num_intersections: int,
+    equations_of_motion: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    transient_time: float,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator,
+    section_index: int,
+    section_value: float,
+    crossing: int,
+) -> NDArray[np.float64]:
+    neq = len(u)
+    section_points = np.zeros((num_intersections, neq + 1))
+    count = 0
+
+    u = u.copy()
+    if transient_time is not None:
+        u = evolve_system(
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+        )
+        time = transient_time
+    else:
+        time = 0
+
+    time_step_prev = time_step
+    time_prev = time
+    u_prev = u.copy()
+    while count < num_intersections:
+        u_new, time_new, time_step_new = step(
+            time_prev,
+            u_prev,
+            parameters,
+            equations_of_motion,
+            time_step=time_step_prev,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+        )
+
+        # Check for crossings
+        if (u_prev[section_index] - section_value) * (
+            u_new[section_index] - section_value
+        ) < 0.0:
+            lam = (section_value - u_prev[section_index]) / (
+                u_new[section_index] - u_prev[section_index]
+            )
+
+            t_cross = time_new - time_step_prev + lam * time_step_prev
+            u_cross = (1 - lam) * u_prev + lam * u_new
+            velocity = equations_of_motion(time, u_cross, parameters)[section_index]
+
+            if crossing == 0 or np.sign(velocity) == crossing:
+                section_points[count, 0] = t_cross
+                section_points[count, 1:] = u_cross
+                count += 1
+
+        time_prev = time_new
+        time_step_prev = time_step_new
+        u_prev = u_new
+
+    return section_points
+
+
+@njit(parallel=True)
+def ensemble_poincare_section(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    num_intersections: int,
+    equations_of_motion: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    transient_time: float,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator,
+    section_index: int,
+    section_value: float,
+    crossing: int,
+) -> NDArray[np.float64]:
+    num_ic, neq = u.shape
+    section_points = np.zeros((num_ic, num_intersections, neq + 1))
+    for i in prange(num_ic):
+        section_points[i] = generate_poincare_section(
+            u[i],
+            parameters,
+            num_intersections,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+            section_index,
+            section_value,
+            crossing,
+        )
+
+    return section_points
+
+
+@njit
+def generate_stroboscopic_map(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    num_samples: int,
+    sampling_time: float,
+    equations_of_motion: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    transient_time: float,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator,
+) -> NDArray[np.float64]:
+
+    u = np.asarray(u)
+    neq = len(u)
+    strobe_points = np.zeros((num_samples, neq + 1))
+    if transient_time is not None:
+        u_curr = evolve_system(
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+        )
+        time_curr = transient_time
+    else:
+        u_curr = u.copy()
+        time_curr = 0
+
+    time_target = time_curr + sampling_time
+    count = 0
+    while count < num_samples:
+        u_prev = u_curr.copy()
+        time_prev = time_curr
+        # Integrate until we reach or surpass the target strobe time
+        while time_curr < time_target:
+            u_curr, time_curr, time_step = step(
+                time_curr,
+                u_curr,
+                parameters,
+                equations_of_motion,
+                time_step=time_step,
+                atol=atol,
+                rtol=rtol,
+                integrator=integrator,
+            )
+
+        # Linear interpolation to exactly hit time_target
+        lam = (time_target - time_prev) / (time_curr - time_prev)
+        strobe_points[count, 0] = time_target
+        strobe_points[count, 1:] = (1 - lam) * u_prev + lam * u_curr
+
+        count += 1
+        time_target += sampling_time
+
+    return strobe_points
+
+
+@njit(parallel=True)
+def ensemble_stroboscopic_map(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    num_samples: int,
+    sampling_time: float,
+    equations_of_motion: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    transient_time: float,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator,
+) -> NDArray[np.float64]:
+    num_ic, neq = u.shape
+    strobe_points = np.zeros((num_ic, num_samples, neq + 1))
+
+    for i in prange(num_ic):
+        strobe_points[i] = generate_stroboscopic_map(
+            u[i],
+            parameters,
+            num_samples,
+            sampling_time,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+
+    return strobe_points
