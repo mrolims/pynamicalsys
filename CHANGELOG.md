@@ -24,7 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContinuousDynamicalSystem` class:
     - `poincare_section` method: return the Poincaré section of a given initial condition or of an ensemble of initial conditions.
     - `stroboscopic_map` method: return the stroboscopic map of a given initial condition or of an ensemble of initial conditions.
+    - `maxima_map` method: return the maxima map of a given initial condition or of an ensemble of inital conditions.
     - `basin_of_attraction` method: given an ensemble of initial conditions, detect and label the attractors in the system.
+    - `recurrence_time_entropy` method: calculates the recurrence time entropy for a given initial condition using the Poincaré section, stroboscopic map, or maxima map to construct the recurrence matrix.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.3.1...HEAD
 
