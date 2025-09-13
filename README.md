@@ -8,6 +8,8 @@
 
 **pynamicalsys** is designed to provide a fast, flexible, and user-friendly environment for analyzing **nonlinear dynamical systems**. It is intended for students, researchers, educators, and enthusiasts who want to explore the world of chaos and dynamical systems. Beyond standard tools like trajectory generation and Lyapunov exponents calculation, **pynamicalsys** includes advanced features such as
 
+- **Bifurcation diagrams**, **Poincaré sections**, and **stroboscopic maps** for analyzing system trajectories.
+- **Symplectic integrators** for analyzing Hamiltonian systems.
 - **Linear dependence index** for chaos detection.
 - **Recurrence plots** and recurrence time statistics.
 - Chaos indicators based on **weighted Birkhoff averages**.
@@ -30,7 +32,7 @@
 To install the latest stable release, run in your command line:
 
 ```bash
-$ pip install pynamicalsys
+pip install pynamicalsys
 ```
 
 > **Note:** On **Windows**, it is **strongly recommended** to use [Anaconda](https://www.anaconda.com). It simplifies dependency management and avoids potential issues with scientific libraries during installation. Be sure to run the command from the **Anaconda Prompt**, not from Command Prompt or PowerShell, to ensure the correct environment is activated.
@@ -40,7 +42,7 @@ $ pip install pynamicalsys
 To upgrade your current version of **pynamicalsys** to the latest stable release, run in your command line:
 
 ```bash
-$ pip install pynamicalsys --upgrade
+pip install pynamicalsys --upgrade
 ```
 
 ### Install from source
@@ -48,9 +50,9 @@ $ pip install pynamicalsys --upgrade
 If you want to install the development version from the source repository, clone the repo and install with:
 
 ```bash
-$ git clone https://github.com/mrolims/pynamicalsys.git
-$ cd pynamicalsys
-$ pip install .
+git clone https://github.com/mrolims/pynamicalsys.git
+cd pynamicalsys
+pip install .
 ```
 
 ### Verifying the installation
@@ -67,12 +69,26 @@ After installation, you can verify it by running Python and importing the packag
 If you encounter any issues, make sure you have the latest version of pip:
 
 ```bash
-$ pip install --upgrade pip build
+pip install --upgrade pip build
 ```
+
+## Documentation
+
+For detailed instructions, examples, and API references, please visit the full documentation page:
+
+[pynamicalsys.readthedocs.io](https://pynamicalsys.readthedocs.io/)
+
+The documentation includes:
+
+- **Getting Started** — installation and quick-start examples.  
+- **Tutorial** — step-by-step explanations of key concepts and pratical demonstrations.
+- **API Reference** — detailed descriptions of all functions, parameters, and return values.
 
 ## Citation
 
-Currently, our research paper is under review, but in the mean time, if you use **pynamicalsys** in your work, you can cite the [arXiv](https://arxiv.org/abs/2506.14044) version:
+Our research paper is currently under review. In the meantime, if you use **pynamicalsys** in your work, please cite the [arXiv version](https://arxiv.org/abs/2506.14044). Below are recommended citation formats for different use cases.
+
+### BibTeX
 
 ```bibtex
 @misc{pynamicalsys,
@@ -84,6 +100,18 @@ Currently, our research paper is under review, but in the mean time, if you use 
   primaryClass={nlin.CD},
   url={https://arxiv.org/abs/2506.14044},
 }
+```
+
+### APA style
+
+```
+Rolim Sales, M., Costa de Souza, L., Borin, D., Mugnaine, M., Szezech Jr., J. D., Viana, R. L., Caldas, I. L., Leonel, E. D., & Antonopoulos, C. G. (2025). pynamicalsys: A Python toolkit for the analysis of dynamical systems. arXiv:2506.14044. https://arxiv.org/abs/2506.14044
+```
+
+### Short citation style
+
+```
+Matheus Rolim Sales et al., "pynamicalsys: A Python toolkit for the analysis of dynamical systems," arXiv:2506.14044, 2025. https://arxiv.org/abs/2506.14044
 ```
 
 ## Contributing
