@@ -18,11 +18,17 @@
 import numpy as np
 from numpy.typing import NDArray
 
+from numbers import Integral, Real
+
 from pynamicalsys.common.recurrence_quantification_analysis import (
     recurrence_matrix,
     RTEConfig,
     white_vertline_distr,
 )
+
+from pynamicalsys.discrete_time.validators import validate_positive
+
+from pynamicalsys.common.time_series_metrics import hurst_exponent
 
 
 class TimeSeriesMetrics:
@@ -137,3 +143,62 @@ class TimeSeriesMetrics:
             result.append(P)
 
         return result[0] if len(result) == 1 else tuple(result)
+
+    def hurst_exponent(self, wmin: int = 2):
+        """
+        Estimate the Hurst exponent for a system trajectory using the rescaled range (R/S) method.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial condition vector of shape (n,).
+        parameters : NDArray[np.float64]
+            Parameters passed to the mapping function.
+        total_time : int
+            Total number of iterations used to generate the trajectory.
+        mapping : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
+            A function that defines the system dynamics, i.e., how `u` evolves over time given `parameters`.
+        wmin : int, optional
+            Minimum window size for the rescaled range calculation. Default is 2.
+        transient_time : Optional[int], optional
+            Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Estimated Hurst exponents for each dimension of the input vector `u`, of shape (n,).
+
+        Notes
+        -----
+        The Hurst exponent is a measure of the long-term memory of a time series:
+
+        - H = 0.5 indicates a random walk (no memory).
+        - H > 0.5 indicates persistent behavior (positive autocorrelation).
+        - H < 0.5 indicates anti-persistent behavior (negative autocorrelation).
+
+        This implementation computes the rescaled range (R/S) for various window sizes and
+        performs a linear regression in log-log space to estimate the exponent.
+
+        The function supports multivariate time series, estimating one Hurst exponent per dimension.
+        """
+
+        sample_size = self.time_series.shape[0]
+
+        validate_positive(wmin, "wmin", Integral)
+
+        if wmin < 2 or wmin >= sample_size // 2:
+            raise ValueError(
+                f"`wmin` must be an integer >= 2 and <= len(time_series) / 2. Got {wmin}."
+            )
+
+        if self.time_series.ndim == 1:
+            time_series = self.time_series.reshape(sample_size, 1)
+        else:
+            time_series = self.time_series
+
+        result = hurst_exponent(time_series, wmin=wmin)
+
+        if self.time_series.ndim == 1:
+            return result[0]
+        else:
+            return result
