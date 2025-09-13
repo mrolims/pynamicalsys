@@ -885,6 +885,7 @@ class ContinuousDynamicalSystem:
         return basin_of_attraction(
             u,
             parameters,
+            num_intersections,
             self.__equations_of_motion,
             transient_time,
             time_step,
@@ -892,7 +893,6 @@ class ContinuousDynamicalSystem:
             self.__rtol,
             self.__integrator_func,
             map_type,
-            num_intersections,
             section_index,
             section_value,
             crossing,
