@@ -16,7 +16,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from numbers import Integral, Real
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
 from IPython.display import Math
 
 import numpy as np
@@ -29,6 +29,7 @@ from pynamicalsys.continuous_time.chaotic_indicators import (
     SALI,
     GALI,
     lyapunov_exponents,
+    recurrence_time_entropy,
 )
 
 from pynamicalsys.continuous_time.models import (
@@ -52,12 +53,15 @@ from pynamicalsys.continuous_time.numerical_integrators import (
 
 from pynamicalsys.continuous_time.trajectory_analysis import (
     evolve_system,
+    generate_maxima_map,
     generate_trajectory,
     ensemble_trajectories,
     generate_poincare_section,
     ensemble_poincare_section,
     generate_stroboscopic_map,
     ensemble_stroboscopic_map,
+    generate_maxima_map,
+    ensemble_maxima_map,
     basin_of_attraction,
 )
 
@@ -390,7 +394,7 @@ class ContinuousDynamicalSystem:
 
     def evolve_system(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
     ) -> NDArray[np.float64]:
@@ -399,7 +403,7 @@ class ContinuousDynamicalSystem:
 
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         total_time : float
             Total time over which to evolve the system.
@@ -457,7 +461,7 @@ class ContinuousDynamicalSystem:
 
     def trajectory(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
@@ -467,7 +471,7 @@ class ContinuousDynamicalSystem:
 
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         total_time : float
             Total time over which to evolve the system (including transient).
@@ -547,7 +551,7 @@ class ContinuousDynamicalSystem:
 
     def poincare_section(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         num_intersections: int,
         section_index: int,
         section_value: float,
@@ -558,9 +562,14 @@ class ContinuousDynamicalSystem:
         """
         Compute the Poincaré section of the dynamical system for given initial conditions.
 
+        A Poincaré section records the points where a trajectory intersects a chosen hypersurface
+        in phase space (e.g. x = constant). This reduces a continuous flow to a lower-dimensional
+        map, making it easier to identify periodic orbits, quasi-periodic motion, or chaotic
+        structures.
+
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         num_intersections : int
             Number of intersections to record in the Poincaré section.
@@ -674,7 +683,7 @@ class ContinuousDynamicalSystem:
 
     def stroboscopic_map(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         num_samples: int,
         sampling_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
@@ -683,9 +692,14 @@ class ContinuousDynamicalSystem:
         """
         Compute the stroboscopic map of the dynamical system for given initial conditions.
 
+        A stroboscopic map samples the state of a time-periodic or driven system at fixed time
+        intervals (typically one driving period). This converts the continuous-time dynamics
+        into a discrete-time sequence that highlights periodicity, phase locking, and
+        bifurcations.
+
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         num_samples : int
             Number of samples to record in the stroboscopic map.
@@ -773,9 +787,116 @@ class ContinuousDynamicalSystem:
                 self.__integrator_func,
             )
 
+    def maxima_map(
+        self,
+        u: Union[NDArray[np.float64], Sequence[float]],
+        num_points: int,
+        maxima_index: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+    ) -> NDArray[np.float64]:
+        """
+        Compute the maxima map of the dynamical system for given initial conditions.
+
+        A maxima map records the local maxima of a chosen system variable along the trajectory.
+        By plotting successive maxima, one obtains a discrete return map that reveals
+        oscillation amplitudes, period-doubling cascades, and other nonlinear behaviours.
+
+        Parameters
+        ----------
+        u : Union[NDArray[np.float64], Sequence[float]]
+            Initial conditions of the system. Must match the system's dimension.
+        num_points : int
+            Number of points to record in the maxima map.
+        maxima_index : int
+            Index of the variable whose maxima are to be recorded.
+        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
+            Parameters of the system, by default None. Can be a scalar, a sequence of floats, or a numpy array.
+        transient_time : float, optional
+            Initial time to discard before recording the map.
+
+        Returns
+        -------
+        result : NDArray[np.float64]
+            The maxima map points.
+
+            - For a single initial condition (u.ndim = 1), returns a 2D array of shape
+              (num_points, neq + 1), where the first column is the time and the remaining
+              columns are the system coordinates at each maxima point.
+            - For multiple initial conditions (u.ndim = 2), returns a 3D array of shape
+              (num_ic, num_points, neq + 1).
+
+        Raises
+        ------
+        ValueError
+            - If the initial condition dimension does not match the system dimension.
+            - If the number of parameters does not match the system.
+        TypeError
+            - If `num_points` or `maxima_index` are not valid numbers.
+            - If `transient_time` is provided and is not a valid number.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> ds = cds(model="lorenz system")
+        >>> u = [0.1, 0.1, 0.1]  # Initial condition
+        >>> parameters = [10, 28, 8/3]
+        >>> num_points = 500
+        >>> maxima_index = 0
+        >>> smap = ds.maxima_map(u, num_points, maxima_index, parameters=parameters)
+        >>> smap.shape
+        (500, 4)
+        >>> u = [[0.1, 0.1, 0.1],
+        ...      [0.2, 0.2, 0.2]]  # Two initial conditions
+        >>> smap_ensemble = ds.stroboscopic_map(u, num_samples, sampling_time, parameters=parameters)
+        >>> smap_ensemble.shape
+        (2, 500, 4)
+        """
+
+        u = validate_initial_conditions(u, self.__system_dimension)
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(num_points, "num_samples", Integral)
+
+        validate_non_negative(maxima_index, "maxima_index", Integral)
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Real)
+
+        time_step = self.__get_initial_time_step(u, parameters)
+
+        if u.ndim == 1:
+            return generate_maxima_map(
+                u,
+                parameters,
+                num_points,
+                maxima_index,
+                self.__equations_of_motion,
+                transient_time,
+                time_step,
+                self.__atol,
+                self.__rtol,
+                self.__integrator_func,
+            )
+        else:
+            return ensemble_maxima_map(
+                u,
+                parameters,
+                num_points,
+                maxima_index,
+                self.__equations_of_motion,
+                transient_time,
+                time_step,
+                self.__atol,
+                self.__rtol,
+                self.__integrator_func,
+            )
+
     def basin_of_attraction(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         num_intersections: int,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
@@ -792,7 +913,7 @@ class ContinuousDynamicalSystem:
 
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions for the dynamical system.
         num_intersections : int
             Number of intersections (or samples) to use in constructing the map (stroboscopic or Poincaré).
@@ -903,7 +1024,7 @@ class ContinuousDynamicalSystem:
 
     def lyapunov(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
@@ -920,7 +1041,7 @@ class ContinuousDynamicalSystem:
 
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         total_time : float
             Total time over which to evolve the system (including transient).
@@ -1048,7 +1169,7 @@ class ContinuousDynamicalSystem:
 
     def SALI(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         total_time: float,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         transient_time: Optional[float] = None,
@@ -1061,7 +1182,7 @@ class ContinuousDynamicalSystem:
 
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         total_time : float
             Total time over which to evolve the system (including transient).
@@ -1159,7 +1280,7 @@ class ContinuousDynamicalSystem:
 
     def LDI(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         total_time: float,
         k: int,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
@@ -1173,7 +1294,7 @@ class ContinuousDynamicalSystem:
 
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         total_time : float
             Total time over which to evolve the system (including transient).
@@ -1274,7 +1395,7 @@ class ContinuousDynamicalSystem:
 
     def GALI(
         self,
-        u: NDArray[np.float64],
+        u: Union[NDArray[np.float64], Sequence[float]],
         total_time: float,
         k: int,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
@@ -1288,7 +1409,7 @@ class ContinuousDynamicalSystem:
 
         Parameters
         ----------
-        u : NDArray[np.float64]
+        u : Union[NDArray[np.float64], Sequence[float]]
             Initial conditions of the system. Must match the system's dimension.
         total_time : float
             Total time over which to evolve the system (including transient).
@@ -1386,3 +1507,181 @@ class ContinuousDynamicalSystem:
             return np.array(result)
         else:
             return np.array(result[0])
+
+    def recurrence_time_entropy(
+        self,
+        u: Union[NDArray[np.float64], Sequence[float]],
+        num_intersections: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        map_type: str = "SM",
+        section_index: Optional[int] = None,
+        section_value: Optional[float] = None,
+        crossing: Optional[int] = None,
+        sampling_time: Optional[float] = None,
+        maxima_index: Optional[float] = None,
+        **kwargs,
+    ) -> Union[float, Tuple[float, NDArray[np.float64]]]:
+        """Compute the Recurrence Time Entropy (RTE) for a dynamical system.
+
+        Parameters
+        ----------
+        u: Union[NDArray[np.float64], Sequence[float]]
+            Initial condition of shape(d,) where d is system dimension
+        num_intersections: int
+            Number of intersections to record in the Poincaré section or stroboscopic map.
+        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
+            System parameters of shape(p,) passed to mapping function
+        transient_time : float, optional
+            Initial time to discard before recording the section.
+        map_type : str
+            Which map to use: stroboscopic map or Poincaré section, by default "SM"
+        section_index : Optional[int]
+            Index of the coordinate to define the Poincaré section (0-based). Only used when map_type="PS".
+        section_value : Optional[float]
+            Value of the coordinate at which the section is defined. Only used when map_type="PS".
+        crossing : Optional[int]
+            Specifies the type of crossing to consider:
+            - 1 : positive crossing (from below to above section_value)
+            - -1 : negative crossing (from above to below section_value)
+            - 0 : all crossings
+
+            Only used when map_type="PS".
+        sampling_time : float
+            Time interval between consecutive samples in the stroboscopic map. Only used when map_type="SM".
+        metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
+            Distance metric used for phase space reconstruction.
+        std_metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
+            Distance metric used for standard deviation calculation.
+        lmin: int, default = 1
+            Minimum line length to consider in recurrence quantification.
+        threshold: float, default = 0.1
+            Recurrence threshold(relative to data range).
+        threshold_std: bool, default = True
+            Whether to scale threshold by data standard deviation.
+        return_final_state: bool, default = False
+            Whether to return the final system state in results.
+        return_recmat: bool, default = False
+            Whether to return the recurrence matrix.
+        return_p: bool, default = False
+            Whether to return white vertical line length distribution.
+
+        Returns
+        -------
+        Union[float, Tuple[float, NDArray[np.float64]]]
+            - float: RTE value(base case)
+            - Tuple: (RTE, white_line_distribution) if return_distribution = True
+
+        Raises
+        ------
+        ValueError
+            - If `u` is not a 1D array matching the system dimension.
+            - If `parameters` is not `None` and does not match the expected number of parameters.
+            - If `parameters` is `None` but the system expects parameters.
+            - If `parameters` is a scalar or array-like but not 1D.
+            - If `transient_time` is negative.
+            - If `map_type` is not one of {"SM", "PS"}.
+            - If `map_type="PS"` but any of `section_index`, `section_value`, or `crossing` is `None`.
+            - If `section_index` is negative or ≥ system dimension.
+            - If `crossing` is not one of {-1, 0, 1}.
+            - If `map_type="SM"` but `sampling_time` is `None` or negative.
+        TypeError
+            - If `u` is not a scalar or array-like type.
+            - If `parameters` is not a scalar or array-like type.
+            - If `map_type` is not a string.
+            - If `section_value` is not a real number when `map_type="PS"`.
+            - If `crossing` is not an integer when `map_type="PS"`.
+            - If `sampling_time` is not a real number when `map_type="SM"`.
+
+        Notes
+        -----
+        - Higher RTE indicates more complex dynamics
+        - Set min_recurrence_time = 2 to ignore single-point recurrences
+        - Implementation follows [1]
+
+        References
+        ----------
+        [1] Sales et al., Chaos 33, 033140 (2023)
+
+        Examples
+        --------
+        >>>  # Basic usage
+        >>> rte = system.recurrence_time_entropy(u0, params, 5000)
+
+        >>>  # With distribution output
+        >>> rte, dist = system.recurrence_time_entropy(
+        ...     u0, params, 5000,
+        ...     return_distribution=True,
+        ...     recurrence_threshold=0.1
+        ...)
+        """
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(transient_time, "transient_time", Real)
+
+        if not isinstance(map_type, str):
+            raise TypeError("map_type must be a string")
+
+        if map_type == "PS":
+            if section_index is None or section_value is None or crossing is None:
+                raise ValueError(
+                    'When using map_type="PS", you must inform section_index, section_value, and crossing'
+                )
+
+            validate_non_negative(section_index, "section_index", Integral)
+            if section_index >= self.__system_dimension:
+                raise ValueError("section_index must be in [0, system_dimension)")
+
+            if not isinstance(section_value, Real):
+                raise TypeError("section_value must be a valid real number")
+
+            if not isinstance(crossing, Integral):
+                raise TypeError("crossing must be a valid integer number")
+            elif crossing not in [-1, 0, 1]:
+                raise ValueError("crossing must be -1, 0, or 1")
+
+        elif map_type == "SM":
+
+            if sampling_time is not None:
+                validate_non_negative(sampling_time, "sampling_time", Real)
+            else:
+                raise ValueError(
+                    'When using map_type="SM" you must inform sampling_time'
+                )
+        elif map_type == "MM":
+            if maxima_index is not None:
+                validate_non_negative(maxima_index, "maxima_index", Integral)
+            else:
+                raise ValueError(
+                    'When using map_type="MM" you must inform maxima_index'
+                )
+        else:
+            raise ValueError(
+                "map_type must be SM (stroboscopic map), PS (Poincaré section), or MM (Maxima map)"
+            )
+
+        time_step = self.__get_initial_time_step(u, parameters)
+
+        return recurrence_time_entropy(
+            u,
+            parameters,
+            num_intersections,
+            transient_time,
+            self.__equations_of_motion,
+            time_step,
+            self.__atol,
+            self.__rtol,
+            self.__integrator_func,
+            map_type,
+            section_index,
+            section_value,
+            crossing,
+            sampling_time,
+            maxima_index,
+            **kwargs,
+        )

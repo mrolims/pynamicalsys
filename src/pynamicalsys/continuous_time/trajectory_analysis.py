@@ -319,7 +319,7 @@ def ensemble_poincare_section(
 def generate_stroboscopic_map(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
-    num_samples: int,
+    num_intersections: int,
     sampling_time: float,
     equations_of_motion: Callable[
         [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
@@ -333,7 +333,7 @@ def generate_stroboscopic_map(
 
     u = np.asarray(u)
     neq = len(u)
-    strobe_points = np.zeros((num_samples, neq + 1))
+    strobe_points = np.zeros((num_intersections, neq + 1))
     if transient_time is not None:
         u_curr = evolve_system(
             u,
@@ -352,7 +352,7 @@ def generate_stroboscopic_map(
 
     time_target = time_curr + sampling_time
     count = 0
-    while count < num_samples:
+    while count < num_intersections:
         u_prev = u_curr.copy()
         time_prev = time_curr
         # Integrate until we reach or surpass the target strobe time
@@ -383,7 +383,7 @@ def generate_stroboscopic_map(
 def ensemble_stroboscopic_map(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
-    num_samples: int,
+    num_intersections: int,
     sampling_time: float,
     equations_of_motion: Callable[
         [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
@@ -395,13 +395,13 @@ def ensemble_stroboscopic_map(
     integrator,
 ) -> NDArray[np.float64]:
     num_ic, neq = u.shape
-    strobe_points = np.zeros((num_ic, num_samples, neq + 1))
+    strobe_points = np.zeros((num_ic, num_intersections, neq + 1))
 
     for i in prange(num_ic):
         strobe_points[i] = generate_stroboscopic_map(
             u[i],
             parameters,
-            num_samples,
+            num_intersections,
             sampling_time,
             equations_of_motion,
             transient_time,
@@ -412,6 +412,172 @@ def ensemble_stroboscopic_map(
         )
 
     return strobe_points
+
+
+@njit
+def generate_maxima_map(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    num_peaks: int,
+    maxima_index: int,
+    equations_of_motion,
+    transient_time: float,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator,
+) -> NDArray[np.float64]:
+    """
+    Generate a maxima map of a specified state variable.
+
+    Parameters
+    ----------
+    u : np.ndarray
+        Initial state vector.
+    parameters : np.ndarray
+        Parameters for the system.
+    num_peaks : int
+        Number of maxima to collect.
+    maxima_index : int
+        Index of the variable whose maxima are to be recorded.
+    equations_of_motion : callable
+        Function f(t, u, parameters) returning du/dt.
+    transient_time : float
+        Time to integrate before starting maxima collection.
+    time_step : float
+        Initial integration time step.
+    atol, rtol : float
+        Absolute and relative tolerances for integration.
+    integrator : callable
+        Integration function or object, similar to your `step` function.
+
+    Returns
+    -------
+    maxima_points : np.ndarray
+        Array of shape (num_peaks, n_vars+1):
+        [time_of_max, u_1, u_2, ... u_n] at each maximum.
+    """
+    neq = len(u)
+    maxima_points = np.zeros((num_peaks, neq + 1))
+
+    # Transient
+    if transient_time is not None:
+        u = evolve_system(
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+        )
+        time = transient_time
+    else:
+        time = 0.0
+
+    # Initial step
+    time_step_prev = time_step
+    time_prev = time
+    u_prev = u.copy()
+
+    # We need three points to detect a local maximum
+    # (previous, current, next)
+    u_curr, time_curr, time_step_curr = step(
+        time_prev,
+        u_prev,
+        parameters,
+        equations_of_motion,
+        time_step=time_step_prev,
+        atol=atol,
+        rtol=rtol,
+        integrator=integrator,
+    )
+
+    count = 0
+    while count < num_peaks:
+        # Step to the next point
+        u_next, time_next, time_step_next = step(
+            time_curr,
+            u_curr,
+            parameters,
+            equations_of_motion,
+            time_step=time_step_curr,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+        )
+
+        # Variable values at three times
+        y_prev = u_prev[maxima_index]
+        y_curr = u_curr[maxima_index]
+        y_next = u_next[maxima_index]
+
+        # Check for local maximum
+        if (y_curr > y_prev) and (y_curr > y_next):
+            # Quadratic interpolation for more precise max
+            # Fit parabola through (t_{i-1}, y_{i-1}), (t_i, y_i), (t_{i+1}, y_{i+1})
+            t1, t2, t3 = time_prev, time_curr, time_next
+            y1, y2, y3 = y_prev, y_curr, y_next
+
+            denom = (t1 - t2) * (t1 - t3) * (t2 - t3)
+            A = (t3 * (y2 - y1) + t2 * (y1 - y3) + t1 * (y3 - y2)) / denom
+            B = (t3**2 * (y1 - y2) + t2**2 * (y3 - y1) + t1**2 * (y2 - y3)) / denom
+
+            t_peak = -B / (2.0 * A)  # vertex of the parabola
+
+            # Interpolate state vector linearly between u_curr and u_next at t_peak
+            lam = (t_peak - time_curr) / (time_next - time_curr)
+            u_peak = (1 - lam) * u_curr + lam * u_next
+
+            maxima_points[count, 0] = t_peak
+            maxima_points[count, 1:] = u_peak
+            count += 1
+
+        # Shift variables for next iteration
+        u_prev = u_curr
+        time_prev = time_curr
+        time_step_prev = time_step_curr
+
+        u_curr = u_next
+        time_curr = time_next
+        time_step_curr = time_step_next
+
+    return maxima_points
+
+
+@njit
+def ensemble_maxima_map(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    num_peaks: int,
+    maxima_index: int,
+    equations_of_motion,
+    transient_time: float,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator,
+) -> NDArray[np.float64]:
+
+    num_ic, neq = u.shape
+    maxima_points = np.zeros((num_ic, num_peaks, neq + 1))
+
+    for i in prange(num_ic):
+        maxima_points[i] = generate_maxima_map(
+            u[i],
+            parameters,
+            num_peaks,
+            maxima_index,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+
+    return maxima_points
 
 
 def basin_of_attraction(

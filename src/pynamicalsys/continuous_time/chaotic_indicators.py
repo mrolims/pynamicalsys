@@ -15,14 +15,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional, Callable, Union, Tuple, Dict, List, Any, Sequence
+from typing import Optional, Callable, Tuple
 from numpy.typing import NDArray
 import numpy as np
 from numba import njit
 
 from pynamicalsys.common.utils import qr, wedge_norm
-from pynamicalsys.continuous_time.trajectory_analysis import step, evolve_system
+
+from pynamicalsys.continuous_time.trajectory_analysis import (
+    generate_maxima_map,
+    step,
+    evolve_system,
+    generate_poincare_section,
+    generate_stroboscopic_map,
+)
+
 from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
+
+from pynamicalsys.common.recurrence_quantification_analysis import (
+    RTEConfig,
+    recurrence_matrix,
+    white_vertline_distr,
+)
 
 
 @njit
@@ -440,3 +454,116 @@ def GALI(
         return history
     else:
         return [[time, gali]]
+
+
+def recurrence_time_entropy(
+    u,
+    parameters,
+    num_points,
+    transient_time,
+    equations_of_motion,
+    time_step,
+    atol,
+    rtol,
+    integrator,
+    map_type,
+    section_index,
+    section_value,
+    crossing,
+    sampling_time,
+    maxima_index,
+    **kwargs,
+):
+
+    # Configuration handling
+    config = RTEConfig(**kwargs)
+
+    # Metric setup
+    metric_map = {"supremum": np.inf, "euclidean": 2, "manhattan": 1}
+
+    try:
+        ord = metric_map[config.std_metric.lower()]
+    except KeyError:
+        raise ValueError(
+            f"Invalid std_metric: {config.std_metric}. Must be {list(metric_map.keys())}"
+        )
+
+    # Generate the Poincaré section or stroboscopic map
+    if map_type == "PS":
+        points = generate_poincare_section(
+            u,
+            parameters,
+            num_points,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+            section_index,
+            section_value,
+            crossing,
+        )
+        data = points[:, 1:]  # Remove time
+        data = np.delete(data, section_index, axis=1)
+    elif map_type == "SM":
+        points = generate_stroboscopic_map(
+            u,
+            parameters,
+            num_points,
+            sampling_time,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+
+        data = points[:, 1:]  # Remove time
+    else:
+        points = generate_maxima_map(
+            u,
+            parameters,
+            num_points,
+            maxima_index,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+
+        data = points[:, 1:]  # Remove time
+
+    # Threshold calculation
+    if config.threshold_std:
+        std = np.std(data, axis=0)
+        eps = config.threshold * np.linalg.norm(std, ord=ord)
+        if eps <= 0:
+            eps = 0.1
+    else:
+        eps = config.threshold
+
+    # Recurrence matrix calculation
+    recmat = recurrence_matrix(data, float(eps), metric=config.metric)
+
+    # White line distribution
+    P = white_vertline_distr(recmat)[config.lmin :]
+    P = P[P > 0]  # Remove zeros
+    P /= P.sum()  # Normalize
+
+    # Entropy calculation
+    rte = -np.sum(P * np.log(P))
+
+    # Prepare output
+    result = [rte]
+    if config.return_final_state:
+        result.append(points[-1])
+    if config.return_recmat:
+        result.append(recmat)
+    if config.return_p:
+        result.append(P)
+
+    return result[0] if len(result) == 1 else tuple(result)
