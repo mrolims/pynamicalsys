@@ -851,7 +851,7 @@ class ContinuousDynamicalSystem:
 
         if not isinstance(map_type, str):
             raise TypeError("map_type must a valid string")
-        if map_type not in ["SM", "PS"]:
+        if map_type not in ["SM", "PS", "TJ"]:
             raise ValueError(
                 "map_type must be either SM (stroboscopic map) or PS (Poicaré section)"
             )
@@ -885,6 +885,7 @@ class ContinuousDynamicalSystem:
         return basin_of_attraction(
             u,
             parameters,
+            num_intersections,
             self.__equations_of_motion,
             transient_time,
             time_step,
@@ -892,7 +893,6 @@ class ContinuousDynamicalSystem:
             self.__rtol,
             self.__integrator_func,
             map_type,
-            num_intersections,
             section_index,
             section_value,
             crossing,

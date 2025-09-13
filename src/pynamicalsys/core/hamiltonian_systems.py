@@ -415,7 +415,7 @@ class HamiltonianSystem:
         self,
         q: NDArray[np.float64],
         p: NDArray[np.float64],
-        total_time: np.float64,
+        num_intersections: int,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
         section_index: int = 0,
         section_value: float = 0.0,
@@ -466,7 +466,9 @@ class HamiltonianSystem:
 
         parameters = validate_parameters(parameters, self.__number_of_parameters)
 
-        validate_non_negative(total_time, "total time", type_=Real)
+        validate_non_negative(
+            num_intersections, "num_intersections time", type_=Integral
+        )
 
         validate_non_negative(section_index, "section_index")
         if section_index >= 2 * self.__degrees_of_freedom:
@@ -490,7 +492,7 @@ class HamiltonianSystem:
         return poincare_section_function(
             q,
             p,
-            total_time,
+            num_intersections,
             parameters,
             self.__grad_T,
             self.__grad_V,

@@ -372,7 +372,7 @@ def generate_stroboscopic_map(
         lam = (time_target - time_prev) / (time_curr - time_prev)
         strobe_points[count, 0] = time_target
         strobe_points[count, 1:] = (1 - lam) * u_prev + lam * u_curr
-
+        # print((1 - lam), u_prev, u_curr)
         count += 1
         time_target += sampling_time
 
@@ -417,6 +417,7 @@ def ensemble_stroboscopic_map(
 def basin_of_attraction(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
+    num_intersections: int,
     equations_of_motion: Callable[
         [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
     ],
@@ -426,8 +427,6 @@ def basin_of_attraction(
     rtol: float,
     integrator: Callable,
     select_map: str,
-    total_time: float = None,
-    num_intersections: int = None,
     section_index: int = None,
     section_value: float = None,
     crossing: int = None,
@@ -437,14 +436,9 @@ def basin_of_attraction(
 ) -> NDArray[np.int32]:
 
     if select_map == "PS":
-        if (
-            num_intersections is None
-            or section_index is None
-            or section_value is None
-            or crossing is None
-        ):
+        if section_index is None or section_value is None or crossing is None:
             raise ValueError(
-                "You must provide num_intersections, section_index, section_value, and crossing"
+                "You must provide section_index, section_value, and crossing"
             )
         data = ensemble_poincare_section(
             u,
@@ -461,11 +455,9 @@ def basin_of_attraction(
             crossing,
         )
 
-        traj_data = data[:, :, 1:]
-        trajectory_centroids = traj_data.mean(axis=1)  # shape (num_ic, 2)
     elif select_map == "SM":
-        if num_intersections is None or sampling_time is None:
-            raise ValueError("You must provide num_intersections and sampling_time")
+        if sampling_time is None:
+            raise ValueError("You must provide sampling_time")
 
         data = ensemble_stroboscopic_map(
             u,
@@ -479,29 +471,8 @@ def basin_of_attraction(
             rtol,
             integrator,
         )
-        traj_data = data[:, :, 1:]
-        trajectory_centroids = traj_data.mean(axis=1)  # shape (num_ic, 2)
-    else:
-        if total_time is None:
-            raise ValueError("You must provide total_time")
-
-        trajectories = ensemble_trajectories(
-            u,
-            parameters,
-            total_time,
-            equations_of_motion,
-            transient_time,
-            time_step,
-            atol,
-            rtol,
-            integrator,
-        )
-
-        for i, traj in enumerate(trajectories):
-            x = traj[:, 1]  # x coordinate
-            v = traj[:, 2]  # v coordinate
-            trajectory_centroids[i, 0] = np.mean(x)
-            trajectory_centroids[i, 1] = np.mean(v)
+    traj_data = data[:, :, 1:]
+    trajectory_centroids = traj_data.mean(axis=1)  # shape (num_ic, 2)
 
     db = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1).fit(trajectory_centroids)
     labels = db.labels_  # shape (num_ic,)
