@@ -556,9 +556,13 @@ class DiscreteDynamicalSystem:
         validate_transient_time(transient_time, total_time, type_=Integral)
 
         if u.ndim == 1:
-            return generate_trajectory(
+            result = generate_trajectory(
                 u, parameters, total_time, self.__mapping, transient_time=transient_time
             )
+            if self.__system_dimension == 1:
+                return result[:, 0]
+            else:
+                return result
         else:
             return ensemble_trajectories(
                 u, parameters, total_time, self.__mapping, transient_time=transient_time
@@ -2721,12 +2725,17 @@ class DiscreteDynamicalSystem:
         validate_transient_time(transient_time, total_time, Integral)
 
         validate_positive(wmin, "wmin", Integral)
-        if wmin < 2 or wmin >= total_time // 2:
+
+        if (
+            wmin < 2
+            or wmin
+            >= (total_time - (transient_time if transient_time is not None else 0)) // 2
+        ):
             raise ValueError(
                 f"`wmin` must be an integer >= 2 and <= total_time / 2. Got {wmin}."
             )
 
-        return hurst_exponent(
+        result = hurst_exponent(
             u,
             parameters,
             total_time,
@@ -2734,6 +2743,11 @@ class DiscreteDynamicalSystem:
             wmin=wmin,
             transient_time=transient_time,
         )
+
+        if self.__system_dimension == 1:
+            return result[0]
+        else:
+            return result
 
     def finite_time_hurst_exponent(
         self,

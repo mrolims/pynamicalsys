@@ -18,7 +18,7 @@
 from typing import Optional, Tuple, Union, Callable
 from numpy.typing import NDArray
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
     RTEConfig,
@@ -1047,7 +1047,7 @@ def GALI_k(
         return np.array([gali])
 
 
-@njit
+@njit(parallel=True)
 def hurst_exponent(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -1071,7 +1071,7 @@ def hurst_exponent(
     mapping : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
         A function that defines the system dynamics, i.e., how `u` evolves over time given `parameters`.
     wmin : int, optional
-        Minimum window size for the rescaled range calculation. Default is 2.
+        Minimum window size for the rescaled range calculation. Sh Default is 2.
     transient_time : Optional[int], optional
         Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
 
@@ -1093,12 +1093,11 @@ def hurst_exponent(
 
     The function supports multivariate time series, estimating one Hurst exponent per dimension.
     """
-
     u = u.copy()
     neq = len(u)
     H = np.zeros(neq)
 
-    # Handle transient time
+    # Handle transient
     if transient_time is not None:
         sample_size = total_time - transient_time
         for i in range(transient_time):
@@ -1111,50 +1110,68 @@ def hurst_exponent(
     )
 
     ells = np.arange(wmin, sample_size // 2)
+    log_ells = np.log(ells)
     RS = np.empty((ells.shape[0], neq))
-    for j in range(neq):
+
+    for j in prange(neq):
+        series = time_series[:, j]
+
+        # Precompute cumulative sums and cumulative sums of squares
+        cum_sum = np.zeros(sample_size)
+        cum_sum_sq = np.zeros(sample_size)
+        cum_sum[0] = series[0]
+        cum_sum_sq[0] = series[0] ** 2
+        for t in range(1, sample_size):
+            cum_sum[t] = cum_sum[t - 1] + series[t]
+            cum_sum_sq[t] = cum_sum_sq[t - 1] + series[t] ** 2
 
         for i, ell in enumerate(ells):
             num_blocks = sample_size // ell
-            R_over_S = np.empty(num_blocks)
+            R_over_S = np.zeros(num_blocks)
 
             for block in range(num_blocks):
                 start = block * ell
                 end = start + ell
-                block_series = time_series[start:end, j]
 
-                # Mean adjustment
-                mean_adjusted_series = block_series - np.mean(block_series)
+                # Mean using cumulative sums
+                block_sum = cum_sum[end - 1] - (cum_sum[start - 1] if start > 0 else 0)
+                block_mean = block_sum / ell
 
-                # Cumulative sum
-                Z = np.cumsum(mean_adjusted_series)
+                # Variance using cumulative sums of squares
+                block_sum_sq = cum_sum_sq[end - 1] - (
+                    cum_sum_sq[start - 1] if start > 0 else 0
+                )
+                var = block_sum_sq / ell - block_mean**2
+                S = np.sqrt(var) if var > 0 else 0
 
-                # Range (R)
-                R = np.max(Z) - np.min(Z)
+                # Cumulative sum of mean-adjusted series for range
+                Z = 0.0
+                max_Z = 0.0
+                min_Z = 0.0
+                cumsum = 0.0
+                for k in range(start, end):
+                    cumsum += series[k] - block_mean
+                    if cumsum > max_Z:
+                        max_Z = cumsum
+                    if cumsum < min_Z:
+                        min_Z = cumsum
+                R = max_Z - min_Z
 
-                # Standard deviation (S)
-                S = np.std(block_series)
+                R_over_S[block] = R / S if S > 0 else 0.0
 
-                # Avoid division by zero
-                if S > 0:
-                    R_over_S[block] = R / S
-                else:
-                    R_over_S[block] = 0
+            positive_mask = R_over_S > 0
+            RS[i, j] = (
+                np.mean(R_over_S[positive_mask]) if np.any(positive_mask) else 0.0
+            )
 
-            if np.all(R_over_S == 0):
-                RS[i, j] == 0
-            else:
-                RS[i, j] = np.mean(R_over_S[R_over_S > 0])
-
-        if np.all(RS[:, j] == 0):
-            H[j] = 0
+        # Linear regression in log-log space
+        positive_inds = np.where(RS[:, j] > 0)[0]
+        if positive_inds.size == 0:
+            H[j] = 0.0
         else:
-            # Log-log plot and linear regression to estimate the Hurst exponent
-            inds = np.where(RS[:, j] > 0)[0]
-            x_fit = np.log(ells[inds])
-            y_fit = np.log(RS[inds, j])
+            x_fit = log_ells[positive_inds]
+            y_fit = np.log(RS[positive_inds, j])
             fitting = fit_poly(x_fit, y_fit, 1)
-
             H[j] = fitting[0]
 
     if return_last:
