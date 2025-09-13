@@ -851,7 +851,7 @@ class ContinuousDynamicalSystem:
 
         if not isinstance(map_type, str):
             raise TypeError("map_type must a valid string")
-        if map_type not in ["SM", "PS", "TJ"]:
+        if map_type not in ["SM", "PS"]:
             raise ValueError(
                 "map_type must be either SM (stroboscopic map) or PS (Poicaré section)"
             )
