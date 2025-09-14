@@ -18,9 +18,21 @@
 from typing import Callable
 from numpy.typing import NDArray
 import numpy as np
-from numba import njit
+from numba import njit, prange
 
-from pynamicalsys.common.utils import qr, wedge_norm
+from pynamicalsys.common.utils import qr, wedge_norm, fit_poly
+
+from pynamicalsys.common.recurrence_quantification_analysis import (
+    RTEConfig,
+    recurrence_matrix,
+    white_vertline_distr,
+)
+
+from pynamicalsys.hamiltonian_systems.trajectory_analysis import (
+    generate_poincare_section,
+)
+
+from pynamicalsys.common.time_series_metrics import hurst_exponent
 
 
 @njit
@@ -509,3 +521,118 @@ def GALI(
         return history
     else:
         return [[time, gali]]
+
+
+def recurrence_time_entropy(
+    q,
+    p,
+    num_points,
+    parameters,
+    grad_T,
+    grad_V,
+    time_step,
+    integrator,
+    section_index,
+    section_value,
+    crossing,
+    **kwargs,
+):
+
+    # Configuration handling
+    config = RTEConfig(**kwargs)
+
+    # Metric setup
+    metric_map = {"supremum": np.inf, "euclidean": 2, "manhattan": 1}
+
+    try:
+        ord = metric_map[config.std_metric.lower()]
+    except KeyError:
+        raise ValueError(
+            f"Invalid std_metric: {config.std_metric}. Must be {list(metric_map.keys())}"
+        )
+
+    # Generate the Poincaré section or stroboscopic map
+    points = generate_poincare_section(
+        q,
+        p,
+        num_points,
+        parameters,
+        grad_T,
+        grad_V,
+        time_step,
+        integrator,
+        section_index,
+        section_value,
+        crossing,
+    )
+    data = points[:, 1:]  # Remove time
+    data = np.delete(data, section_index, axis=1)
+
+    # Threshold calculation
+    if config.threshold_std:
+        std = np.std(data, axis=0)
+        eps = config.threshold * np.linalg.norm(std, ord=ord)
+        if eps <= 0:
+            eps = 0.1
+    else:
+        eps = config.threshold
+
+    # Recurrence matrix calculation
+    recmat = recurrence_matrix(data, float(eps), metric=config.metric)
+
+    # White line distribution
+    P = white_vertline_distr(recmat)[config.lmin :]
+    P = P[P > 0]  # Remove zeros
+    P /= P.sum()  # Normalize
+
+    # Entropy calculation
+    rte = -np.sum(P * np.log(P))
+
+    # Prepare output
+    result = [rte]
+    if config.return_final_state:
+        result.append(points[-1])
+    if config.return_recmat:
+        result.append(recmat)
+    if config.return_p:
+        result.append(P)
+
+    return result[0] if len(result) == 1 else tuple(result)
+
+
+def hurst_exponent_wrapped(
+    q: NDArray[np.float64],
+    p: NDArray[np.float64],
+    num_points: int,
+    parameters: NDArray[np.float64],
+    grad_T: Callable,
+    grad_V: Callable,
+    time_step: float,
+    integrator: Callable,
+    section_index: int,
+    section_value: float,
+    crossing: int,
+    wmin: int = 2,
+) -> NDArray[np.float64]:
+
+    q = q.copy()
+    p = p.copy()
+
+    # Generate the Poincaré section or stroboscopic map
+    points = generate_poincare_section(
+        q,
+        p,
+        num_points,
+        parameters,
+        grad_T,
+        grad_V,
+        time_step,
+        integrator,
+        section_index,
+        section_value,
+        crossing,
+    )
+    data = points[:, 1:]  # Remove time
+    data = np.delete(data, section_index, axis=1)
+
+    return hurst_exponent(data, wmin=wmin)
