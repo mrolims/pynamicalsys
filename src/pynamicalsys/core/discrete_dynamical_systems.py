@@ -36,7 +36,7 @@ from pynamicalsys.discrete_time.dynamical_indicators import (
     finite_time_hurst_exponent,
     finite_time_lyapunov,
     finite_time_RTE,
-    hurst_exponent,
+    hurst_exponent_wrapped,
     lagrangian_descriptors,
     lyapunov_1D,
     lyapunov_er,
@@ -2667,13 +2667,10 @@ class DiscreteDynamicalSystem:
         ----------
         u : NDArray[np.float64]
             Initial condition vector of shape (n,).
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            Parameters passed to the mapping function.
         total_time : int
             Total number of iterations used to generate the trajectory.
-        mapping : Callable[[NDArray[np.float64],
-            NDArray[np.float64]], NDArray[np.float64]]
-            A function that defines the system dynamics, i.e., how `u` evolves over time given `parameters`.
+        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
+            Parameters passed to the mapping function.
         wmin : int, optional
             Minimum window size for the rescaled range calculation. Default is 2.
         transient_time : Optional[int], optional
@@ -2735,7 +2732,7 @@ class DiscreteDynamicalSystem:
                 f"`wmin` must be an integer >= 2 and <= total_time / 2. Got {wmin}."
             )
 
-        result = hurst_exponent(
+        result = hurst_exponent_wrapped(
             u,
             parameters,
             total_time,

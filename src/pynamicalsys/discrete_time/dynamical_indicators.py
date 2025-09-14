@@ -31,6 +31,8 @@ from pynamicalsys.discrete_time.trajectory_analysis import (
 )
 from pynamicalsys.common.utils import qr, householder_qr, fit_poly, wedge_norm
 
+from pynamicalsys.common.time_series_metrics import hurst_exponent
+
 
 @njit
 def lyapunov_1D(
@@ -1047,8 +1049,7 @@ def GALI_k(
         return np.array([gali])
 
 
-@njit(parallel=True)
-def hurst_exponent(
+def hurst_exponent_wrapped(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
     total_time: int,
@@ -1057,122 +1058,15 @@ def hurst_exponent(
     transient_time: Optional[int] = None,
     return_last: bool = False,
 ) -> NDArray[np.float64]:
-    """
-    Estimate the Hurst exponent for a system trajectory using the rescaled range (R/S) method.
-
-    Parameters
-    ----------
-    u : NDArray[np.float64]
-        Initial condition vector of shape (n,).
-    parameters : NDArray[np.float64]
-        Parameters passed to the mapping function.
-    total_time : int
-        Total number of iterations used to generate the trajectory.
-    mapping : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
-        A function that defines the system dynamics, i.e., how `u` evolves over time given `parameters`.
-    wmin : int, optional
-        Minimum window size for the rescaled range calculation. Sh Default is 2.
-    transient_time : Optional[int], optional
-        Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
-
-    Returns
-    -------
-    NDArray[np.float64]
-        Estimated Hurst exponents for each dimension of the input vector `u`, of shape (n,).
-
-    Notes
-    -----
-    The Hurst exponent is a measure of the long-term memory of a time series:
-
-    - H = 0.5 indicates a random walk (no memory).
-    - H > 0.5 indicates persistent behavior (positive autocorrelation).
-    - H < 0.5 indicates anti-persistent behavior (negative autocorrelation).
-
-    This implementation computes the rescaled range (R/S) for various window sizes and
-    performs a linear regression in log-log space to estimate the exponent.
-
-    The function supports multivariate time series, estimating one Hurst exponent per dimension.
-    """
     u = u.copy()
     neq = len(u)
     H = np.zeros(neq)
-
-    # Handle transient
-    if transient_time is not None:
-        sample_size = total_time - transient_time
-        for i in range(transient_time):
-            u = mapping(u, parameters)
-    else:
-        sample_size = total_time
 
     time_series = generate_trajectory(
         u, parameters, total_time, mapping, transient_time=transient_time
     )
 
-    ells = np.arange(wmin, sample_size // 2)
-    log_ells = np.log(ells)
-    RS = np.empty((ells.shape[0], neq))
-
-    for j in prange(neq):
-        series = time_series[:, j]
-
-        # Precompute cumulative sums and cumulative sums of squares
-        cum_sum = np.zeros(sample_size)
-        cum_sum_sq = np.zeros(sample_size)
-        cum_sum[0] = series[0]
-        cum_sum_sq[0] = series[0] ** 2
-        for t in range(1, sample_size):
-            cum_sum[t] = cum_sum[t - 1] + series[t]
-            cum_sum_sq[t] = cum_sum_sq[t - 1] + series[t] ** 2
-
-        for i, ell in enumerate(ells):
-            num_blocks = sample_size // ell
-            R_over_S = np.zeros(num_blocks)
-
-            for block in range(num_blocks):
-                start = block * ell
-                end = start + ell
-
-                # Mean using cumulative sums
-                block_sum = cum_sum[end - 1] - (cum_sum[start - 1] if start > 0 else 0)
-                block_mean = block_sum / ell
-
-                # Variance using cumulative sums of squares
-                block_sum_sq = cum_sum_sq[end - 1] - (
-                    cum_sum_sq[start - 1] if start > 0 else 0
-                )
-                var = block_sum_sq / ell - block_mean**2
-                S = np.sqrt(var) if var > 0 else 0
-
-                # Cumulative sum of mean-adjusted series for range
-                Z = 0.0
-                max_Z = 0.0
-                min_Z = 0.0
-                cumsum = 0.0
-                for k in range(start, end):
-                    cumsum += series[k] - block_mean
-                    if cumsum > max_Z:
-                        max_Z = cumsum
-                    if cumsum < min_Z:
-                        min_Z = cumsum
-                R = max_Z - min_Z
-
-                R_over_S[block] = R / S if S > 0 else 0.0
-
-            positive_mask = R_over_S > 0
-            RS[i, j] = (
-                np.mean(R_over_S[positive_mask]) if np.any(positive_mask) else 0.0
-            )
-
-        # Linear regression in log-log space
-        positive_inds = np.where(RS[:, j] > 0)[0]
-        if positive_inds.size == 0:
-            H[j] = 0.0
-        else:
-            x_fit = log_ells[positive_inds]
-            y_fit = np.log(RS[positive_inds, j])
-            fitting = fit_poly(x_fit, y_fit, 1)
-            H[j] = fitting[0]
+    H = hurst_exponent(time_series, wmin=wmin)
 
     if return_last:
         result = np.zeros(2 * neq)
