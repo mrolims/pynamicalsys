@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 import numpy as np
 from numba import njit
 
-from pynamicalsys.common.utils import qr, wedge_norm
+from pynamicalsys.common.utils import qr, wedge_norm, fit_poly
 
 from pynamicalsys.continuous_time.trajectory_analysis import (
     generate_maxima_map,
@@ -37,6 +37,8 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     recurrence_matrix,
     white_vertline_distr,
 )
+
+from pynamicalsys.common.time_series_metrics import hurst_exponent
 
 
 @njit
@@ -58,7 +60,6 @@ def lyapunov_exponents(
     integrator=rk4_step_wrapped,
     return_history: bool = False,
     seed: int = 13,
-    log_base: float = np.e,
     QR: Callable[
         [NDArray[np.float64]], Tuple[NDArray[np.float64], NDArray[np.float64]]
     ] = qr,
@@ -124,7 +125,7 @@ def lyapunov_exponents(
         # Perform the QR decomposition
         v, R = QR(v)
         # Accumulate the log
-        exponents += np.log(np.abs(np.diag(R))) / np.log(log_base)
+        exponents += np.log(np.abs(np.diag(R)))
 
         if return_history:
             result = [time]
@@ -147,6 +148,102 @@ def lyapunov_exponents(
                 exponents[i]
                 / (time - (transient_time if transient_time is not None else 0))
             )
+        return [result]
+
+
+@njit
+def maximum_lyapunov_exponent(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    total_time: float,
+    equations_of_motion: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    jacobian: Callable[
+        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
+    ],
+    transient_time: Optional[float] = None,
+    time_step: float = 0.01,
+    atol: float = 1e-6,
+    rtol: float = 1e-3,
+    integrator=rk4_step_wrapped,
+    return_history: bool = False,
+    seed: int = 13,
+) -> NDArray[np.float64]:
+
+    neq = len(u)  # Number of equations of the system
+    nt = neq + neq  # system + variational equations
+
+    u = u.copy()
+
+    # Handle transient time
+    if transient_time is not None:
+        u = evolve_system(
+            u,
+            parameters,
+            transient_time,
+            equations_of_motion,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+        )
+        sample_time = total_time - transient_time
+        time = transient_time
+    else:
+        sample_time = total_time
+        time = 0
+
+    # State + deviation vectors
+    uv = np.zeros(nt)
+    uv[:neq] = u.copy()
+
+    # Randomly define the deviation vectors and orthonormalize them
+    np.random.seed(seed)
+    uv[neq:] = -1 + 2 * np.random.rand(nt - neq)
+    norm = np.linalg.norm(uv[neq:])
+    uv[neq:] /= norm
+
+    exponent = 0.0
+    history = []
+
+    while time < total_time:
+        if time + time_step > total_time:
+            time_step = total_time - time
+
+        uv, time, time_step = step(
+            time,
+            uv,
+            parameters,
+            equations_of_motion,
+            jacobian=jacobian,
+            time_step=time_step,
+            atol=atol,
+            rtol=rtol,
+            integrator=integrator,
+            number_of_deviation_vectors=1,
+        )
+
+        norm = np.linalg.norm(uv[neq:])
+
+        exponent += np.log(np.abs(norm))
+
+        uv[neq:] /= norm
+
+        if return_history:
+            result = [time]
+            result.append(
+                exponent
+                / (time - (transient_time if transient_time is not None else 0))
+            )
+            history.append(result)
+
+    if return_history:
+        return history
+    else:
+        result = [
+            exponent / (time - (transient_time if transient_time is not None else 0))
+        ]
         return [result]
 
 
@@ -567,3 +664,78 @@ def recurrence_time_entropy(
         result.append(P)
 
     return result[0] if len(result) == 1 else tuple(result)
+
+
+def hurst_exponent_wrapped(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    num_points: int,
+    equations_of_motion: Callable,
+    time_step: float,
+    atol: float,
+    rtol: float,
+    integrator: Callable,
+    map_type: str,
+    section_index: int,
+    section_value: float,
+    crossing: int,
+    sampling_time: float,
+    maxima_index: int,
+    wmin: int = 2,
+    transient_time: Optional[int] = None,
+) -> NDArray[np.float64]:
+
+    u = u.copy()
+    neq = len(u)
+    H = np.zeros(neq)
+
+    # Generate the Poincaré section or stroboscopic map
+    if map_type == "PS":
+        points = generate_poincare_section(
+            u,
+            parameters,
+            num_points,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+            section_index,
+            section_value,
+            crossing,
+        )
+        data = points[:, 1:]  # Remove time
+        data = np.delete(data, section_index, axis=1)
+    elif map_type == "SM":
+        points = generate_stroboscopic_map(
+            u,
+            parameters,
+            num_points,
+            sampling_time,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+
+        data = points[:, 1:]  # Remove time
+    else:
+        points = generate_maxima_map(
+            u,
+            parameters,
+            num_points,
+            maxima_index,
+            equations_of_motion,
+            transient_time,
+            time_step,
+            atol,
+            rtol,
+            integrator,
+        )
+
+        data = points[:, 1:]  # Remove time
+
+    return hurst_exponent(data, wmin=wmin)

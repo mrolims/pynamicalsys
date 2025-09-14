@@ -29,7 +29,9 @@ from pynamicalsys.continuous_time.chaotic_indicators import (
     SALI,
     GALI,
     lyapunov_exponents,
+    maximum_lyapunov_exponent,
     recurrence_time_entropy,
+    hurst_exponent_wrapped,
 )
 
 from pynamicalsys.continuous_time.models import (
@@ -1145,27 +1147,42 @@ class ContinuousDynamicalSystem:
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1")
 
-        result = lyapunov_exponents(
-            u,
-            parameters,
-            total_time,
-            self.__equations_of_motion,
-            self.__jacobian,
-            num_exponents,
-            transient_time=transient_time,
-            time_step=time_step,
-            atol=self.__atol,
-            rtol=self.__rtol,
-            integrator=self.__integrator_func,
-            return_history=return_history,
-            seed=seed,
-            log_base=log_base,
-            QR=qr_func,
-        )
-        if return_history:
-            return np.array(result)
+        if num_exponents == 1:
+            result = maximum_lyapunov_exponent(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                transient_time,
+                time_step,
+                self.__atol,
+                self.__rtol,
+                self.__integrator_func,
+                return_history,
+                seed,
+            )
         else:
-            return np.array(result[0])
+            result = lyapunov_exponents(
+                u,
+                parameters,
+                total_time,
+                self.__equations_of_motion,
+                self.__jacobian,
+                num_exponents,
+                transient_time=transient_time,
+                time_step=time_step,
+                atol=self.__atol,
+                rtol=self.__rtol,
+                integrator=self.__integrator_func,
+                return_history=return_history,
+                seed=seed,
+                QR=qr_func,
+            )
+        if return_history:
+            return np.array(result) / np.log(log_base)
+        else:
+            return np.array(result[0]) / np.log(log_base)
 
     def SALI(
         self,
@@ -1549,6 +1566,8 @@ class ContinuousDynamicalSystem:
             Only used when map_type="PS".
         sampling_time : float
             Time interval between consecutive samples in the stroboscopic map. Only used when map_type="SM".
+        maxima_index : Optional[int]
+            Index of the coordinate whose maxima will be recorded. Only used when map_type="MM".
         metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
             Distance metric used for phase space reconstruction.
         std_metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
@@ -1684,4 +1703,163 @@ class ContinuousDynamicalSystem:
             sampling_time,
             maxima_index,
             **kwargs,
+        )
+
+    def hurst_exponent(
+        self,
+        u: Union[NDArray[np.float64], Sequence[float]],
+        num_intersections: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        wmin: int = 2,
+        map_type: str = "SM",
+        section_index: Optional[int] = None,
+        section_value: Optional[float] = None,
+        crossing: Optional[int] = None,
+        sampling_time: Optional[float] = None,
+        maxima_index: Optional[float] = None,
+    ) -> Union[float, Tuple[float, NDArray[np.float64]]]:
+        """
+        Estimate the Hurst exponent for a system trajectory using the rescaled range (R/S) method.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial condition vector of shape (n,).
+        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
+            Parameters passed to the mapping function.
+        total_time : int
+            Total number of iterations used to generate the trajectory.
+        transient_time : Optional[int], optional
+            Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
+        wmin : int, optional
+            Minimum window size for the rescaled range calculation. Default is 2.
+        map_type : str
+            Which map to use: stroboscopic map or Poincaré section, by default "SM"
+        section_index : Optional[int]
+            Index of the coordinate to define the Poincaré section (0-based). Only used when map_type="PS".
+        section_value : Optional[float]
+            Value of the coordinate at which the section is defined. Only used when map_type="PS".
+        crossing : Optional[int]
+            Specifies the type of crossing to consider:
+            - 1 : positive crossing (from below to above section_value)
+            - -1 : negative crossing (from above to below section_value)
+            - 0 : all crossings
+
+            Only used when map_type="PS".
+        sampling_time : float
+            Time interval between consecutive samples in the stroboscopic map. Only used when map_type="SM".
+        maxima_index : Optional[int]
+            Index of the coordinate whose maxima will be recorded. Only used when map_type="MM".
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Estimated Hurst exponents for each dimension of the input vector `u`, of shape (n,).
+
+        Raises
+        ------
+        TypeError
+            - If `map_type` is not a string.
+            - If `section_value` is not a real number when `map_type="PS"`.
+            - If `crossing` is not an integer when `map_type="PS"`.
+            - If `sampling_time` is not a real number when `map_type="SM"`.
+            - If `maxima_index` is not an integer when `map_type="MM"`.
+        ValueError
+            - If `map_type` is not one of {"SM", "PS", "MM"}.
+            - If `map_type="PS"` and any of `section_index`, `section_value`, or `crossing` is `None`.
+            - If `section_index` is negative or ≥ system dimension when `map_type="PS"`.
+            - If `crossing` is not in {-1, 0, 1} when `map_type="PS"`.
+            - If `map_type="SM"` and `sampling_time` is `None` or negative.
+            - If `map_type="MM"` and `maxima_index` is `None` or negative.
+            - If `transient_time` is negative.
+            - If `wmin` is less than 2 or greater than or equal to `num_intersections // 2`.
+
+        Notes
+        -----
+        The Hurst exponent is a measure of the long-term memory of a time series:
+
+        - H = 0.5 indicates a random walk (no memory).
+        - H > 0.5 indicates persistent behavior (positive autocorrelation).
+        - H < 0.5 indicates anti-persistent behavior (negative autocorrelation).
+
+        This implementation computes the rescaled range (R/S) for various window sizes and
+        performs a linear regression in log-log space to estimate the exponent.
+
+        The function supports multivariate time series, estimating one Hurst exponent per dimension.
+        """
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+        u = u.copy()
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(transient_time, "transient_time", Real)
+
+        if not isinstance(map_type, str):
+            raise TypeError("map_type must be a string")
+
+        if map_type == "PS":
+            if section_index is None or section_value is None or crossing is None:
+                raise ValueError(
+                    'When using map_type="PS", you must inform section_index, section_value, and crossing'
+                )
+
+            validate_non_negative(section_index, "section_index", Integral)
+            if section_index >= self.__system_dimension:
+                raise ValueError("section_index must be in [0, system_dimension)")
+
+            if not isinstance(section_value, Real):
+                raise TypeError("section_value must be a valid real number")
+
+            if not isinstance(crossing, Integral):
+                raise TypeError("crossing must be a valid integer number")
+            elif crossing not in [-1, 0, 1]:
+                raise ValueError("crossing must be -1, 0, or 1")
+
+        elif map_type == "SM":
+
+            if sampling_time is not None:
+                validate_non_negative(sampling_time, "sampling_time", Real)
+            else:
+                raise ValueError(
+                    'When using map_type="SM" you must inform sampling_time'
+                )
+        elif map_type == "MM":
+            if maxima_index is not None:
+                validate_non_negative(maxima_index, "maxima_index", Integral)
+            else:
+                raise ValueError(
+                    'When using map_type="MM" you must inform maxima_index'
+                )
+        else:
+            raise ValueError(
+                "map_type must be SM (stroboscopic map), PS (Poincaré section), or MM (Maxima map)"
+            )
+
+        if wmin < 2 or wmin >= num_intersections // 2:
+            raise ValueError(
+                f"`wmin` must be an integer >= 2 and <= total_time / 2. Got {wmin}."
+            )
+
+        time_step = self.__get_initial_time_step(u, parameters)
+
+        return hurst_exponent_wrapped(
+            u,
+            parameters,
+            num_intersections,
+            self.__equations_of_motion,
+            time_step,
+            self.__atol,
+            self.__rtol,
+            self.__integrator_func,
+            map_type,
+            section_index,
+            section_value,
+            crossing,
+            sampling_time,
+            maxima_index,
+            wmin,
+            transient_time,
         )
