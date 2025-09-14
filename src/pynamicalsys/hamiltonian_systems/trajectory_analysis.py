@@ -191,9 +191,9 @@ def generate_poincare_section(
         Phase-space points `(q, p)` recorded at section crossings.
     """
     dof = len(q)
-    section_points = np.zeros((num_intersections, 2 * dof))
+    section_points = np.zeros((num_intersections, 2 * dof + 1))
     count = 0
-
+    n_steps = 0
     q_prev, p_prev = q.copy(), p.copy()
     while count < num_intersections:
         q_new, p_new = integrator(q_prev, p_prev, time_step, grad_T, grad_V, parameters)
@@ -207,15 +207,18 @@ def generate_poincare_section(
             )
             q_cross = (1 - lam) * q_prev + lam * q_new
             p_cross = (1 - lam) * p_prev + lam * p_new
+            t_cross = n_steps * time_step + lam * time_step
 
             velocity = grad_T(p_cross, parameters)[section_index]
 
             if crossing == 0 or np.sign(velocity) == crossing:
-                section_points[count, :dof] = q_cross
-                section_points[count, dof:] = p_cross
+                section_points[count, 0] = t_cross
+                section_points[count, 1 : dof + 1] = q_cross
+                section_points[count, dof + 1 :] = p_cross
                 count += 1
 
         q_prev, p_prev = q_new, p_new
+        n_steps += 1
 
     return section_points
 

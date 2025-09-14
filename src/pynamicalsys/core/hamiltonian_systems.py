@@ -16,7 +16,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from numbers import Integral, Real
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
@@ -41,7 +41,7 @@ from pynamicalsys.hamiltonian_systems.validators import (
     validate_parameters,
 )
 
-from pynamicalsys.common.utils import qr, householder_qr
+from pynamicalsys.common.utils import qr, householder_qr, fit_poly
 
 from pynamicalsys.hamiltonian_systems.trajectory_analysis import (
     generate_trajectory,
@@ -56,6 +56,8 @@ from pynamicalsys.hamiltonian_systems.chaotic_indicators import (
     SALI,
     LDI,
     GALI,
+    recurrence_time_entropy,
+    hurst_exponent_wrapped,
 )
 
 
@@ -954,3 +956,238 @@ class HamiltonianSystem:
             return np.array(result)
         else:
             return result[0]
+
+    def recurrence_time_entropy(
+        self,
+        q: Union[NDArray[np.float64], Sequence[float]],
+        p: Union[NDArray[np.float64], Sequence[float]],
+        num_intersections: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        section_index: int = 0,
+        section_value: float = 0.0,
+        crossing: int = 1,
+        **kwargs,
+    ):
+        """
+        Compute the recurrence time entropy (RTE) for a Hamiltonian system.
+
+        Parameters
+        ----------
+        q, p : Union[NDArray[np.float64], Sequence[float]]
+            Initial coordinates and momenta (1D arrays).
+        num_intersections: int
+            Number of intersections to record in the Poincaré section.
+        parameters : array-like, optional
+            System parameters.
+        section_index : Optional[int]
+            Index of the coordinate to define the Poincaré section (0-based). Only used when map_type="PS".
+        section_value : Optional[float]
+            Value of the coordinate at which the section is defined. Only used when map_type="PS".
+        crossing : Optional[int]
+            Specifies the type of crossing to consider:
+            - 1 : positive crossing (from below to above section_value)
+            - -1 : negative crossing (from above to below section_value)
+            - 0 : all crossings
+        metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
+            Distance metric used for phase space reconstruction.
+        std_metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
+            Distance metric used for standard deviation calculation.
+        lmin: int, default = 1
+            Minimum line length to consider in recurrence quantification.
+        threshold: float, default = 0.1
+            Recurrence threshold(relative to data range).
+        threshold_std: bool, default = True
+            Whether to scale threshold by data standard deviation.
+        return_final_state: bool, default = False
+            Whether to return the final system state in results.
+        return_recmat: bool, default = False
+            Whether to return the recurrence matrix.
+        return_p: bool, default = False
+            Whether to return white vertical line length distribution.
+
+        Returns
+        -------
+        Union[float, Tuple[float, NDArray[np.float64]]]
+            - float: RTE value(base case)
+            - Tuple: (RTE, white_line_distribution) if return_distribution = True
+
+        Raises
+        ------
+        ValueError
+            - If `q` or `p` are not a 1D array matching the number of degrees of freedom.
+            - If `parameters` is not `None` and does not match the expected number of parameters.
+            - If `parameters` is `None` but the system expects parameters.
+            - If `parameters` is a scalar or array-like but not 1D.
+            - If `section_index` is negative or ≥ system dimension.
+            - If `crossing` is not one of {-1, 0, 1}.
+        TypeError
+            - If `q` or `p` are not a scalar or array-like type.
+            - If `parameters` is not a scalar or array-like type.
+            - If `section_value` is not a real.
+            - If `crossing` is not an integer.
+            - If `sampling_time` is not a real number.
+
+        Notes
+        -----
+        - Higher RTE indicates more complex dynamics
+        - Set min_recurrence_time = 2 to ignore single-point recurrences
+        - Implementation follows [1]
+
+        References
+        ----------
+        [1] Sales et al., Chaos 33, 033140 (2023)
+        """
+        q = validate_initial_conditions(
+            q, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        q = q.copy()
+        p = validate_initial_conditions(
+            p, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        p = p.copy()
+
+        validate_non_negative(num_intersections, "num_intersections", type_=Real)
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(section_index, "section_index")
+        if section_index >= 2 * self.__degrees_of_freedom:
+            raise ValueError(
+                "section_index must be less or equal to the system dimension"
+            )
+
+        if not isinstance(section_value, Real):
+            raise TypeError("section_value must be a valid number")
+
+        if crossing not in [-1, 0, 1]:
+            raise ValueError(
+                "crossing must be either -1, 0, or 1, indicating downward, all crossings, and upward crossings, respectively"
+            )
+
+        return recurrence_time_entropy(
+            q,
+            p,
+            num_intersections,
+            parameters,
+            self.__grad_T,
+            self.__grad_V,
+            self.__time_step,
+            self.__integrator_func,
+            section_index,
+            section_value,
+            crossing,
+            **kwargs,
+        )
+
+    def hurst_exponent(
+        self,
+        q: Union[NDArray[np.float64], Sequence[float]],
+        p: Union[NDArray[np.float64], Sequence[float]],
+        num_intersections: int,
+        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        transient_time: Optional[float] = None,
+        wmin: int = 2,
+        section_index: int = 0,
+        section_value: float = 0.0,
+        crossing: int = 1,
+    ) -> Union[float, Tuple[float, NDArray[np.float64]]]:
+        """
+        Estimate the Hurst exponent for a system trajectory using the rescaled range (R/S) method.
+
+        Parameters
+        ----------
+        u : NDArray[np.float64]
+            Initial condition vector of shape (n,).
+        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
+            Parameters passed to the mapping function.
+        total_time : int
+            Total number of iterations used to generate the trajectory.
+        transient_time : Optional[int], optional
+            Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
+        wmin : int, optional
+            Minimum window size for the rescaled range calculation. Default is 2.
+        section_index : Optional[int]
+            Index of the coordinate to define the Poincaré section (0-based). Only used when map_type="PS".
+        section_value : Optional[float]
+            Value of the coordinate at which the section is defined. Only used when map_type="PS".
+        crossing : Optional[int]
+            Specifies the type of crossing to consider:
+            - 1 : positive crossing (from below to above section_value)
+            - -1 : negative crossing (from above to below section_value)
+            - 0 : all crossings
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Estimated Hurst exponents for each dimension of the system (2 * dof).
+
+        Raises
+        ------
+        TypeError
+            - If `map_type` is not a string.
+            - If `section_value` is not a real number.
+            - If `crossing` is not an integer.
+        ValueError
+            - If `section_index` is negative or ≥ system dimension.
+            - If `crossing` is not in {-1, 0, 1}.
+            - If `wmin` is less than 2 or greater than or equal to `num_intersections // 2`.
+
+        Notes
+        -----
+        The Hurst exponent is a measure of the long-term memory of a time series:
+
+        - H = 0.5 indicates a random walk (no memory).
+        - H > 0.5 indicates persistent behavior (positive autocorrelation).
+        - H < 0.5 indicates anti-persistent behavior (negative autocorrelation).
+
+        This implementation computes the rescaled range (R/S) for various window sizes and
+        performs a linear regression in log-log space to estimate the exponent.
+
+        The function supports multivariate time series, estimating one Hurst exponent per dimension.
+        """
+        q = validate_initial_conditions(
+            q, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        q = q.copy()
+        p = validate_initial_conditions(
+            p, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        p = p.copy()
+
+        validate_non_negative(num_intersections, "num_intersections", type_=Real)
+
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(section_index, "section_index")
+        if section_index >= 2 * self.__degrees_of_freedom:
+            raise ValueError(
+                "section_index must be less or equal to the system dimension"
+            )
+
+        if not isinstance(section_value, Real):
+            raise TypeError("section_value must be a valid number")
+
+        if crossing not in [-1, 0, 1]:
+            raise ValueError(
+                "crossing must be either -1, 0, or 1, indicating downward, all crossings, and upward crossings, respectively"
+            )
+
+        if wmin < 2 or wmin >= num_intersections // 2:
+            raise ValueError(
+                f"`wmin` must be an integer >= 2 and <= total_time / 2. Got {wmin}."
+            )
+
+        return hurst_exponent_wrapped(
+            q,
+            p,
+            num_intersections,
+            parameters,
+            self.__grad_T,
+            self.__grad_V,
+            self.__time_step,
+            self.__integrator_func,
+            section_index,
+            section_value,
+            crossing,
+            wmin,
+        )
