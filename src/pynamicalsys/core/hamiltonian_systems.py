@@ -440,14 +440,15 @@ class HamiltonianSystem:
             Value at which the section is taken.
         crossing : {-1, 0, 1}, default=1
             Direction of crossing:
-            -1 : downward
-             0 : all crossings
-             1 : upward
+
+            - -1 : downward
+            - 0 : all crossings
+            - 1 : upward
 
         Returns
         -------
         section_points : ndarray
-            Points of the trajectory lying on the Poincaré section.
+            Points of the trajectory lying on the Poincaré section. The first column is the time of each crossing.
 
         Raises
         ------

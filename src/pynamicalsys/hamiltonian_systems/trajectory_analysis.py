@@ -270,11 +270,11 @@ def ensemble_poincare_section(
 
     Returns
     -------
-    section_points : NDArray[np.float64], shape (num_ic, num_intersections, 2*dof)
-        Poincaré section points for each initial condition.
+    section_points : NDArray[np.float64], shape (num_ic, num_intersections, 2*dof + 1)
+        Poincaré section points for each initial condition with the first column being the time at each crossing.
     """
     num_ic, dof = q.shape
-    section_points = np.zeros((num_ic, num_intersections, 2 * dof))
+    section_points = np.zeros((num_ic, num_intersections, 2 * dof + 1))
     for i in prange(num_ic):
         section_points[i] = generate_poincare_section(
             q[i],
