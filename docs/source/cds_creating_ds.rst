@@ -1,12 +1,12 @@
-Creating a discrete dynamical system
+Creating a continuous dynamical system
 ------------------------------------
 
-The :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.ContinuousDynamicalSystem>` class allows you to create a discrete dynamical system object. You can use built-in systems or define your own continuous dynamical system.
+The :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class allows you to create a continuous dynamical system object. You can use built-in systems or define your own continuous dynamical system.
 
 Using built-in systems
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To check available built-in systems, you can use the :py:meth:`available_models <pynamicalsys.core.discrete_dynamical_systems.ContinuousDynamicalSystem.available_models>` method:
+To check available built-in systems, you can use the :py:meth:`available_models <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.available_models>` method:
 
 .. code-block:: python
 
@@ -33,7 +33,7 @@ You can create this system using:
 
     ds = cds(model="lorenz system")
 
-and then all the methods available for the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.ContinuousDynamicalSystem>` class can be used to run simulations and analyze the system.
+and then all the methods available for the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class can be used to run simulations and analyze the system.
 
 Creating custom continuous dynamical systems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,7 +54,7 @@ You can also create your own continuous system by defining a function that takes
 
         return np.array([dx, dy, dz])
 
-Note that we use `numba` to compile the function for performance. Most methods inside the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.ContinuousDynamicalSystem>` class are decoreted with numba. Therefore, it is absolute necessary that all custom mapping function be decoreted with it as well. You can then create a discrete dynamical system object with this custom function:
+Note that we use :code:`@njit` to compile the function for performance. Most methods inside the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class are decoreted with :code:`@njit`. Therefore, it is absolute necessary that all custom mapping function be decoreted with it as well. You can then create a continuous dynamical system object with this custom function:
 
 .. code-block:: python
 

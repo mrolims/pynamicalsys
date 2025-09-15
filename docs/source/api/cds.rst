@@ -1,5 +1,5 @@
-Continuous Dynamical Systems API
-================================
+Continuous Dynamical System API
+===============================
 
 .. automodule:: pynamicalsys.core.continuous_dynamical_systems
    :members:

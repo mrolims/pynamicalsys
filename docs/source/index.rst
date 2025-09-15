@@ -33,6 +33,7 @@ Overview
 
    dds_tutorial
    cds_tutorial
+   hs_tutorial
 
 .. toctree::
    :maxdepth: 1
@@ -40,6 +41,7 @@ Overview
 
    api/dds
    api/cds
+   api/hs
    api/basin_metrics
    api/time_series_metrics
    api/plot_styler

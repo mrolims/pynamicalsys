@@ -13,7 +13,3 @@ This tutorial is also available as a Jupyter notebook. You can view it directly 
    cds_creating_ds
    cds_trajectories
    cds_chaotic_indicators
-..    dds_bifurcation_diagram
-..    dds_chaotic_indicators
-..    dds_manifolds
-..    dds_escape

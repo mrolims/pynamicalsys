@@ -204,6 +204,98 @@ To visualize the results, we can plot each trajectory in a loop. We will use the
 
 This plot shows the trajectories of the system starting from a extremely close region and diverging over time.
 
+Stroboscopic map
+~~~~~~~~~~~~~~~~
+
+A stroboscopic map is a way to simplify and visualize the behavior of a dynamical system by looking at it only at specific, regularly spaced times. Instead of following a continuous trajectory, we record the system’s state every fixed time interval (for example, every period of an external driving force). Plotting only these sampled points reveals underlying patterns and structures that can be hidden in the full continuous motion.
+
+This idea is closely related to the Poincaré section, which takes a “slice” of the system’s phase space by recording the state only when it crosses a particular surface. While a Poincaré section samples the system when it reaches a certain location, a stroboscopic map samples it at specific times. Both methods reduce the continuous dynamics to a discrete set of points, making it easier to study periodic, quasi-periodic, or chaotic behavior.
+
+We can construct stroboscopic maps using the :py:meth:`stroboscopic_map <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.stroboscopic_map>` method. As we have mentioned, a stroboscopic map is particularly useful when studying forced system. Let's consider then the well-known Duffing oscillator:
+
+.. math::
+    \ddot{x} + \delta\dot{x} -\alpha x + \beta x^3 = \gamma\cos(\omega),
+
+where :math:`\delta` is the damping coefficient, :math:`\alpha` and :math:`\beta` are the coefficients of the linear and nonlinear restoring forces, respectively, and :math:`\gamma` and :math:`\omega` denote the amplitude and frequency of the external driving force. We choose :math:`\delta = 0.2`, :math:`\alpha = \beta = 1`, :math:`\gamma = 0.425`, and :math:`\omega = 1.1`. As for our initial condition, we choose :math:`(x_0, \dot{x}_0) = (1, 0)`. We can then generate the stroboscopic map at every period of the driving force :math:`T = 2\pi/\omega`:
+
+.. code-block:: python
+    
+    # Instantiate the Duffing oscillator model
+    ds = cds(model="duffing")
+
+    # Define the system parameters:
+    # δ (damping), α (linear stiffness), β (nonlinear stiffness),
+    # γ (forcing amplitude), and ω (forcing frequency)
+    delta, alpha, beta, gamma, omega = 0.2, 1, 1, 0.425, 1.1
+    parameters = [delta, alpha, beta, gamma, omega]
+
+    # Initial condition for the system [x, ẋ]
+    u0 = [1, 0]
+
+    # Number of points to collect for the stroboscopic map
+    num_samples = 50000
+
+    # Time to discard before recording (transient)
+    transient_time = 2000
+
+    # Total simulation time
+    total_time = 4000
+
+    # Sampling time corresponding to one period of the external forcing
+    T = 2 * np.pi / omega
+
+    # Generate the full trajectory of the system
+    trajectory = ds.trajectory(
+        u0,
+        total_time,
+        parameters=parameters,
+        transient_time=transient_time
+    )
+
+    # Generate the stroboscopic map by sampling the trajectory every T
+    sm = ds.stroboscopic_map(
+        u0,
+        num_samples,
+        sampling_time=T,
+        parameters=parameters,
+        transient_time=transient_time
+    )
+
+Note that differently than the trajectory case, now we must inform the number of periods we want to follow, i.e., the number of points in the stroboscopic map. The transient time, though, still is in dynamical time units. We can then visualize the stroboscopic map and compare it with the full trajectory:
+
+.. code-block:: python
+
+    # Set the plotting style using PlotStyler with custom parameters:
+    # larger font size, thinner lines, smaller markers
+    ps = PlotStyler(fontsize=18, linewidth=0.5, markersize=0.25, markeredgewidth=0)
+    ps.apply_style()  # Apply the chosen style to Matplotlib
+
+    # Create a figure with two side-by-side subplots sharing the same axes
+    fig, ax = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(10, 3))
+
+    # Plot the continuous trajectory of the Duffing system (x vs. ẋ) on the first subplot
+    ax[0].plot(trajectory[:, 1], trajectory[:, 2], "k-")
+
+    # Plot the stroboscopic map points (x vs. ẋ) on the second subplot
+    ax[1].plot(sm[:, 1], sm[:, 2], "ko")
+
+    # Set axis labels for both subplots
+    ax[0].set_xlabel("$x$")
+    ax[1].set_xlabel("$x$")
+    ax[0].set_ylabel(r"$\dot{x}$")
+
+    # Adjust spacing between subplots for a cleaner layout
+    plt.tight_layout(pad=0.2)
+
+    # Save the figure to file with high resolution
+    plt.savefig(f"{path_figures}/duffing_stroboscopic_map.png", dpi=400)
+
+.. figure:: images/duffing_stroboscopic_map.png
+   :align: center
+   :width: 100%
+   
+   The Duffing attractor and the corresponding stroboscopic map for :math:`\delta = 0.2`, :math:`\alpha = \beta = 1`, :math:`\gamma = 0.425`, and :math:`\omega = 1.1`.
+
 Hamiltonian system example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
