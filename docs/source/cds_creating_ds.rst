@@ -1,5 +1,5 @@
 Creating a continuous dynamical system
-------------------------------------
+--------------------------------------
 
 The :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class allows you to create a continuous dynamical system object. You can use built-in systems or define your own continuous dynamical system.
 
