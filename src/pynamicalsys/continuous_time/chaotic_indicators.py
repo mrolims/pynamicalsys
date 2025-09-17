@@ -657,7 +657,7 @@ def recurrence_time_entropy(
     # Prepare output
     result = [rte]
     if config.return_final_state:
-        result.append(points[-1])
+        result.append(points[-1, 1:])
     if config.return_recmat:
         result.append(recmat)
     if config.return_p:
