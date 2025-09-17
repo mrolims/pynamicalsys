@@ -5,7 +5,6 @@ description = "A Python toolkit for the analysis of dynamical systems"
 authors = [{ name = "Matheus Rolim Sales", email = "rolim.sales.m@gmail.com" }]
 readme = "README.md"
 license = "GPL-3.0-or-later"
-# license-files = ["LICENSE"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",
