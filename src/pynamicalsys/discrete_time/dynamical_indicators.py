@@ -1122,12 +1122,10 @@ def finite_time_hurst_exponent(
 
     # Compute Hurst exponent for each window
     for i in range(num_windows):
-        result = hurst_exponent(
-            u, parameters, finite_time, mapping, wmin=wmin, return_last=True
-        )
-        H_values[i] = result[: len(u)]
-        phase_space_points[i] = u
-        u = result[len(u) :]
+        time_series = generate_trajectory(u, parameters, finite_time, mapping)
+        H_values[i] = hurst_exponent(time_series, wmin=wmin)
+        phase_space_points[i] = time_series[-1, :]
+        u = time_series[-1, :]
 
     if return_points:
         return H_values, phase_space_points
