@@ -1,7 +1,7 @@
 # MANIFEST.in
 
 # Exclude tests and notebooks
-prune discrete-time-tests
+prune tests
 prune paper
 
 # Exclude docs (if you have a docs folder)
