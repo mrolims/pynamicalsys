@@ -15,23 +15,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional, Tuple, Union, Callable
-from numpy.typing import NDArray
+from typing import Callable, Optional, Tuple, Union
+
 import numpy as np
-from numba import njit, prange
+from numba import njit
+from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
     RTEConfig,
     recurrence_matrix,
     white_vertline_distr,
 )
-from pynamicalsys.discrete_time.trajectory_analysis import (
-    iterate_mapping,
-    generate_trajectory,
-)
-from pynamicalsys.common.utils import qr, householder_qr, fit_poly, wedge_norm
-
 from pynamicalsys.common.time_series_metrics import hurst_exponent
+from pynamicalsys.common.utils import householder_qr, qr, wedge_norm
+from pynamicalsys.discrete_time.trajectory_analysis import (
+    generate_trajectory,
+    iterate_mapping,
+)
 
 
 @njit
@@ -1326,7 +1326,7 @@ def RTE(
     recmat = recurrence_matrix(time_series, float(eps), metric=config.metric)
 
     # White line distribution
-    P = white_vertline_distr(recmat)[config.lmin :]
+    P = white_vertline_distr(recmat, wmin=config.lmin)
     P = P[P > 0]  # Remove zeros
     P /= P.sum()  # Normalize
 

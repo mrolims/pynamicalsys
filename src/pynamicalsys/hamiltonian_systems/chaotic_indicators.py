@@ -16,23 +16,21 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from typing import Callable
-from numpy.typing import NDArray
-import numpy as np
-from numba import njit, prange
 
-from pynamicalsys.common.utils import qr, wedge_norm, fit_poly
+import numpy as np
+from numba import njit
+from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
     RTEConfig,
     recurrence_matrix,
     white_vertline_distr,
 )
-
+from pynamicalsys.common.time_series_metrics import hurst_exponent
+from pynamicalsys.common.utils import qr, wedge_norm
 from pynamicalsys.hamiltonian_systems.trajectory_analysis import (
     generate_poincare_section,
 )
-
-from pynamicalsys.common.time_series_metrics import hurst_exponent
 
 
 @njit
@@ -581,7 +579,7 @@ def recurrence_time_entropy(
     recmat = recurrence_matrix(data, float(eps), metric=config.metric)
 
     # White line distribution
-    P = white_vertline_distr(recmat)[config.lmin :]
+    P = white_vertline_distr(recmat, wmin=config.lmin)
     P = P[P > 0]  # Remove zeros
     P /= P.sum()  # Normalize
 

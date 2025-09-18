@@ -15,10 +15,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-import numpy as np
-from numba import njit
 from dataclasses import dataclass
 from typing import Literal
+
+import numpy as np
+from numba import njit
 from numpy.typing import NDArray
 
 
@@ -208,7 +209,9 @@ def recurrence_matrix(
 
 
 @njit
-def white_vertline_distr(recmat: NDArray[np.uint8]) -> NDArray[np.float64]:
+def white_vertline_distr(
+    recmat: NDArray[np.uint8], wmin: int = 1
+) -> NDArray[np.float64]:
     """
     Calculate the distribution of white vertical line lengths in a binary recurrence matrix.
 
@@ -260,167 +263,10 @@ def white_vertline_distr(recmat: NDArray[np.uint8]) -> NDArray[np.float64]:
                     current_length += 1
             else:
                 border_flag = True  # Mark that we've passed the border
-                if current_length > 0:
+                if current_length > 0 and j < N - 1:
                     P[current_length] += 1
                     current_length = 0
 
-        # Handle line continuing to matrix edge
-        if current_length > 0 and border_flag:
-            P[current_length] += 1
-
-    P = P[1:]  # Exclude unused 0 index
+    P = P[wmin:]
 
     return P
-
-
-# def RTE(
-#     u: NDArray[np.float64],
-#     parameters: NDArray[np.float64],
-#     total_time: int,
-#     mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
-#     transient_time: Optional[int] = None,
-#     **kwargs
-# ) -> Union[float, Tuple]:
-#     """
-#     Calculate Recurrence Time Entropy (RTE) for a dynamical system.
-
-#     RTE quantifies the complexity of a system by analyzing the distribution
-#     of white vertical lines, i.e., the gap between two diagonal lines.
-#     Higher entropy indicates more complex dynamics.
-
-#     Parameters
-#     ----------
-#     u : NDArray[np.float64]
-#         Initial state vector (shape: (neq,))
-#     parameters : NDArray[np.float64]
-#         System parameters passed to mapping function
-#     total_time : int
-#         Number of iterations to simulate
-#     mapping : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
-#         System evolution function: u_next = mapping(u, parameters)
-#     transient_time : Optional[int], default=None
-#         Time to wait before starting RTE calculation.
-#     **kwargs
-#         Configuration parameters (see RTEConfig)
-
-#     Returns
-#     -------
-#     Union[float, Tuple]
-#         - Base case: RTE value (float)
-#         - With optional returns: List containing [RTE, *requested_additional_data]
-
-#     Raises
-#     ------
-#     ValueError
-#         - If invalid metric specified
-#         - If trajectory generation fails
-
-#     Notes
-#     -----
-#     - Implements the method described in [1]
-#     - For optimal results:
-#         - Use total_time > 1000 for reliable statistics
-#         - Typical threshold values: 0.05-0.3
-#         - Set lmin=1 to include single-point recurrences
-
-#     References
-#     ----------
-#     [1] M. R. Sales, M. Mugnaine, J. Szezech, José D., R. L. Viana, I. L. Caldas, N. Marwan, and J. Kurths, Stickiness and recurrence plots: An entropy-based approach, Chaos: An Interdisciplinary Journal of Nonlinear Science 33, 033140 (2023)
-#     """
-
-#     u = u.copy()
-
-#     # Configuration handling
-#     config = RTEConfig(**kwargs)
-
-#     # Metric setup
-#     metric_map = {
-#         "supremum": np.inf,
-#         "euclidean": 2,
-#         "manhattan": 1
-#     }
-
-#     try:
-#         ord = metric_map[config.std_metric.lower()]
-#     except KeyError:
-#         raise ValueError(
-#             f"Invalid std_metric: {config.std_metric}. Must be {list(metric_map.keys())}")
-
-#     if transient_time is not None:
-#         u = iterate_mapping(u, parameters, transient_time, mapping)
-#         total_time -= transient_time
-
-#     # Generate trajectory
-#     try:
-#         time_series = generate_trajectory(u, parameters, total_time, mapping)
-#     except Exception as e:
-#         raise ValueError(f"Trajectory generation failed: {str(e)}")
-
-#     # Threshold calculation
-#     if config.threshold_std:
-#         std = np.std(time_series, axis=0)
-#         eps = config.threshold * np.linalg.norm(std, ord=ord)
-#         if eps <= 0:
-#             eps = 0.1
-#     else:
-#         eps = config.threshold
-
-#     # Recurrence matrix calculation
-#     recmat = recurrence_matrix(time_series, float(eps), metric=config.metric)
-
-#     # White line distribution
-#     P = white_vertline_distr(recmat)[config.lmin:]
-#     P = P[P > 0]  # Remove zeros
-#     P /= P.sum()   # Normalize
-
-#     # Entropy calculation
-#     rte = -np.sum(P * np.log(P))
-
-#     # Prepare output
-#     result = [rte]
-#     if config.return_final_state:
-#         result.append(time_series[-1])
-#     if config.return_recmat:
-#         result.append(recmat)
-#     if config.return_p:
-#         result.append(P)
-
-#     return result[0] if len(result) == 1 else tuple(result)
-
-
-# def finite_time_RTE(
-#     u: NDArray[np.float64],
-#     parameters: NDArray[np.float64],
-#     total_time: int,
-#     finite_time: int,
-#     mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
-#     return_points: bool = False,
-#     **kwargs
-# ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-#     # Validate window size
-#     if finite_time > total_time:
-#         raise ValueError(
-#             f"finite_time ({finite_time}) exceeds available samples ({total_time})")
-
-#     num_windows = total_time // finite_time
-#     RTE_values = np.zeros(num_windows)
-#     phase_space_points = np.zeros((num_windows, u.shape[0]))
-
-#     for i in range(num_windows):
-#         result = RTE(
-#             u,
-#             parameters,
-#             finite_time,
-#             mapping,
-#             return_final_state=True,
-#             **kwargs
-#         )
-#         if isinstance(result, tuple):
-#             RTE_values[i], u_new = result
-#             phase_space_points[i] = u
-#             u = u_new.copy()
-
-#     if return_points:
-#         return RTE_values, phase_space_points
-#     else:
-#         return RTE_values

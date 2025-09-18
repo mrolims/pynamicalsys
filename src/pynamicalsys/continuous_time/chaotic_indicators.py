@@ -15,30 +15,27 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Optional, Callable, Tuple
-from numpy.typing import NDArray
+from typing import Callable, Optional, Tuple
+
 import numpy as np
 from numba import njit
-
-from pynamicalsys.common.utils import qr, wedge_norm, fit_poly
-
-from pynamicalsys.continuous_time.trajectory_analysis import (
-    generate_maxima_map,
-    step,
-    evolve_system,
-    generate_poincare_section,
-    generate_stroboscopic_map,
-)
-
-from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
+from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
     RTEConfig,
     recurrence_matrix,
     white_vertline_distr,
 )
-
 from pynamicalsys.common.time_series_metrics import hurst_exponent
+from pynamicalsys.common.utils import fit_poly, qr, wedge_norm
+from pynamicalsys.continuous_time.numerical_integrators import rk4_step_wrapped
+from pynamicalsys.continuous_time.trajectory_analysis import (
+    evolve_system,
+    generate_maxima_map,
+    generate_poincare_section,
+    generate_stroboscopic_map,
+    step,
+)
 
 
 @njit
@@ -647,7 +644,7 @@ def recurrence_time_entropy(
     recmat = recurrence_matrix(data, float(eps), metric=config.metric)
 
     # White line distribution
-    P = white_vertline_distr(recmat)[config.lmin :]
+    P = white_vertline_distr(recmat, wmin=config.lmin)
     P = P[P > 0]  # Remove zeros
     P /= P.sum()  # Normalize
 
@@ -686,8 +683,6 @@ def hurst_exponent_wrapped(
 ) -> NDArray[np.float64]:
 
     u = u.copy()
-    neq = len(u)
-    H = np.zeros(neq)
 
     # Generate the Poincaré section or stroboscopic map
     if map_type == "PS":
