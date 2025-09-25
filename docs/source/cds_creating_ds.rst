@@ -45,7 +45,7 @@ You can also create your own continuous system by defining a function that takes
     from numba import njit
 
     @njit
-    def lorenz_system(state, params):
+    def lorenz_system(time, state, params):
         sigma, rho, beta = params
         x, y, z = state
         dx = sigma * (y - x)
@@ -58,4 +58,4 @@ Note that we use :code:`@njit` to compile the function for performance. Most met
 
 .. code-block:: python
 
-    ds = cds(mapping=lorenz_system, system_dimension=3, number_of_parameters=3)
+    ds = cds(equations_of_motion=lorenz_system, system_dimension=3, number_of_parameters=3)
