@@ -42,7 +42,7 @@ The :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.
     total_time = 4000
     transient_time = 1000
 
-    param_values, bifurcation_data = ds.bifurcation_diagram(
+    param_values, bifurcation_diagram = ds.bifurcation_diagram(
         u=u,
         param_index=param_index,
         param_range=param_range,
@@ -50,7 +50,7 @@ The :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.
         transient_time=transient_time
     )
 
-Since `param_values` is a 1D array and `bifurcation_data` is a 2D array, we need to transform both arrays into a format suitable for plotting. We will use the `np.repeat` function to repeat the `param_values` for each bifurcation value, and then flatten the `bifurcation_data` array to create a 1D array of bifurcation values.
+Since `param_values` is a 1D array and `bifurcation_diagram` is a 2D array, we need to transform both arrays into a format suitable for plotting. We will use the `np.repeat` function to repeat the `param_values` for each bifurcation value, and then flatten the `bifurcation_diagram` array to create a 1D array of bifurcation values.
 
 .. code-block:: python
 
@@ -58,13 +58,14 @@ Since `param_values` is a 1D array and `bifurcation_data` is a 2D array, we need
 
     # Flatten both arrays
     param_values = param_mesh.flatten()
-    bifurcation_data = bifurcation_data.flatten()
+    bifurcation_diagram = bifurcation_diagram.flatten()
 
 Now we can plot the bifurcation diagram using Matplotlib.
 
 .. code-block:: python
 
     # Set the style for the plot
+    from pynamicalsys import PlotStyler
     ps = PlotStyler()
     ps.apply_style()
 
@@ -73,7 +74,7 @@ Now we can plot the bifurcation diagram using Matplotlib.
     ps.set_tick_padding(ax, pad_x = 6)
 
     # Plot the bifurcation diagram
-    plt.scatter(param_values, bifurcation_data, color='black', s=0.01, edgecolor='none')
+    plt.scatter(param_values, bifurcation_diagram, color='black', s=0.01, edgecolor='none')
 
     # Set the labels and limits for the plot    
     plt.xlabel("$r$")
@@ -117,7 +118,7 @@ where :math:`a` and :math:`b` are parameters that we will vary. We will focus on
     param_index = 0
     param_range = (1.0, 1.4, 3000)
 
-    param_values, bifurcation_data = ds.bifurcation_diagram(
+    param_values, bifurcation_diagram = ds.bifurcation_diagram(
         u=[0.2, 0.2],
         parameters=parameters,
         param_index=param_index,
@@ -126,10 +127,10 @@ where :math:`a` and :math:`b` are parameters that we will vary. We will focus on
         transient_time=transient_time
     )
     # Repeat the parameter values for each bifurcation value
-    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_data.shape[1], axis=1)
+    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_diagram.shape[1], axis=1)
     # Flatten both arrays
     param_values = param_mesh.flatten()
-    bifurcation_data = bifurcation_data.flatten()
+    bifurcation_diagram = bifurcation_diagram.flatten()
 
 We plot the bifurcation diagram for the Hénon map in a similar way as we did for the logistic map.
 
@@ -144,7 +145,7 @@ We plot the bifurcation diagram for the Hénon map in a similar way as we did fo
     ps.set_tick_padding(ax, pad_x = 6)
 
     # Plot the bifurcation diagram
-    plt.scatter(param_values, bifurcation_data, color='black', s=0.01, edgecolor='none')
+    plt.scatter(param_values, bifurcation_diagram, color='black', s=0.01, edgecolor='none')
 
     # Set the labels and limits for the plot    
     plt.xlabel("$a$")
@@ -209,7 +210,7 @@ Since we are changing the parameter `b`, and we have defined the parameter list 
     param_index = 1
     param_range = (1.2, 1.4, 3000)
 
-    param_values, bifurcation_data, u_new = ds.bifurcation_diagram(
+    param_values, bifurcation_diagram, u_new = ds.bifurcation_diagram(
         u=[0.5],
         parameters=parameters,
         param_index=param_index,
@@ -220,11 +221,11 @@ Since we are changing the parameter `b`, and we have defined the parameter list 
         return_last_state=True
     )
 
-    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_data.shape[1], axis=1)
+    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_diagram.shape[1], axis=1)
 
     # Flatten both arrays
     param_values = param_mesh.flatten()
-    bifurcation_data = bifurcation_data.flatten()
+    bifurcation_diagram = bifurcation_diagram.flatten()
 
 Now, for the backward continuation, we will use the last state `u_new` as the initial condition and set `continuation=True` again.
 
@@ -242,7 +243,7 @@ Now, for the backward continuation, we will use the last state `u_new` as the in
     param_index = 1
     param_range = (1.4, 1.2, 3000) # Note that we reverse the range for backward continuation
 
-    param_values_back, bifurcation_data_back = ds.bifurcation_diagram(
+    param_values_back, bifurcation_diagram_back = ds.bifurcation_diagram(
         u=u_new,
         parameters=parameters,
         param_index=param_index,
@@ -252,11 +253,11 @@ Now, for the backward continuation, we will use the last state `u_new` as the in
         continuation=True
     )
 
-    param_mesh_back = np.repeat(param_values_back[:, np.newaxis], bifurcation_data_back.shape[1], axis=1)
+    param_mesh_back = np.repeat(param_values_back[:, np.newaxis], bifurcation_diagram_back.shape[1], axis=1)
 
     # Flatten both arrays
     param_values_back = param_mesh_back.flatten()
-    bifurcation_data_back = bifurcation_data_back.flatten()
+    bifurcation_diagram_back = bifurcation_diagram_back.flatten()
 
 Now we can plot the bifurcation diagram for the nontwist sine circle map, combining both forward and backward continuations.
 
@@ -271,8 +272,8 @@ Now we can plot the bifurcation diagram for the nontwist sine circle map, combin
     ps.set_tick_padding(ax[1], pad_x = 6)
 
     # Plot the bifurcation diagram
-    ax[0].scatter(param_values, bifurcation_data, color='black', s=0.01, edgecolor='none')
-    ax[1].scatter(param_values_back, bifurcation_data_back, color='r', s=0.01, edgecolor='none')
+    ax[0].scatter(param_values, bifurcation_diagram, color='black', s=0.01, edgecolor='none')
+    ax[1].scatter(param_values_back, bifurcation_diagram_back, color='r', s=0.01, edgecolor='none')
 
     # Set the labels and limits for the plot
     ax[0].set_ylim(0, 1)
