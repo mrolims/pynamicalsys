@@ -18,7 +18,8 @@ Initial Release Team
 
 These contributors are also co-authors of the scientific publication associated with the package:
 
-*M. Rolim Sales* et al., **pynamicalsys: A Python toolkit for the analysis of dynamical systems**, `arXiv <https://arxiv.org/abs/2506.14044>`_, 2025.
+Matheus Rolim Sales et al., "pynamicalsys: A Python toolkit for the analysis of dynamical systems," `Chaos, Solitons & Fractals 201, 117269 (2025) <https://doi.org/10.1016/j.chaos.2025.117269>`_.
+
 
 Additional Contributors
 ------------------------

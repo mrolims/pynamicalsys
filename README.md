@@ -80,38 +80,39 @@ For detailed instructions, examples, and API references, please visit the full d
 
 The documentation includes:
 
-- **Getting Started** — installation and quick-start examples.  
+- **Getting Started** — installation and quick-start examples.
 - **Tutorial** — step-by-step explanations of key concepts and pratical demonstrations.
 - **API Reference** — detailed descriptions of all functions, parameters, and return values.
 
 ## Citation
 
-Our research paper is currently under review. In the meantime, if you use **pynamicalsys** in your work, please cite the [arXiv version](https://arxiv.org/abs/2506.14044). Below are recommended citation formats for different use cases.
+If you use **pynamicalsys** in your work, please cite our [research paper](https://doi.org/10.1016/j.chaos.2025.117269). Below are recommended citation formats for different use cases.
 
 ### BibTeX
 
 ```bibtex
-@misc{pynamicalsys,
+@article{pynamicalsys,
   title={pynamicalsys: A Python toolkit for the analysis of dynamical systems},
-  author={Matheus Rolim Sales and Leonardo Costa de Souza and Daniel Borin and Michele Mugnaine and José Danilo Szezech Jr. and Ricardo Luiz Viana and Iberê Luiz Caldas and Edson Denis Leonel and Chris G. Antonopoulos},
+  author={Matheus Rolim Sales and Leonardo Costa de Souza and Daniel Borin and Michele Mugnaine and José Danilo Szezech and Ricardo Luiz Viana and Iberê Luiz Caldas and Edson Denis Leonel and Chris G. Antonopoulos},
+  journal={Chaos, Solitons & Fractals},
+  volume={201},
+  pages={117269},
   year={2025},
-  eprint={2506.14044},
-  archivePrefix={arXiv},
-  primaryClass={nlin.CD},
-  url={https://arxiv.org/abs/2506.14044},
+  doi={https://doi.org/10.1016/j.chaos.2025.117269},
+  url={https://www.sciencedirect.com/science/article/pii/S0960077925012822},
 }
 ```
 
-### APA style
+### API Style
 
-```
-Rolim Sales, M., Costa de Souza, L., Borin, D., Mugnaine, M., Szezech Jr., J. D., Viana, R. L., Caldas, I. L., Leonel, E. D., & Antonopoulos, C. G. (2025). pynamicalsys: A Python toolkit for the analysis of dynamical systems. arXiv:2506.14044. https://arxiv.org/abs/2506.14044
+```text
+Rolim Sales, M., Costa de Souza, L., Borin, D., Mugnaine, M., Szezech Jr., J. D., Viana, R. L., Caldas, I. L., Leonel, E. D., & Antonopoulos, C. G. (2025). pynamicalsys: A Python toolkit for the analysis of dynamical systems. Chaos, Solitons & Fractals, 201, 117269. https://doi.org/10.1016/j.chaos.2025.117269
 ```
 
 ### Short citation style
 
-```
-Matheus Rolim Sales et al., "pynamicalsys: A Python toolkit for the analysis of dynamical systems," arXiv:2506.14044, 2025. https://arxiv.org/abs/2506.14044
+```text
+Matheus Rolim Sales et al., "pynamicalsys: A Python toolkit for the analysis of dynamical systems," Chaos, Solitons & Fractals, vol. 201, p. 117269, 2025. https://doi.org/10.1016/j.chaos.2025.117269
 ```
 
 ## Contributing
