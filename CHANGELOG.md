@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Modified
 
+- `HamiltonianSystem` class:
+  - Fixed the integration of the tangent vectors that was leading to numerical instability for long integration times.
+
 - Refactored `recurrence_time_entropy` methods and `white_vertline_distr` function to handle the minimum line length parameter more consistently.
 
 ## [v1.4.5] - 2025-09-17

@@ -16,9 +16,10 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from typing import Callable, Tuple
-from numpy.typing import NDArray
-from numba import njit
+
 import numpy as np
+from numba import njit
+from numpy.typing import NDArray
 
 # Yoshida 4th-order symplectic integrator coefficients
 ALPHA: float = 1.0 / (2.0 - 2.0 ** (1.0 / 3.0))
@@ -78,20 +79,21 @@ def velocity_verlet_2nd_step(
 
 
 @njit
-def velocity_verlet_2nd_step_tangent(
+def velocity_verlet_2nd_step_traj_tan(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
-    dq: NDArray[np.float64],
-    dp: NDArray[np.float64],
+    dv: NDArray[np.float64],
     time_step: float,
+    grad_T: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
+    grad_V: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     hess_T: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     hess_V: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     parameters: NDArray[np.float64],
-) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+):
     """
-    Perform one step of the tangent map associated with the velocity Verlet integrator.
+    Perform one step of the trajectory and tangent map associated with the velocity Verlet integrator.
 
-    This evolves deviation (tangent) vectors `(dq, dp)` along the flow of the system,
+    This evolves the trajectory `(q, p)` and deviation (tangent) vectors `dv` along the flow of the system,
     which is necessary for computing Lyapunov exponents and stability analysis.
 
     Parameters
@@ -100,46 +102,70 @@ def velocity_verlet_2nd_step_tangent(
         Current generalized coordinates.
     p : NDArray[np.float64]
         Current generalized momenta.
-    dq : NDArray[np.float64]
-        Deviation in coordinates.
-    dp : NDArray[np.float64]
-        Deviation in momenta.
+    dv : NDArray[np.float64]
+        Deviation vectors with shape (dim, n_dev).
     time_step : float
         Integration time step.
+    grad_T : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
+        Function returning the gradient of the kinetic energy with respect to `p`.
+    grad_V : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
+        Function returning the grandienf of the potential energy with respect to `q`.
     hess_T : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
         Function returning the Hessian of the kinetic energy with respect to `p`.
     hess_V : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
         Function returning the Hessian of the potential energy with respect to `q`.
     parameters : NDArray[np.float64]
-        Additional parameters passed to `hess_T` and `hess_V`.
+        Additional parameters passed to `grad_T`, `grad_V`, hess_T`, and `hess_V`.
 
     Returns
     -------
-    dq_new : NDArray[np.float64]
-        Updated deviation in coordinates after one step.
-    dp_new : NDArray[np.float64]
-        Updated deviation in momenta after one step.
+    q_new : NDArray[np.float64]
+        Updated coordinates
+    p_new : NDArray[np.float64]
+        Updated momenta
+    dv_new : NDArray[np.float64]
+        Updated deviation vectors.
     """
-    dq_new = dq.copy()
-    dp_new = dp.copy()
 
-    # Compute Hessians
-    HT = hess_T(p, parameters)
-    HV = hess_V(q, parameters)
+    q_new = q.copy()
+    p_new = p.copy()
+    dv_new = dv.copy()
+    dof = len(q)
 
-    # Half kick
-    HV_dot_dq = HV @ dq
-    dp_new -= 0.5 * time_step * HV_dot_dq
+    # --- Half kick --- #
+    # on the main trajectory
+    gradV = grad_V(q_new, parameters)
+    p_new -= 0.5 * time_step * gradV
 
-    # Drift
-    HT_dot_dp = HT @ dp_new
-    dq_new += time_step * HT_dot_dp
+    # on tangent momenta
+    HV = hess_V(q_new, parameters)
+    HV_dot_dq = HV @ dv_new[:dof, :]  # HV cdot dq
+    # Update dp
+    dv_new[dof:, :] -= 0.5 * time_step * HV_dot_dq
 
-    # Half kick
-    HV_dot_dq = HV @ dq_new
-    dp_new -= 0.5 * time_step * HV_dot_dq
+    # --- Drift --- #
+    # on the main trajectory
+    gradT = grad_T(p_new, parameters)
+    q_new += time_step * gradT
 
-    return dq_new, dp_new
+    # on the tangent coordinates
+    HT = hess_T(p_new, parameters)
+    HT_dot_dp = HT @ dv_new[dof:, :]  # HT cdot dp
+    # Update dq
+    dv_new[:dof, :] += time_step * HT_dot_dp
+
+    # --- Half kick --- #
+    # on the main trajectory
+    gradV = grad_V(q_new, parameters)
+    p_new -= 0.5 * time_step * gradV
+
+    # on tangent momenta
+    HV = hess_V(q_new, parameters)
+    HV_dot_dq = HV @ dv_new[:dof, :]  # HV cdot dq
+    # Update dp
+    dv_new[dof:, :] -= 0.5 * time_step * HV_dot_dq
+
+    return q_new, p_new, dv_new
 
 
 @njit
@@ -193,21 +219,22 @@ def yoshida_4th_step(
 
 
 @njit
-def yoshida_4th_step_tangent(
+def yoshida_4th_step_traj_tan(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
-    dq: NDArray[np.float64],
-    dp: NDArray[np.float64],
+    dv: NDArray[np.float64],
     time_step: float,
+    grad_T: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
+    grad_V: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     hess_T: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     hess_V: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     parameters: NDArray[np.float64],
-) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+) -> Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
-    Perform one step of the tangent map associated with the Yoshida 4th-order integrator.
+    Perform one step of the trajectory and tangent map associated with the Yoshida 4th-order integrator.
 
-    This evolves deviation vectors `(dq, dp)` along the flow of the Yoshida integrator,
-    which is useful for stability analysis and Lyapunov exponent computation.
+    This evolves the trajectory `(q, p)` and deviation (tangent) vectors `dv` along the flow of the system,
+    which is necessary for computing Lyapunov exponents and stability analysis.
 
     Parameters
     ----------
@@ -215,34 +242,57 @@ def yoshida_4th_step_tangent(
         Current generalized coordinates.
     p : NDArray[np.float64]
         Current generalized momenta.
-    dq : NDArray[np.float64]
-        Deviation in coordinates.
-    dp : NDArray[np.float64]
-        Deviation in momenta.
+    dv : NDArray[np.float64]
+        Deviation vectors with shape (dim, n_dev).
     time_step : float
         Integration time step.
+    grad_T : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
+        Function returning the gradient of the kinetic energy with respect to `p`.
+    grad_V : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
+        Function returning the grandienf of the potential energy with respect to `q`.
     hess_T : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
         Function returning the Hessian of the kinetic energy with respect to `p`.
     hess_V : Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]]
         Function returning the Hessian of the potential energy with respect to `q`.
     parameters : NDArray[np.float64]
-        Additional parameters passed to `hess_T` and `hess_V`.
+        Additional parameters passed to `grad_T`, `grad_V`, hess_T`, and `hess_V`.
 
     Returns
     -------
-    dq_new : NDArray[np.float64]
-        Updated deviation in coordinates after one Yoshida step.
-    dp_new : NDArray[np.float64]
-        Updated deviation in momenta after one Yoshida step.
+    q_new : NDArray[np.float64]
+        Updated coordinates
+    p_new : NDArray[np.float64]
+        Updated momenta
+    dv_new : NDArray[np.float64]
+        Updated deviation vectors.
     """
-    dq_new, dp_new = velocity_verlet_2nd_step_tangent(
-        q, p, dq, dp, ALPHA * time_step, hess_T, hess_V, parameters
-    )
-    dq_new, dp_new = velocity_verlet_2nd_step_tangent(
-        q, p, dq_new, dp_new, BETA * time_step, hess_T, hess_V, parameters
-    )
-    dq_new, dp_new = velocity_verlet_2nd_step_tangent(
-        q, p, dq_new, dp_new, ALPHA * time_step, hess_T, hess_V, parameters
+
+    q_new, p_new, dv_new = velocity_verlet_2nd_step_traj_tan(
+        q, p, dv, ALPHA * time_step, grad_T, grad_V, hess_T, hess_V, parameters
     )
 
-    return dq_new, dp_new
+    q_new, p_new, dv_new = velocity_verlet_2nd_step_traj_tan(
+        q_new,
+        p_new,
+        dv_new,
+        BETA * time_step,
+        grad_T,
+        grad_V,
+        hess_T,
+        hess_V,
+        parameters,
+    )
+
+    q_new, p_new, dv_new = velocity_verlet_2nd_step_traj_tan(
+        q_new,
+        p_new,
+        dv_new,
+        ALPHA * time_step,
+        grad_T,
+        grad_V,
+        hess_T,
+        hess_V,
+        parameters,
+    )
+
+    return q_new, p_new, dv_new

@@ -16,48 +16,43 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from numbers import Integral, Real
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from numpy.typing import NDArray
 
+from pynamicalsys.common.utils import householder_qr, qr
+from pynamicalsys.hamiltonian_systems.chaotic_indicators import (
+    GALI,
+    LDI,
+    SALI,
+    hurst_exponent_wrapped,
+    lyapunov_spectrum,
+    maximum_lyapunov_exponent,
+    recurrence_time_entropy,
+)
 from pynamicalsys.hamiltonian_systems.models import (
     henon_heiles_grad_T,
     henon_heiles_grad_V,
     henon_heiles_hess_T,
     henon_heiles_hess_V,
 )
-
 from pynamicalsys.hamiltonian_systems.numerical_integrators import (
-    velocity_verlet_2nd_step_tangent,
-    yoshida_4th_step,
     velocity_verlet_2nd_step,
-    yoshida_4th_step_tangent,
+    velocity_verlet_2nd_step_traj_tan,
+    yoshida_4th_step,
+    yoshida_4th_step_traj_tan,
 )
-
+from pynamicalsys.hamiltonian_systems.trajectory_analysis import (
+    ensemble_poincare_section,
+    ensemble_trajectories,
+    generate_poincare_section,
+    generate_trajectory,
+)
 from pynamicalsys.hamiltonian_systems.validators import (
     validate_initial_conditions,
     validate_non_negative,
     validate_parameters,
-)
-
-from pynamicalsys.common.utils import qr, householder_qr, fit_poly
-
-from pynamicalsys.hamiltonian_systems.trajectory_analysis import (
-    generate_trajectory,
-    ensemble_trajectories,
-    generate_poincare_section,
-    ensemble_poincare_section,
-)
-
-from pynamicalsys.hamiltonian_systems.chaotic_indicators import (
-    lyapunov_spectrum,
-    maximum_lyapunov_exponent,
-    SALI,
-    LDI,
-    GALI,
-    recurrence_time_entropy,
-    hurst_exponent_wrapped,
 )
 
 
@@ -99,12 +94,12 @@ class HamiltonianSystem:
         "svy4": {
             "description": "4th order Yoshida method",
             "integrator": yoshida_4th_step,
-            "tangent integrator": yoshida_4th_step_tangent,
+            "traj tan integrator": yoshida_4th_step_traj_tan,
         },
         "vv2": {
             "description": "2nd order velocity Verlet method",
             "integrator": velocity_verlet_2nd_step,
-            "tangent integrator": velocity_verlet_2nd_step_tangent,
+            "traj tan integrator": velocity_verlet_2nd_step_traj_tan,
         },
     }
 
@@ -179,7 +174,7 @@ class HamiltonianSystem:
 
         self.__integrator = "svy4"
         self.__integrator_func = yoshida_4th_step
-        self.__tangent_integrator_func = yoshida_4th_step_tangent
+        self.__traj_tan_integrator_func = yoshida_4th_step_traj_tan
         self.__time_step = 1e-2
 
     @classmethod
@@ -285,7 +280,7 @@ class HamiltonianSystem:
             self.__integrator = integrator.lower()
             integrator_info = self.__AVAILABLE_INTEGRATORS[self.__integrator]
             self.__integrator_func = integrator_info["integrator"]
-            self.__tangent_integrator_func = integrator_info["tangent integrator"]
+            self.__traj_tan_integrator_func = integrator_info["traj tan integrator"]
             self.__time_step = time_step
 
         else:
@@ -304,7 +299,7 @@ class HamiltonianSystem:
         q: NDArray[np.float64],
         p: NDArray[np.float64],
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-    ) -> NDArray[np.float64]:
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Advance the system by one integration step.
 
@@ -341,13 +336,18 @@ class HamiltonianSystem:
 
         if q.ndim == 1:
             q, p = self.__integrator_func(
-                q, p, self.__time_step, self.__grad_T, self.__grad_V
+                q, p, self.__time_step, self.__grad_T, self.__grad_V, parameters
             )
         else:
             num_ic = q.shape[0]
             for i in range(num_ic):
                 q[i], p[i] = self.__integrator_func(
-                    q[i], p[i], self.__time_step, self.__grad_T, self.__grad_V
+                    q[i],
+                    p[i],
+                    self.__time_step,
+                    self.__grad_T,
+                    self.__grad_V,
+                    parameters,
                 )
 
         return q, p
@@ -621,8 +621,7 @@ class HamiltonianSystem:
                 seed,
                 log_base,
                 qr_func,
-                self.__integrator_func,
-                self.__tangent_integrator_func,
+                self.__traj_tan_integrator_func,
             )
         else:
             result = maximum_lyapunov_exponent(
@@ -638,8 +637,7 @@ class HamiltonianSystem:
                 return_history,
                 seed,
                 log_base,
-                self.__integrator_func,
-                self.__tangent_integrator_func,
+                self.__traj_tan_integrator_func,
             )
 
         if return_history:
@@ -735,8 +733,7 @@ class HamiltonianSystem:
             self.__hess_V,
             return_history,
             seed,
-            self.__integrator_func,
-            self.__tangent_integrator_func,
+            self.__traj_tan_integrator_func,
             threshold,
         )
 
@@ -841,8 +838,7 @@ class HamiltonianSystem:
             k,
             return_history,
             seed,
-            self.__integrator_func,
-            self.__tangent_integrator_func,
+            self.__traj_tan_integrator_func,
             threshold,
         )
 
@@ -948,8 +944,7 @@ class HamiltonianSystem:
             k,
             return_history,
             seed,
-            self.__integrator_func,
-            self.__tangent_integrator_func,
+            self.__traj_tan_integrator_func,
             threshold,
         )
 
@@ -1086,7 +1081,6 @@ class HamiltonianSystem:
         p: Union[NDArray[np.float64], Sequence[float]],
         num_intersections: int,
         parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
         wmin: int = 2,
         section_index: int = 0,
         section_value: float = 0.0,
@@ -1103,8 +1097,6 @@ class HamiltonianSystem:
             Parameters passed to the mapping function.
         total_time : int
             Total number of iterations used to generate the trajectory.
-        transient_time : Optional[int], optional
-            Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
         wmin : int, optional
             Minimum window size for the rescaled range calculation. Default is 2.
         section_index : Optional[int]
