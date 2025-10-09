@@ -52,8 +52,7 @@ def lyapunov_spectrum(
     QR: Callable[
         [NDArray[np.float64]], tuple[NDArray[np.float64], NDArray[np.float64]]
     ],
-    integrator: Callable,
-    tangent_integrator: Callable,
+    integrator_traj_tan: Callable,
 ) -> NDArray[np.float64]:
     """
     Compute the full Lyapunov spectrum of a Hamiltonian system.
@@ -90,10 +89,8 @@ def lyapunov_spectrum(
         Base of the logarithm used for normalization.
     QR : Callable
         Function for orthonormalization (returns Q, R).
-    integrator : Callable
-        Symplectic integrator for the main trajectory.
-    tangent_integrator : Callable
-        Tangent map integrator for deviation vectors.
+    integrator_traj_tan : Callable
+        Symplectic integrator for the main trajectory AND tangent vectors.
 
     Returns
     -------
@@ -114,18 +111,10 @@ def lyapunov_spectrum(
     count = 0
     for i in range(num_steps):
         time = (i + 1) * time_step
-        # Evolve trajectory
-        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters)
-
-        # Evolve deviation vectors
-        for j in range(num_exponents):
-            dq = dv[:dof, j].copy()
-            dp = dv[dof:, j].copy()
-            dq, dp = tangent_integrator(
-                q, p, dq, dp, time_step, hess_T, hess_V, parameters
-            )
-            dv[:dof, j] = dq.copy()
-            dv[dof:, j] = dp.copy()
+        # Evolve trajectory and tangent vectors
+        q, p, dv = integrator_traj_tan(
+            q, p, dv, time_step, grad_T, grad_V, hess_T, hess_V, parameters
+        )
 
         if i % qr_interval == 0:
             count += 1
@@ -165,8 +154,7 @@ def maximum_lyapunov_exponent(
     return_history: bool,
     seed: int,
     log_base: float,
-    integrator: Callable,
-    tangent_integrator: Callable,
+    integrator_traj_tan: Callable,
 ) -> NDArray[np.float64]:
     """
     Compute the maximum Lyapunov exponent (MLE).
@@ -191,10 +179,8 @@ def maximum_lyapunov_exponent(
         Random seed for initial deviation vector.
     log_base : float
         Base of logarithm.
-    integrator : Callable
-        Symplectic trajectory integrator.
-    tangent_integrator : Callable
-        Tangent map integrator.
+    integrator_traj_tan : Callable
+        Symplectic trajectory and tangent integrator.
 
     Returns
     -------
@@ -206,31 +192,28 @@ def maximum_lyapunov_exponent(
     dof = len(q)
 
     np.random.seed(seed)
-    dq = np.random.uniform(-1, 1, dof)
-    dp = np.random.uniform(-1, 1, dof)
-    norm = np.sqrt((dq**2).sum() + (dp**2).sum())
-    dq /= norm
-    dp /= norm
+    dv = np.random.uniform(-1, 1, 2 * dof)
+    norm = np.linalg.norm(dv)
+    dv /= norm
+    dv = dv.reshape(2 * dof, 1)
 
     lyapunov_exponent = 0
     history = np.zeros((num_steps, 2))
     for i in range(num_steps):
         time = (i + 1) * time_step
         # Evolve trajectory
-        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters)
-
-        # Evolve deviation vector
-        dq, dp = tangent_integrator(q, p, dq, dp, time_step, hess_T, hess_V, parameters)
+        q, p, dv = integrator_traj_tan(
+            q, p, dv, time_step, grad_T, grad_V, hess_T, hess_V, parameters
+        )
 
         # Norm of the deviation vector
-        norm = np.sqrt((dq**2).sum() + (dp**2).sum())
+        norm = np.linalg.norm(dv[:, 0])
 
         # Acculate the log
         lyapunov_exponent += np.log(norm)
 
         # Renormalize the deviation vector
-        dq /= norm
-        dp /= norm
+        dv /= norm
 
         if return_history:
             history[i, 0] = time
@@ -258,8 +241,7 @@ def SALI(
     hess_V: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     return_history: bool,
     seed: int,
-    integrator: Callable,
-    tangent_integrator: Callable,
+    integrator_traj_tan: Callable,
     threshold: float,
 ) -> list[list[float]]:
     """
@@ -281,10 +263,8 @@ def SALI(
         If True, return time evolution of SALI.
     seed : int
         Random seed for deviation vectors.
-    integrator : Callable
-        Symplectic trajectory integrator.
-    tangent_integrator : Callable
-        Tangent map integrator.
+    integrator_traj_tan : Callable
+        Symplectic trajectory and tangent integrator.
     threshold : float
         Early termination threshold for SALI.
 
@@ -304,19 +284,15 @@ def SALI(
     history = []
     for i in range(num_steps):
         time = (i + 1) * time_step
-        # Evolve trajectory
-        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters)
+        # Evolve trajectory and tangent vectors
+        q, p, dv = integrator_traj_tan(
+            q, p, dv, time_step, grad_T, grad_V, hess_T, hess_V, parameters
+        )
 
-        # Evolve deviation vectors
+        # Normalize deviation vectors
         for j in range(2):
-            dq = dv[:dof, j].copy()
-            dp = dv[dof:, j].copy()
-            dq, dp = tangent_integrator(
-                q, p, dq, dp, time_step, hess_T, hess_V, parameters
-            )
-            norm = np.sqrt((dq**2).sum() + (dp**2).sum())
-            dv[:dof, j] = dq.copy() / norm
-            dv[dof:, j] = dp.copy() / norm
+            norm = np.linalg.norm(dv[:, j])
+            dv[:, j] /= norm
 
         pai = np.linalg.norm(dv[:, 0] + dv[:, 1])
         aai = np.linalg.norm(dv[:, 0] - dv[:, 1])
@@ -349,8 +325,7 @@ def LDI(
     k: int,
     return_history: bool,
     seed: int,
-    integrator: Callable,
-    tangent_integrator: Callable,
+    integrator_traj_tan: Callable,
     threshold: float,
 ) -> list[list[float]]:
     """
@@ -374,10 +349,8 @@ def LDI(
         If True, return LDI time series.
     seed : int
         Random seed for initialization.
-    integrator : Callable
-        Symplectic trajectory integrator.
-    tangent_integrator : Callable
-        Tangent map integrator.
+    integrator_traj_tan : Callable
+        Symplectic trajectory and tangent integrator.
     threshold : float
         Early termination threshold.
 
@@ -397,19 +370,15 @@ def LDI(
     history = []
     for i in range(num_steps):
         time = (i + 1) * time_step
-        # Evolve trajectory
-        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters)
+        # Evolve trajectory and tangent vectors
+        q, p, dv = integrator_traj_tan(
+            q, p, dv, time_step, grad_T, grad_V, hess_T, hess_V, parameters
+        )
 
-        # Evolve deviation vectors
+        # Normalize deviation vectors
         for j in range(k):
-            dq = dv[:dof, j].copy()
-            dp = dv[dof:, j].copy()
-            dq, dp = tangent_integrator(
-                q, p, dq, dp, time_step, hess_T, hess_V, parameters
-            )
-            norm = np.sqrt((dq**2).sum() + (dp**2).sum())
-            dv[:dof, j] = dq.copy() / norm
-            dv[dof:, j] = dp.copy() / norm
+            norm = np.linalg.norm(dv[:, j])
+            dv[:, j] /= norm
 
         # Calculate the singular values
         S = np.linalg.svd(dv, full_matrices=False, compute_uv=False)
@@ -442,8 +411,7 @@ def GALI(
     k: int,
     return_history: bool,
     seed: int,
-    integrator: Callable,
-    tangent_integrator: Callable,
+    integrator_traj_tan: Callable,
     threshold: float,
 ) -> list[list[float]]:
     """
@@ -467,10 +435,8 @@ def GALI(
         If True, return GALI time series.
     seed : int
         Random seed for initialization.
-    integrator : Callable
-        Symplectic trajectory integrator.
-    tangent_integrator : Callable
-        Tangent map integrator.
+    integrator_traj_tan : Callable
+        Symplectic trajectory and tangent integrator.
     threshold : float
         Early termination threshold.
 
@@ -490,19 +456,15 @@ def GALI(
     history = []
     for i in range(num_steps):
         time = (i + 1) * time_step
-        # Evolve trajectory
-        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters)
+        # Evolve trajectory and tangent vectors
+        q, p, dv = integrator_traj_tan(
+            q, p, dv, time_step, grad_T, grad_V, hess_T, hess_V, parameters
+        )
 
-        # Evolve deviation vectors
+        # Normalize deviation vectors
         for j in range(k):
-            dq = dv[:dof, j].copy()
-            dp = dv[dof:, j].copy()
-            dq, dp = tangent_integrator(
-                q, p, dq, dp, time_step, hess_T, hess_V, parameters
-            )
-            norm = np.sqrt((dq**2).sum() + (dp**2).sum())
-            dv[:dof, j] = dq.copy() / norm
-            dv[dof:, j] = dp.copy() / norm
+            norm = np.linalg.norm(dv[:, j])
+            dv[:, j] /= norm
 
         # Calculate GALI
         gali = wedge_norm(dv)
