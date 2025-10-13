@@ -25,7 +25,7 @@ Related Publication
 
 The methods and applications implemented in **pynamicalsys** are presented and discussed in our research article:
 
-M. Rolim Sales et al., pynamicalsys: A Python toolkit for the analysis of dynamical systems, `Chaos, Solitons and Fractals** 201, 117269 (2025) <https://doi.org/10.1016/j.chaos.2025.117269>`_.
+M. Rolim Sales et al., pynamicalsys: A Python toolkit for the analysis of dynamical systems, `Chaos, Solitons and Fractals 201, 117269 (2025) <https://doi.org/10.1016/j.chaos.2025.117269>`_.
 
 You can reproduce the numerical experiments, figures, and performance benchmarks presented in the paper using the companion Jupyter notebooks:
 
