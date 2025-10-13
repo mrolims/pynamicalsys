@@ -20,6 +20,20 @@ Overview
 
 **pynamicalsys** is built on top of NumPy and Numba, ensuring high performance and efficiency. Thanks to Numba accelerated computation, **pynamicalsys** offers speedups up to **130x** compared to the original Python implementation of the algorithms. This makes it suitable for large-scale simulations and analyses.
 
+Related Publication
+-------------------
+
+The methods and applications implemented in **pynamicalsys** are presented and discussed in our research article:
+
+M. Rolim Sales L. C. de Souza, D. Borin, M. Mugnaine, J. D. Szezech, R. L. Viana, I. L. Caldas, E. D. Leonel, and C. G. Antonopoulos,  
+*pynamicalsys: A Python toolkit for the analysis of dynamical systems*,  
+`Chaos, Solitons and Fractals** 201, 117269 (2025) <https://doi.org/10.1016/j.chaos.2025.117269>`_.
+
+You can reproduce the numerical experiments, figures, and performance benchmarks presented in the paper using the companion Jupyter notebooks:
+
+- `Reproducibility Notebook <https://github.com/mrolims/pynamicalsys/blob/main/paper/paper.ipynb>`_
+- `Benchmarks <https://github.com/mrolims/pynamicalsys/blob/main/paper/benchmarks.ipynb>`_
+
 .. toctree::
    :maxdepth: 2
    :caption: Getting Started
