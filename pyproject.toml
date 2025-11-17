@@ -7,7 +7,6 @@ readme = "README.md"
 license = { file = "LICENSE" }
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
     "Operating System :: OS Independent",
     "Intended Audience :: Science/Research",
     "Topic :: Scientific/Engineering :: Physics",
@@ -21,7 +20,7 @@ dependencies = [
     "scipy >=0.6",
     "scikit-learn >=0.14",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.14"
 
 [build-system]
 requires = ["setuptools>=77.0", "setuptools-scm>=9"]
