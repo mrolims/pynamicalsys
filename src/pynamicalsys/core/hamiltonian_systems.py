@@ -58,7 +58,7 @@ from pynamicalsys.hamiltonian_systems.validators import (
 
 class HamiltonianSystem:
     """
-    Class for defining, simulating, and analyzing Hamiltonian dynamical systems.
+    Class for defining, simulating, and analyzing separable Hamiltonian dynamical systems.
 
     This class provides access to predefined Hamiltonian models (e.g., the
     Hénon-Heiles system) or allows the user to define a custom Hamiltonian
@@ -111,6 +111,7 @@ class HamiltonianSystem:
         hess_T: Optional[Callable] = None,
         hess_V: Optional[Callable] = None,
         degrees_of_freedom: Optional[int] = None,
+        parameters: Optional[Sequence] = None,
         number_of_parameters: Optional[int] = None,
     ) -> None:
         if model is not None and (grad_T is not None or grad_V is not None):
@@ -134,12 +135,13 @@ class HamiltonianSystem:
             self.__hess_T = model_info["hess_T"]
             self.__hess_V = model_info["hess_V"]
             self.__degrees_of_freedom = model_info["degrees of freedom"]
+            self.__parameters = None
             self.__number_of_parameters = model_info["number of parameters"]
         elif (
             grad_T is not None
             and grad_V is not None
             and degrees_of_freedom is not None
-            and number_of_parameters is not None
+            and (parameters is not None or number_of_parameters is not None)
         ):
             if not callable(grad_T) or not callable(grad_V):
                 raise TypeError(
@@ -166,10 +168,17 @@ class HamiltonianSystem:
             )
 
             self.__degrees_of_freedom = degrees_of_freedom
-            self.__number_of_parameters = number_of_parameters
+            self.__parameters = parameters
+            if self.__parameters is not None:
+                self.__number_of_parameters = len(self.__parameters)
+                self.__parameters = validate_parameters(
+                    self.__parameters, self.__number_of_parameters
+                )
+            else:
+                self.__number_of_parameters = number_of_parameters
         else:
             raise ValueError(
-                "Must specify either a model name or custom system function (grad V and grad T) with its dimension and number of paramters."
+                "Must specify either a model name or custom system function (grad V and grad T) with its dimension and parameters or number of paramters."
             )
 
         self.__integrator = "svy4"
@@ -294,6 +303,39 @@ class HamiltonianSystem:
                     f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
                 )
 
+    def set_parameters(
+        self, parameters: Union[NDArray[np.float64], Sequence[float], float]
+    ) -> None:
+        """
+        Set the parameter vector of the dynamical system.
+
+        This method validates and stores the model parameters. The input can
+        be a scalar, a sequence of floats, or a NumPy array. It is internally
+        converted into a ``float64`` NumPy array of the appropriate size.
+
+        Parameters
+        ----------
+        parameters : float or sequence of float or ndarray of shape (P,)
+            The parameter set to be used by the system.
+
+        Returns
+        -------
+        None
+        """
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        self.__parameters = parameters
+
+    def get_parameters(self) -> NDArray[np.float64]:
+        """
+        Return the current parameter vector of the dynamical system.
+
+        Returns
+        -------
+        ndarray of float64, shape (P,)
+            The parameter vector currently stored in the system.
+        """
+        return self.__parameters
+
     def step(
         self,
         q: NDArray[np.float64],
@@ -332,7 +374,10 @@ class HamiltonianSystem:
         if q.ndim != p.ndim:
             raise ValueError("q and p must have the same dimension and shape")
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         if q.ndim == 1:
             q, p = self.__integrator_func(
@@ -393,7 +438,10 @@ class HamiltonianSystem:
         if q.ndim != p.ndim:
             raise ValueError("q and p must have the same dimension and shape")
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total time", type_=Real)
 
@@ -467,7 +515,10 @@ class HamiltonianSystem:
         if q.ndim != p.ndim:
             raise ValueError("q and p must have the same dimension and shape")
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(
             num_intersections, "num_intersections time", type_=Integral
@@ -572,7 +623,10 @@ class HamiltonianSystem:
 
         validate_non_negative(total_time, "total time", type_=Real)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         if num_exponents is None:
             num_exponents = 2 * self.__degrees_of_freedom
@@ -711,7 +765,10 @@ class HamiltonianSystem:
 
         validate_non_negative(total_time, "total time", type_=Real)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         if not isinstance(return_history, bool):
             raise TypeError("return_history must be True or False")
@@ -811,7 +868,10 @@ class HamiltonianSystem:
 
         validate_non_negative(total_time, "total time", type_=Real)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(k, "k", Integral)
         if k <= 1 or k > 2 * self.__degrees_of_freedom:
@@ -917,7 +977,10 @@ class HamiltonianSystem:
 
         validate_non_negative(total_time, "total time", type_=Real)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(k, "k", Integral)
         if k <= 1 or k > 2 * self.__degrees_of_freedom:
@@ -1044,7 +1107,10 @@ class HamiltonianSystem:
 
         validate_non_negative(num_intersections, "num_intersections", type_=Real)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(section_index, "section_index")
         if section_index >= 2 * self.__degrees_of_freedom:
@@ -1149,7 +1215,10 @@ class HamiltonianSystem:
 
         validate_non_negative(num_intersections, "num_intersections", type_=Real)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(section_index, "section_index")
         if section_index >= 2 * self.__degrees_of_freedom:
