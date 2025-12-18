@@ -16,22 +16,21 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
+import warnings
 from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-from numpy.typing import NDArray
-import warnings
 from numba.core.errors import NumbaExperimentalFeatureWarning
-
+from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
 from pynamicalsys.common.utils import finite_difference_jacobian, householder_qr
 from pynamicalsys.discrete_time.dynamical_indicators import (
     RTE,
     SALI,
-    LDI_k,
     GALI_k,
+    LDI_k,
     dig,
     finite_time_hurst_exponent,
     finite_time_lyapunov,
@@ -40,8 +39,8 @@ from pynamicalsys.discrete_time.dynamical_indicators import (
     lagrangian_descriptors,
     lyapunov_1D,
     lyapunov_er,
-    maximum_lyapunov_er,
     lyapunov_qr,
+    maximum_lyapunov_er,
 )
 from pynamicalsys.discrete_time.models import (
     extended_standard_nontwist_map,
@@ -289,6 +288,7 @@ class DiscreteDynamicalSystem:
         jacobian: Optional[Callable] = None,
         backwards_mapping: Optional[Callable] = None,
         system_dimension: Optional[int] = None,
+        parameters: Optional[Sequence] = None,
         number_of_parameters: Optional[int] = None,
     ) -> None:
         """Initialize the discrete dynamical system with either a predefined model or custom mappings.
@@ -305,6 +305,10 @@ class DiscreteDynamicalSystem:
             Custom inverse mapping function with signature f_inv(u, parameters) -> array_like
         system_dimension : int, optional
             Dimension of the system (number of variables in the mapping).
+        parameters : sequence, optional
+            The parameters of the system. If provided, automatically defines the number of parameters.
+        number_of_parameters : int, optional
+            Number of parameters of the system. Used only when parameters is not provided.
 
         Raises
         ------
@@ -349,6 +353,7 @@ class DiscreteDynamicalSystem:
             self.__jacobian = model_info["jacobian"]
             self.__backwards_mapping = model_info["backwards_mapping"]
             self.__system_dimension = model_info["dimension"]
+            self.__parameters = None
             self.__number_of_parameters = model_info["number_of_parameters"]
 
             if jacobian is not None:  # Allow override of default Jacobian
@@ -360,7 +365,7 @@ class DiscreteDynamicalSystem:
         elif (
             mapping is not None
             and system_dimension is not None
-            and number_of_parameters is not None
+            and (parameters is not None or number_of_parameters is not None)
         ):
             self.__mapping = mapping
             self.__jacobian = (
@@ -369,12 +374,20 @@ class DiscreteDynamicalSystem:
             self.__backwards_mapping = backwards_mapping
 
             validate_non_negative(system_dimension, "system_dimension", Integral)
-            validate_non_negative(
-                number_of_parameters, "number_of_parameters", Integral
-            )
+            if number_of_parameters is not None:
+                validate_non_negative(
+                    number_of_parameters, "number_of_parameters", Integral
+                )
 
             self.__system_dimension = system_dimension
-            self.__number_of_parameters = number_of_parameters
+            self.__parameters = parameters
+            if self.__parameters is not None:
+                self.__number_of_parameters = len(self.__parameters)
+                self.__parameters = validate_parameters(
+                    self.__parameters, self.__number_of_parameters
+                )
+            else:
+                self.__number_of_parameters = number_of_parameters
 
             # Validate custom functions
             if not callable(self.__mapping):
@@ -390,7 +403,7 @@ class DiscreteDynamicalSystem:
 
         else:
             raise ValueError(
-                "Must specify either a model name or custom mapping function with its dimension and number of paramters."
+                "Must specify either a model name or custom mapping function with its dimension and parameters or number of paramters."
             )
 
     @classmethod
@@ -410,6 +423,39 @@ class DiscreteDynamicalSystem:
         model = self.__model.lower()
 
         return self.__AVAILABLE_MODELS[model]
+
+    def set_parameters(
+        self, parameters: Union[NDArray[np.float64], Sequence[float], float]
+    ) -> None:
+        """
+        Set the parameter vector of the dynamical system.
+
+        This method validates and stores the model parameters. The input can
+        be a scalar, a sequence of floats, or a NumPy array. It is internally
+        converted into a ``float64`` NumPy array of the appropriate size.
+
+        Parameters
+        ----------
+        parameters : float or sequence of float or ndarray of shape (P,)
+            The parameter set to be used by the system.
+
+        Returns
+        -------
+        None
+        """
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        self.__parameters = parameters
+
+    def get_parameters(self) -> NDArray[np.float64]:
+        """
+        Return the current parameter vector of the dynamical system.
+
+        Returns
+        -------
+        ndarray of float64, shape (P,)
+            The parameter vector currently stored in the system.
+        """
+        return self.__parameters
 
     def step(
         self,
@@ -464,7 +510,10 @@ class DiscreteDynamicalSystem:
         """
         u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         if u.ndim == 1:
             u_next = self.__mapping(u, parameters)
@@ -550,7 +599,10 @@ class DiscreteDynamicalSystem:
 
         u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, type_=Integral)
@@ -662,15 +714,24 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters - 1)
+        if (
+            parameters is None
+            and self.__parameters is not None
+            and self.__number_of_parameters != 1
+        ):
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(
+                parameters, self.__number_of_parameters - 1
+            )
 
         validate_non_negative(param_index, "param_index", Integral)
         if param_index >= self.__number_of_parameters:
             raise ValueError(
                 f"param_index {param_index} out of bounds for system with {self.__number_of_parameters} parameters"
             )
-
-        parameters = np.insert(parameters, param_index, 0)
+        if self.__parameters is None:
+            parameters = np.insert(parameters, param_index, 0)
 
         param_values = validate_and_convert_param_range(param_range)
 
@@ -797,7 +858,10 @@ class DiscreteDynamicalSystem:
         )
 
         # Validate parameters
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         # Validate time parameters
         validate_non_negative(max_time, "total_time", Integral)
@@ -939,7 +1003,10 @@ class DiscreteDynamicalSystem:
                 )
 
         # Validate parameters
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         # Validate period
         validate_positive(period, "period", Integral)
@@ -1057,7 +1124,10 @@ class DiscreteDynamicalSystem:
         )
 
         # Validate parameters
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         # Validate period
         validate_positive(period, "period", Integral)
@@ -1153,7 +1223,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_positive(period, "period", Integral)
 
@@ -1261,7 +1334,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_positive(period, "period", Integral)
 
@@ -1365,7 +1441,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -1453,7 +1532,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(max_time, "max_time", Integral)
 
@@ -1670,7 +1752,10 @@ class DiscreteDynamicalSystem:
                 f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
             )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -1759,7 +1844,10 @@ class DiscreteDynamicalSystem:
                 f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
             )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -1855,7 +1943,10 @@ class DiscreteDynamicalSystem:
                 f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
             )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -1953,7 +2044,10 @@ class DiscreteDynamicalSystem:
                 f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
             )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -2051,7 +2145,10 @@ class DiscreteDynamicalSystem:
                 f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
             )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -2136,7 +2233,10 @@ class DiscreteDynamicalSystem:
                 f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
             )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -2221,7 +2321,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -2307,7 +2410,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
 
@@ -2440,7 +2546,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -2606,7 +2715,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_positive(finite_time, "finite_time", Integral)
@@ -2716,7 +2828,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -2822,7 +2937,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_positive(finite_time, "finite_time", Integral)
@@ -2928,7 +3046,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -3057,7 +3178,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -3192,7 +3316,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -3408,7 +3535,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -3527,7 +3657,12 @@ class DiscreteDynamicalSystem:
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
+
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
 
@@ -3632,7 +3767,10 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_positive(finite_time, "finite_time", Integral)

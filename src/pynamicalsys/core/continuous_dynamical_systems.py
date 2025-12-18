@@ -15,11 +15,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+import warnings
 from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
 from IPython.display import Math
 
 import numpy as np
+from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
 from pynamicalsys.common.utils import householder_qr, qr
@@ -232,8 +234,11 @@ class ContinuousDynamicalSystem:
         equations_of_motion: Optional[Callable] = None,
         jacobian: Optional[Callable] = None,
         system_dimension: Optional[int] = None,
+        parameters: Optional[Sequence] = None,
         number_of_parameters: Optional[int] = None,
     ) -> None:
+
+        warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
         if model is not None and equations_of_motion is not None:
             raise ValueError("Cannot specify both model and custom system")
@@ -254,6 +259,7 @@ class ContinuousDynamicalSystem:
             self.__equations_of_motion = model_info["equations_of_motion"]
             self.__jacobian = model_info["jacobian"]
             self.__system_dimension = model_info["dimension"]
+            self.__parameters = None
             self.__number_of_parameters = model_info["number_of_parameters"]
 
             if jacobian is not None:
@@ -262,7 +268,7 @@ class ContinuousDynamicalSystem:
         elif (
             equations_of_motion is not None
             and system_dimension is not None
-            and number_of_parameters is not None
+            and (parameters is not None or number_of_parameters is not None)
         ):
             self.__equations_of_motion = equations_of_motion
             self.__jacobian = jacobian
@@ -273,7 +279,14 @@ class ContinuousDynamicalSystem:
             )
 
             self.__system_dimension = system_dimension
-            self.__number_of_parameters = number_of_parameters
+            self.__parameters = parameters
+            if self.__parameters is not None:
+                self.__number_of_parameters = len(self.__parameters)
+                self.__parameters = validate_parameters(
+                    self.__parameters, self.__number_of_parameters
+                )
+            else:
+                self.__number_of_parameters = number_of_parameters
 
             if not callable(self.__equations_of_motion):
                 raise TypeError("Custom mapping must be callable")
@@ -379,6 +392,39 @@ class ContinuousDynamicalSystem:
                     f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
                 )
 
+    def set_parameters(
+        self, parameters: Union[NDArray[np.float64], Sequence[float], float]
+    ) -> None:
+        """
+        Set the parameter vector of the dynamical system.
+
+        This method validates and stores the model parameters. The input can
+        be a scalar, a sequence of floats, or a NumPy array. It is internally
+        converted into a ``float64`` NumPy array of the appropriate size.
+
+        Parameters
+        ----------
+        parameters : float or sequence of float or ndarray of shape (P,)
+            The parameter set to be used by the system.
+
+        Returns
+        -------
+        None
+        """
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        self.__parameters = parameters
+
+    def get_parameters(self) -> NDArray[np.float64]:
+        """
+        Return the current parameter vector of the dynamical system.
+
+        Returns
+        -------
+        ndarray of float64, shape (P,)
+            The parameter vector currently stored in the system.
+        """
+        return self.__parameters
+
     def __get_initial_time_step(self, u, parameters):
         if self.integrator_info["estimate_initial_step"]:
             time_step = estimate_initial_step(
@@ -442,7 +488,10 @@ class ContinuousDynamicalSystem:
         u = validate_initial_conditions(u, self.__system_dimension)
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         _, total_time = validate_times(1, total_time)
 
@@ -519,7 +568,10 @@ class ContinuousDynamicalSystem:
         u = validate_initial_conditions(u, self.__system_dimension)
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
@@ -629,7 +681,10 @@ class ContinuousDynamicalSystem:
         u = validate_initial_conditions(u, self.__system_dimension)
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(num_intersections, "num_intersections", Integral)
 
@@ -751,7 +806,10 @@ class ContinuousDynamicalSystem:
         u = validate_initial_conditions(u, self.__system_dimension)
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(num_samples, "num_samples", Integral)
 
@@ -858,7 +916,10 @@ class ContinuousDynamicalSystem:
         u = validate_initial_conditions(u, self.__system_dimension)
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(num_points, "num_samples", Integral)
 
@@ -967,7 +1028,10 @@ class ContinuousDynamicalSystem:
 
         validate_non_negative(num_intersections, "num_intersections", Integral)
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         if transient_time is not None:
             validate_non_negative(transient_time, "transient_time", Real)
@@ -1116,7 +1180,10 @@ class ContinuousDynamicalSystem:
         )
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
@@ -1263,7 +1330,10 @@ class ContinuousDynamicalSystem:
         )
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
@@ -1377,7 +1447,10 @@ class ContinuousDynamicalSystem:
         )
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
@@ -1492,7 +1565,10 @@ class ContinuousDynamicalSystem:
         )
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
@@ -1639,7 +1715,10 @@ class ContinuousDynamicalSystem:
         )
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(transient_time, "transient_time", Real)
 
@@ -1793,7 +1872,10 @@ class ContinuousDynamicalSystem:
         )
         u = u.copy()
 
-        parameters = validate_parameters(parameters, self.__number_of_parameters)
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(transient_time, "transient_time", Real)
 
