@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+- Added two new methods, `set_parameters` and `get_parameters`, to each of the three main classes to improve parameter management. Parameters can now be set once via `set_parameters` and stored internally, allowing subsequent method calls to use the stored values without requiring parameters to be passed explicitly each time. Existing workflows remain fully backward compatible: methods that accept parameters directly continue to work as before.
+
 ## [v1.4.9] - 2025-11-18
 
 - Fix missing dependency:
