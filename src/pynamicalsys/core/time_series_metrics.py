@@ -26,7 +26,7 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     white_vertline_distr,
 )
 
-from pynamicalsys.discrete_time.validators import validate_positive
+from pynamicalsys.common.validators import validate_positive
 
 from pynamicalsys.common.time_series_metrics import hurst_exponent
 

@@ -16,21 +16,6 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from numbers import Integral, Real
-from typing import Type, Union
-
-import numpy as np
-from numpy.typing import NDArray
-
-
-def validate_non_negative(
-    value: Union[Integral, int, Real, float],
-    name: str,
-    type_: Type[Union[Integral, int, Real, float]] = Integral,
-) -> None:
-    if not isinstance(value, type_):
-        raise TypeError(f"{name} must be of type {type_.__name__}")
-    if value < 0:
-        raise ValueError(f"{name} must be non-negative")
 
 
 def validate_times(transient_time, total_time, type_=Real) -> tuple[float, float]:
@@ -55,60 +40,3 @@ def validate_times(transient_time, total_time, type_=Real) -> tuple[float, float
             raise ValueError("transient_time must be less than total_time")
 
     return transient_time, total_time
-
-
-def validate_initial_conditions(
-    u, system_dimension, allow_ensemble=True
-) -> NDArray[np.float64]:
-    if np.isscalar(u):
-        u = np.array([u], dtype=np.float64)
-    else:
-        u = np.asarray(u, dtype=np.float64)
-        if u.ndim not in (1, 2):
-            raise ValueError("Initial condition must be 1D or 2D array")
-
-    u = np.ascontiguousarray(u).copy()
-
-    if u.ndim == 1:
-        if len(u) != system_dimension:
-            raise ValueError(
-                f"1D initial condition must have length {system_dimension}"
-            )
-    elif u.ndim == 2:
-        if not allow_ensemble:
-            raise ValueError(
-                "Ensemble of initial conditions not allowed in this context"
-            )
-        if u.shape[1] != system_dimension:
-            raise ValueError(
-                f"Each initial condition must have length {system_dimension}"
-            )
-    return u
-
-
-def validate_parameters(parameters, number_of_parameters) -> NDArray[np.float64]:
-    if number_of_parameters == 0:
-        if parameters is not None:
-            raise ValueError("This system does not expect any parameters.")
-        return np.array([0], dtype=np.float64)
-
-    if parameters is None:
-        raise ValueError(
-            f"This system expects {number_of_parameters} parameter(s), but got None."
-        )
-
-    if np.isscalar(parameters):
-        parameters = np.array([parameters], dtype=np.float64)
-    else:
-        parameters = np.asarray(parameters, dtype=np.float64)
-        if parameters.ndim != 1:
-            raise ValueError(
-                f"`parameters` must be a 1D array or scalar. Got shape {parameters.shape}."
-            )
-
-    if parameters.size != number_of_parameters:
-        raise ValueError(
-            f"Expected {number_of_parameters} parameter(s), but got {parameters.size}."
-        )
-
-    return parameters

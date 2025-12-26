@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Callable
+from typing import Callable, Optional, Sequence, Tuple
 
 import numpy as np
 from numba import njit
@@ -27,10 +27,21 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     white_vertline_distr,
 )
 from pynamicalsys.common.time_series_metrics import hurst_exponent
-from pynamicalsys.common.utils import qr, wedge_norm
+from pynamicalsys.common.utils import (
+    qr,
+    qr_truncate,
+    wedge_norm,
+    clv_col_normalize_inplace,
+    clv_sanitize_inplace,
+    clv_solve_upper_inplace,
+)
+
 from pynamicalsys.hamiltonian_systems.trajectory_analysis import (
     generate_poincare_section,
+    generate_poincare_section_from_traj,
 )
+
+from pynamicalsys.hamiltonian_systems.numerical_integrators import advance_block
 
 
 @njit
@@ -226,6 +237,280 @@ def maximum_lyapunov_exponent(
         result = np.zeros((1, 1))
         result[0, 0] = lyapunov_exponent / time
         return result
+
+
+@njit(error_model="numpy")
+def compute_clvs(
+    q,
+    p,
+    total_time,
+    time_step,
+    parameters,
+    grad_T,
+    grad_V,
+    hess_T,
+    hess_V,
+    num_clvs,
+    warmup_time,
+    tail_time,
+    qr_time_step,
+    seed,
+    QR,
+    integrator_traj_tan,
+    poincare_section,
+    section_index,
+    section_value,
+    crossing,
+    normalize_A=True,
+    eps_norm=1e-300,
+    rcond_guard=1e-14,
+):
+
+    q = q.copy()
+    p = p.copy()
+    dof = q.shape[0]
+    neq = 2 * dof
+
+    num_steps = int(np.floor(total_time / time_step))
+    qr_steps = int(np.floor(qr_time_step / time_step))
+    total_blocks = num_steps // qr_steps
+
+    warm_blocks = 0
+    if warmup_time > 0.0:
+        warm_blocks = int(np.floor(warmup_time / qr_time_step))
+
+    tail_blocks = 0
+    if tail_time > 0.0:
+        tail_blocks = int(np.floor(tail_time / qr_time_step))
+
+    # ---- init tangent basis ----
+    np.random.seed(seed)
+    Q = -1.0 + 2.0 * np.random.rand(neq, num_clvs)
+    Q, _ = QR(Q)
+
+    # ---- warmup ----
+    for _ in range(warm_blocks):
+        q, p, Q = advance_block(
+            q,
+            p,
+            Q,
+            qr_steps,
+            time_step,
+            grad_T,
+            grad_V,
+            hess_T,
+            hess_V,
+            parameters,
+            integrator_traj_tan,
+        )
+        Q, _ = QR(Q)
+
+    time = warm_blocks * qr_steps * time_step
+
+    # ---- storage ----
+    Q_store = np.zeros((total_blocks + 1, neq, num_clvs), dtype=np.float64)
+    R_store = np.zeros((total_blocks, num_clvs, num_clvs), dtype=np.float64)
+    times = np.zeros(total_blocks + 1, dtype=np.float64)
+    q_history = np.zeros((total_blocks + 1, dof), dtype=np.float64)
+    p_history = np.zeros((total_blocks + 1, dof), dtype=np.float64)
+
+    Q_store[0] = Q
+    times[0] = time
+    q_history[0, :] = q
+    p_history[0, :] = p
+
+    # ---- forward blocks ----
+    for blk in range(total_blocks):
+        q, p, Q = advance_block(
+            q,
+            p,
+            Q,
+            qr_steps,
+            time_step,
+            grad_T,
+            grad_V,
+            hess_T,
+            hess_V,
+            parameters,
+            integrator_traj_tan,
+        )
+        time += qr_steps * time_step
+
+        Q, R = qr_truncate(Q, num_clvs, QR)
+
+        Q_store[blk + 1] = Q
+        R_store[blk] = R
+        times[blk + 1] = time
+        q_history[blk + 1, :] = q
+        p_history[blk + 1, :] = p
+
+    # ---- tail R's ----
+    R_tail = np.zeros((tail_blocks, num_clvs, num_clvs), dtype=np.float64)
+    for blk in range(tail_blocks):
+        q, p, Q = advance_block(
+            q,
+            p,
+            Q,
+            qr_steps,
+            time_step,
+            grad_T,
+            grad_V,
+            hess_T,
+            hess_V,
+            parameters,
+            integrator_traj_tan,
+        )
+        Q, R = qr_truncate(Q, num_clvs, QR)
+        R_tail[blk] = R
+
+    # ---- backward init A ----
+    np.random.seed(seed)
+    A = np.triu(np.random.randn(num_clvs, num_clvs)).astype(np.float64)
+
+    for k in range(tail_blocks - 1, -1, -1):
+        if normalize_A:
+            clv_col_normalize_inplace(A, eps_norm)
+        clv_solve_upper_inplace(R_tail[k], A, rcond_guard)
+
+    # ---- backward recursion (CLVs) ----
+    clvs = np.zeros((total_blocks + 1, neq, num_clvs), dtype=np.float64)
+
+    for k in range(total_blocks, -1, -1):
+        if normalize_A:
+            clv_col_normalize_inplace(A, eps_norm)
+
+        V = Q_store[k] @ A
+        clv_col_normalize_inplace(V, eps_norm)
+        clvs[k] = V
+
+        if k > 0:
+            clv_solve_upper_inplace(R_store[k - 1], A, rcond_guard)
+
+    traj_size = total_blocks + 1
+    if poincare_section:
+        section_points, section_k = generate_poincare_section_from_traj(
+            q_history,
+            p_history,
+            parameters,
+            grad_T,
+            qr_time_step,
+            section_index,
+            section_value,
+            crossing,
+        )
+        times = section_points[:, 0]
+        q_history = section_points[:, 1 : dof + 1]
+        p_history = section_points[:, dof + 1 :]
+        traj_size = times.shape[0]
+        clvs = clvs[section_k]
+
+    traj = np.zeros((traj_size, 2 * dof + 1), dtype=np.float64)
+    traj[:, 0] = times
+    traj[:, 1 : dof + 1] = q_history
+    traj[:, dof + 1 :] = p_history
+
+    return clvs, traj
+
+
+def clv_angles(
+    q,
+    p,
+    total_time,
+    time_step,
+    parameters,
+    grad_T,
+    grad_V,
+    hess_T,
+    hess_V,
+    warmup_time,
+    tail_time,
+    qr_time_step,
+    seed,
+    QR,
+    integrator_traj_tan,
+    poincare_section,
+    section_index,
+    section_value,
+    crossing,
+    subspaces: Optional[Sequence[Tuple[Sequence[int], Sequence[int]]]] = None,
+    pairs: Optional[Sequence[Tuple[int, int]]] = None,
+    normalize_A=True,
+    eps_norm=1e-300,
+    rcond_guard=1e-14,
+):
+    want_subspaces = subspaces is not None and len(subspaces) > 0
+    want_pairs = pairs is not None and len(pairs) > 0
+
+    if not want_subspaces and not want_pairs:
+        raise ValueError("At least one of `subspaces` or `pairs` must be provided.")
+
+    dof = len(q)
+    dim = 2 * dof
+    clvs, traj = compute_clvs(
+        q,
+        p,
+        total_time,
+        time_step,
+        parameters,
+        grad_T,
+        grad_V,
+        hess_T,
+        hess_V,
+        dim,
+        warmup_time,
+        tail_time,
+        qr_time_step,
+        seed,
+        QR,
+        integrator_traj_tan,
+        poincare_section,
+        section_index,
+        section_value,
+        crossing,
+    )
+
+    T, dim, _ = clvs.shape
+
+    # Normalize CLVs
+    V = clvs / np.linalg.norm(clvs, axis=1, keepdims=True)
+
+    n_sub = len(subspaces) if subspaces is not None else 0
+    n_pairs = len(pairs) if pairs is not None else 0
+
+    angles = np.empty((T, n_sub + n_pairs), dtype=np.float64)
+
+    col = 0
+
+    # -----------------------
+    # Subspace angles
+    # -----------------------
+    if want_subspaces:
+        for A_idx, B_idx in subspaces:
+            for t in range(T):
+                A = np.take(V[t], A_idx, axis=1)  # (dim, kA)
+                B = np.take(V[t], B_idx, axis=1)  # (dim, kB)
+
+                QA, _ = np.linalg.qr(A, mode="reduced")
+                QB, _ = np.linalg.qr(B, mode="reduced")
+
+                sigma_max = np.linalg.svd(QA.T @ QB, compute_uv=False)[0]
+                sigma_max = abs(sigma_max)
+                sigma_max = np.clip(sigma_max, -1.0, 1.0)
+                angles[t, col] = np.arccos(sigma_max)
+            col += 1
+
+    # -----------------------
+    # Pairwise angles
+    # -----------------------
+    if want_pairs:
+        for i, j in pairs:
+            dots = np.einsum("td,td->t", V[:, :, i], V[:, :, j])
+            dots = np.abs(dots)
+            dots = np.clip(dots, -1.0, 1.0)
+            angles[:, col] = np.arccos(dots)
+            col += 1
+
+    return angles, traj
 
 
 @njit

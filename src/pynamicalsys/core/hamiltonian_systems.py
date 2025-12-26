@@ -22,6 +22,13 @@ import numpy as np
 from numpy.typing import NDArray
 
 from pynamicalsys.common.utils import householder_qr, qr
+from pynamicalsys.common.validators import (
+    validate_clv_pairs,
+    validate_non_negative,
+    validate_parameters,
+    validate_clv_subspaces,
+)
+
 from pynamicalsys.hamiltonian_systems.chaotic_indicators import (
     GALI,
     LDI,
@@ -30,6 +37,8 @@ from pynamicalsys.hamiltonian_systems.chaotic_indicators import (
     lyapunov_spectrum,
     maximum_lyapunov_exponent,
     recurrence_time_entropy,
+    compute_clvs,
+    clv_angles,
 )
 from pynamicalsys.hamiltonian_systems.models import (
     henon_heiles_grad_T,
@@ -51,8 +60,6 @@ from pynamicalsys.hamiltonian_systems.trajectory_analysis import (
 )
 from pynamicalsys.hamiltonian_systems.validators import (
     validate_initial_conditions,
-    validate_non_negative,
-    validate_parameters,
 )
 
 
@@ -698,6 +705,417 @@ class HamiltonianSystem:
             return np.array(result)
         else:
             return np.array(result[0])
+
+    def CLV(
+        self,
+        q,
+        p,
+        total_time,
+        parameters=None,
+        num_clvs=None,
+        warmup_time=0.0,
+        tail_time=0.0,
+        qr_time_step=None,
+        seed=13,
+        poincare_section=False,
+        section_index=None,
+        section_value=None,
+        crossing=None,
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """
+        Compute Covariant Lyapunov Vectors (CLVs) along a trajectory of this continuous-time
+        Hamiltonian system.
+
+        The CLVs form a covariant (time-dependent) basis of the tangent space that transforms
+        under the linearized flow exactly as the dynamics does. The i-th CLV is associated with
+        the i-th Lyapunov exponent (ordered from largest to smallest) and provides the local
+        expanding/contracting directions in phase space.
+
+        This routine implements a Ginelli-style algorithm adapted to continuous-time flows
+        and symplectic integration:
+        (i) a forward QR iteration to obtain the orthonormal backward Lyapunov vectors (BLVs),
+        followed by (ii) a backward recursion in the triangular coefficient space to recover
+        covariant vectors.
+
+        Parameters
+        ----------
+        q, p : array_like, shape (dof,)
+            Initial generalized coordinates and momenta.
+        total_time : float
+            Total integration time over which CLVs are returned. The output contains
+            ``T = floor(total_time / qr_time_step) + 1`` sampling points (after warm-up),
+            corresponding to QR checkpoint times.
+        parameters : None or array_like
+            Model parameters. If ``None``, this method uses the system's stored parameters.
+        num_clvs : int, optional
+            Number of CLVs to compute/return. Defaults to ``2*dof``.
+            Must satisfy ``1 <= num_clvs <= 2*dof``.
+        warmup_time : int, default=0
+            Number of forward QR iterations necessary to the tangent basis to converge to the
+            tangent basis of the system. Increasing ``warmup_time`` improves convergence of the
+            stored orthonormal frames to the backward Lyapunov vectors (BLVs).
+        tail_time : int, default=0
+            Number of additional forward QR steps performed *after* the main storage window
+            to initialize the backward recursion robustly. Increasing ``tail_time`` improves
+            convergence of the backward coefficient recursion that produces covariant vectors,
+            especially in weakly hyperbolic / nearly tangent regimes. Analogously to the warmup-time,
+            but backward instead of forward.
+        qr_time_step : float, optional
+            Time interval between QR re-orthonormalizations and storage of tangent-space data.
+            Must satisfy ``qr_time_step >= time_step``. If ``None``, defaults to ``time_step``.
+        seed : int, default=13
+            Seed used to initialize the random upper-triangular matrix in the backward stage.
+            The final CLVs should be insensitive to the seed if ``tail_time`` (and the window)
+            are large enough.
+        poincare_section : bool, default=False
+            If True, return the trajectory restricted to a Poincaré section defined by
+            ``section_index``, ``section_value``, and ``crossing``.
+        section_index : int, optional
+            Index of the coordinate defining the Poincaré section.
+        section_value : float, optional
+            Value of the section coordinate.
+        crossing : int, optional
+            Crossing rule:
+            ``+1`` upward crossings, ``-1`` downward crossings, ``0`` both.
+
+        Returns
+        -------
+        clvs : ndarray, shape (T, 2*dof, num_clvs)
+            Covariant Lyapunov vectors sampled at QR checkpoint times. At each time index ``t``,
+            ``clvs[t, :, i]`` is the i-th CLV (column vector). Columns are normalized to unit
+            Euclidean norm.
+        traj : ndarray
+            Trajectory sampled at the same times as ``clvs``. If ``poincare_section=False``,
+            the array has shape ``(T, 2*dof + 1)`` with columns ``[t, q..., p...]``.
+            If ``poincare_section=True``, the trajectory is restricted to the Poincaré section
+            crossings.
+
+        Raises
+        ------
+        ValueError
+            If ``total_time`` is negative.
+            If ``num_clvs`` is greater than ``2*dof``.
+            If ``warmup_time`` is negative.
+            If ``tail_time`` is negative.
+            If ``qr_time_step`` is smaller than the integrator time step.
+            If Poincaré section parameters are inconsistent.
+        TypeError
+            If ``q`` or ``p`` cannot be interpreted as valid initial conditions.
+            If ``parameters`` cannot be interpreted as valid system parameters.
+
+        Notes
+        -----
+        Step-by-step algorithm (Ginelli-style, continuous time)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        Let ``Φ^t`` be the Hamiltonian flow and ``DΦ^t`` its tangent map. Let
+        ``p = num_clvs`` and ``d = 2*dof``.
+
+        1. Forward QR warm-up (optional)\\
+        Initialize an orthonormal matrix ``Q`` of size ``d × p``. Integrate the system
+        forward in time together with the tangent vectors and periodically perform QR
+        decompositions at intervals ``qr_time_step``:
+            ``Z = DΦ^{Δt} @ Q``\\
+            ``Z = Q⁺ R``\\
+        replacing ``Q ← Q⁺`` for a duration ``warmup_time``. This drives ``Q`` toward
+        the backward Lyapunov vectors (BLVs).
+
+        2. Forward storage window\\
+        Continue the integration for ``total_time``, storing at each QR checkpoint the
+        orthonormal matrices ``Q_k`` and the associated upper-triangular matrices ``R_k``.
+
+        3. Tail / backward initialization\\
+        Perform ``tail_time`` additional forward QR steps beyond the storage window and
+        use the resulting triangular matrices to drive an arbitrary upper-triangular
+        matrix ``A`` toward its asymptotic limit. This removes dependence on the random
+        seed in the backward recursion.
+
+        4. Backward recursion and CLV reconstruction\\
+        Starting from the end of the storage window and moving backward:
+            ``A_{k-1} = R_{k-1}^{-1} A_k``\\
+        and reconstruct CLVs as:
+            ``V_k = Q_k @ A_k``\\
+        Columns are normalized after reconstruction.
+
+        Choosing ``warmup_time`` and ``tail_time``
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        The role of ``warmup_time`` and ``tail_time`` is identical to the discrete-time case,
+        but measured in *physical time* rather than iterations. Weak chaos, near-integrable
+        regimes, or near-degeneracies in the Lyapunov spectrum typically require much larger
+        values to obtain well-conditioned CLVs.
+
+        Limitations
+        -----------
+        - This method is defined only for systems with at least one degree of freedom
+        (phase-space dimension >= 2).
+        - CLVs are sampled only at QR checkpoint times, not at every integrator step.
+
+        References
+        ----------
+        F. Ginelli et al., Characterizing dynamics with covariant Lyapunov
+        vectors. Phys. Rev. Lett. 99, 130601 (2007).
+        """
+        q = validate_initial_conditions(
+            q, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        q = q.copy()
+        p = validate_initial_conditions(
+            p, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        p = p.copy()
+
+        validate_non_negative(total_time, "total time", type_=Real)
+        validate_non_negative(warmup_time, "warmup time", type_=Real)
+        validate_non_negative(tail_time, "tail time", type_=Real)
+
+        if qr_time_step is not None:
+            validate_non_negative(qr_time_step, "qr time step", type_=Real)
+            if qr_time_step < self.__time_step:
+                raise ValueError(
+                    f"qr_time_step must be >= time_step. Got {qr_time_step}"
+                )
+        else:
+            qr_time_step = self.__time_step
+
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        if num_clvs is None:
+            num_clvs = 2 * self.__degrees_of_freedom
+        elif num_clvs > 2 * self.__degrees_of_freedom:
+            raise ValueError(f"num_clvs must be <= 2 * dof. Got {num_clvs}")
+        else:
+            validate_non_negative(num_clvs, "num_clvs", type_=Integral)
+
+        if not isinstance(poincare_section, bool):
+            raise TypeError(
+                f"poincare_section must be of type bool. Got {poincare_section} with type {type(poincare_section)}"
+            )
+
+        if poincare_section:
+            if section_index is None or section_value is None or crossing is None:
+                raise ValueError(
+                    "When poincare_section=True, you must also inform section_index, section_value, AND crossing"
+                )
+            else:
+                validate_non_negative(section_index, "section_index", type_=Integral)
+                if section_index > 2 * self.__degrees_of_freedom:
+                    raise ValueError(
+                        f"section_index must be <= 2 * dof. Got {section_index}"
+                    )
+                if crossing not in [-1, 0, 1]:
+                    raise ValueError(
+                        f"crossing must be -1 (downward crossing), 0 (both directions), or 1 (upward crossing). Got {crossing}"
+                    )
+
+        return compute_clvs(
+            q,
+            p,
+            total_time,
+            self.__time_step,
+            parameters,
+            self.__grad_T,
+            self.__grad_V,
+            self.__hess_T,
+            self.__hess_V,
+            num_clvs,
+            warmup_time,
+            tail_time,
+            qr_time_step,
+            seed,
+            qr,
+            self.__traj_tan_integrator_func,
+            poincare_section,
+            section_index,
+            section_value,
+            crossing,
+        )
+
+    def CLV_angles(
+        self,
+        q: Union[NDArray[np.float64], Sequence[np.float64]],
+        p: Union[NDArray[np.float64], Sequence[np.float64]],
+        total_time: float,
+        parameters: Union[
+            None, float, NDArray[np.float64], Sequence[np.float64]
+        ] = None,
+        subspaces: Optional[Sequence[Tuple[Sequence[int], Sequence[int]]]] = None,
+        pairs: Optional[Sequence[Tuple[int, int]]] = None,
+        warmup_time: float = 0.0,
+        tail_time: float = 0.0,
+        qr_time_step: Optional[float] = None,
+        seed: int = 13,
+        poincare_section: bool = False,
+        section_index: int = 0,
+        section_value: float = 0.0,
+        crossing: int = 1,
+    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """
+        Compute angle diagnostics derived from Covariant Lyapunov Vectors (CLVs) for this
+        continuous-time Hamiltonian system.
+
+        This method computes CLVs along a trajectory (see
+        :meth:`CLV`) and returns time series of angles between
+        user-selected CLV subspaces and/or between individual CLV pairs. These angles
+        quantify the local geometric relations between invariant directions and are
+        commonly used to study hyperbolicity, near-tangencies, and weak chaos.
+
+        At least one of ``subspaces`` or ``pairs`` must be provided.
+
+        Parameters
+        ----------
+        q, p : array_like, shape (dof,)
+            Initial generalized coordinates and momenta.
+        total_time : float
+            Total integration time used for the angle diagnostics.
+        parameters : None or array_like, optional
+            Model parameters. If ``None``, this method uses the system's stored parameters.
+        subspaces : sequence of (sequence of int, sequence of int), optional
+            List of subspace pairs for which minimum principal angles are computed.
+            Each element ``(A, B)`` defines two subspaces
+            ``E_A(t) = span{v_i(t) : i in A}`` and
+            ``E_B(t) = span{v_j(t) : j in B}``.
+        pairs : sequence of (int, int), optional
+            List of CLV index pairs ``(i, j)`` for which pairwise angles
+            ``angle(v_i(t), v_j(t))`` are computed.
+        warmup_time : float, default=0
+            Forward QR warm-up duration passed to the CLV computation. See
+            :meth:`CLV`.
+        tail_time : float, default=0
+            Backward-recursion convergence duration passed to the CLV computation. See
+            :meth:`CLV`.
+        qr_time_step : float, optional
+            QR checkpoint interval passed to the CLV computation.
+        seed : int, default=13
+            Seed forwarded to the CLV computation.
+        poincare_section : bool, default=False
+            If True, the returned trajectory corresponds to a Poincaré section.
+        section_index : int, default=0
+            Index of the coordinate defining the section.
+        section_value : float, default=0.0
+            Value of the section coordinate.
+        crossing : int, default=1
+            Crossing rule for the Poincaré section.
+
+        Returns
+        -------
+        angles : ndarray, shape (T, M)
+            Angle time series in radians. Columns are ordered as:
+            1) angles for all requested CLV pairs (in the order given).
+            2) followed by angles for all requested subspace pairs (in the order given),
+        traj : ndarray
+            Trajectory sampled at the same times as ``angles`` (QR checkpoints), or the
+            corresponding Poincaré section crossings if ``poincare_section=True``.
+
+        Raises
+        ------
+        ValueError
+            If neither ``subspaces`` nor ``pairs`` is provided.
+            If any subspace or pair specification is invalid.
+            If ``total_time``, ``warmup_time``, or ``tail_time`` is negative.
+        TypeError
+            If ``q`` or ``p`` cannot be interpreted as valid initial conditions.
+            If ``parameters`` cannot be interpreted as valid system parameters.
+
+        Notes
+        -----
+        Interpretation of CLV angles
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        - **Pairwise angles** measure the instantaneous alignment between two specific
+        covariant directions.
+        - **Subspace angles** (minimum principal angles) measure the closest approach
+        between two invariant subspaces and provide the natural generalization of the
+        2D CLV angle to higher-dimensional flows.
+
+        Near-zero subspace angles signal near-tangencies between invariant bundles and
+        are the most informative diagnostic for weak hyperbolicity and mixed dynamics.
+
+        Limitations
+        -----------
+        - Angles are computed only at QR checkpoint times.
+        - In the presence of strong degeneracies in the Lyapunov spectrum, CLVs and their
+        angles may fluctuate strongly and require long averaging windows.
+
+        See Also
+        --------
+        covariant_lyapunov_vectors : Computes CLVs for continuous-time Hamiltonian systems.
+        """
+        q = validate_initial_conditions(
+            q, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        q = q.copy()
+        p = validate_initial_conditions(
+            p, self.__degrees_of_freedom, allow_ensemble=False
+        )
+        p = p.copy()
+
+        validate_non_negative(total_time, "total time", type_=Real)
+        validate_non_negative(warmup_time, "warmup time", type_=Real)
+        validate_non_negative(tail_time, "tail time", type_=Real)
+
+        if qr_time_step is not None:
+            validate_non_negative(qr_time_step, "qr time step", type_=Real)
+            if qr_time_step < self.__time_step:
+                raise ValueError(
+                    f"qr_time_step must be >= time_step. Got {qr_time_step}"
+                )
+        else:
+            qr_time_step = self.__time_step
+
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        pairs = validate_clv_pairs(pairs, 2 * self.__degrees_of_freedom)
+
+        subspaces = validate_clv_subspaces(subspaces, 2 * self.__degrees_of_freedom)
+
+        if not isinstance(poincare_section, bool):
+            raise TypeError(
+                f"poincare_section must be of type bool. Got {poincare_section} with type {type(poincare_section)}"
+            )
+
+        if poincare_section:
+            if section_index is None or section_value is None or crossing is None:
+                raise ValueError(
+                    "When poincare_section=True, you must also inform section_index, section_value, AND crossing"
+                )
+            else:
+                validate_non_negative(section_index, "section_index", type_=Integral)
+                if section_index > 2 * self.__degrees_of_freedom:
+                    raise ValueError(
+                        f"section_index must be <= 2 * dof. Got {section_index}"
+                    )
+                if crossing not in [-1, 0, 1]:
+                    raise ValueError(
+                        f"crossing must be -1 (downward crossing), 0 (both directions), or 1 (upward crossing). Got {crossing}"
+                    )
+
+        return clv_angles(
+            q,
+            p,
+            total_time,
+            self.__time_step,
+            parameters,
+            self.__grad_T,
+            self.__grad_V,
+            self.__hess_T,
+            self.__hess_V,
+            warmup_time,
+            tail_time,
+            qr_time_step,
+            seed,
+            qr,
+            self.__traj_tan_integrator_func,
+            poincare_section,
+            section_index,
+            section_value,
+            crossing,
+            subspaces,
+            pairs,
+        )
 
     def SALI(
         self,

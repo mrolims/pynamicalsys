@@ -223,6 +223,103 @@ def generate_poincare_section(
     return section_points
 
 
+import numpy as np
+from numba import njit
+
+
+@njit
+def generate_poincare_section_from_traj(
+    q,
+    p,
+    parameters,
+    grad_T,
+    time_step,
+    section_index=0,
+    section_value=0.0,
+    crossing=1,
+):
+    """
+    Returns
+    -------
+    section_points : ndarray, shape (n_hits, 1 + 2*dof)
+        Rows are [t_cross, q_cross[0..dof-1], p_cross[0..dof-1]].
+    section_k : ndarray, shape (n_hits,)
+        Integer indices k such that each crossing lies between samples k and k+1
+        (i.e., between q[k],p[k] and q[k+1],p[k+1]).
+    """
+    dof = q.shape[1]
+    num_points = q.shape[0]
+
+    # -------------------------
+    # Pass 1: count crossings
+    # -------------------------
+    n_hits = 0
+    for i in range(1, num_points):
+        q_prev_i = q[i - 1, section_index]
+        q_new_i = q[i, section_index]
+
+        if (q_prev_i - section_value) * (q_new_i - section_value) < 0.0:
+            # interpolate
+            denom = q_new_i - q_prev_i
+            if denom == 0.0:
+                continue
+            lam = (section_value - q_prev_i) / denom
+
+            # p_cross needed for velocity test
+            # p_cross = (1-lam)*p[i-1] + lam*p[i]
+            # only section_index component of grad_T is needed, but grad_T takes full p
+            p_cross = (1.0 - lam) * p[i - 1, :] + lam * p[i, :]
+            vel = grad_T(p_cross, parameters)[section_index]
+
+            if crossing == 0:
+                n_hits += 1
+            else:
+                # match sign convention you used: np.sign(vel) == crossing
+                if np.sign(vel) == crossing:
+                    n_hits += 1
+
+    # Allocate outputs
+    section_points = np.empty((n_hits, 1 + 2 * dof), dtype=np.float64)
+    section_k = np.empty(n_hits, dtype=np.int64)
+
+    # -------------------------
+    # Pass 2: fill outputs
+    # -------------------------
+    hit = 0
+    for i in range(1, num_points):
+        q_prev_i = q[i - 1, section_index]
+        q_new_i = q[i, section_index]
+
+        if (q_prev_i - section_value) * (q_new_i - section_value) < 0.0:
+            denom = q_new_i - q_prev_i
+            if denom == 0.0:
+                continue
+            lam = (section_value - q_prev_i) / denom
+
+            q_cross = (1.0 - lam) * q[i - 1, :] + lam * q[i, :]
+            p_cross = (1.0 - lam) * p[i - 1, :] + lam * p[i, :]
+
+            # crossing time: between (i-1)*dt and i*dt
+            t_cross = (i - 1) * time_step + lam * time_step
+
+            vel = grad_T(p_cross, parameters)[section_index]
+            ok = (crossing == 0) or (np.sign(vel) == crossing)
+
+            if ok:
+                section_points[hit, 0] = t_cross
+                # q part
+                for j in range(dof):
+                    section_points[hit, 1 + j] = q_cross[j]
+                # p part
+                for j in range(dof):
+                    section_points[hit, 1 + dof + j] = p_cross[j]
+
+                section_k[hit] = i - 1  # crossing between (i-1) and i
+                hit += 1
+
+    return section_points, section_k
+
+
 @njit(parallel=True)
 def ensemble_poincare_section(
     q: NDArray[np.float64],
