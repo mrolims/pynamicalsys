@@ -185,6 +185,15 @@ def householder_qr(
 
 
 @njit
+def qr_truncate(Q, k, QR):
+    """QR and keep only first k columns (Q) and leading block (R)."""
+    Q_full, R_full = QR(Q)
+    Q = np.ascontiguousarray(Q_full[:, :k])
+    R = R_full[:k, :k]
+    return Q, R
+
+
+@njit
 def finite_difference_jacobian(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -341,3 +350,63 @@ def fit_poly(
     p = _fit_x(a, y)
     # Reverse order so p[0] is coefficient of highest order
     return p[::-1]
+
+
+@njit
+def clv_sanitize_inplace(M):
+    nrows, ncols = M.shape
+    for i in range(nrows):
+        for j in range(ncols):
+            x = M[i, j]
+            if not np.isfinite(x):
+                M[i, j] = 0.0
+
+
+@njit
+def clv_col_normalize_inplace(M, eps_norm):
+    nrows, ncols = M.shape
+    for j in range(ncols):
+        s = 0.0
+        for i in range(nrows):
+            v = M[i, j]
+            s += v * v
+
+        nrm = np.sqrt(s)
+
+        # If column is unusable, zero it (prevents divide-by-zero and stops NaN spread)
+        if (not np.isfinite(nrm)) or (nrm < eps_norm):
+            for i in range(nrows):
+                M[i, j] = 0.0
+            continue
+
+        inv = 1.0 / nrm
+        for i in range(nrows):
+            M[i, j] *= inv
+
+
+@njit
+def clv_solve_upper_inplace(R, B, rcond_guard):
+    """
+    Solve R X = B where R is upper triangular.
+    Overwrites B with X. Does NOT modify R.
+    """
+    p = R.shape[0]
+    ncols = B.shape[1]
+
+    for col in range(ncols):
+        for i in range(p - 1, -1, -1):
+            s = B[i, col]
+
+            # s -= sum_{k=i+1}^{p-1} R[i,k] * X[k,col]
+            for k in range(i + 1, p):
+                s -= R[i, k] * B[k, col]
+
+            rii = R[i, i]
+            if (not np.isfinite(rii)) or (np.abs(rii) < rcond_guard):
+                rii = rcond_guard if rii >= 0.0 else -rcond_guard
+
+            # If s is already non-finite, force it to 0 to prevent poisoning the recursion
+            if not np.isfinite(s):
+                B[i, col] = 0.0
+            else:
+                B[i, col] = s / rii

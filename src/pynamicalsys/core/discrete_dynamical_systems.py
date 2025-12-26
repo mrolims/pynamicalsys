@@ -41,6 +41,8 @@ from pynamicalsys.discrete_time.dynamical_indicators import (
     lyapunov_er,
     lyapunov_qr,
     maximum_lyapunov_er,
+    compute_clvs,
+    clv_angles,
 )
 from pynamicalsys.discrete_time.models import (
     extended_standard_nontwist_map,
@@ -93,16 +95,22 @@ from pynamicalsys.discrete_time.transport import (
     recurrence_times,
     root_mean_squared,
 )
+
 from pynamicalsys.discrete_time.validators import (
-    validate_and_convert_param_range,
-    validate_axis,
     validate_finite_time,
-    validate_initial_conditions,
-    validate_non_negative,
-    validate_parameters,
-    validate_positive,
+    validate_and_convert_param_range,
     validate_sample_times,
+)
+
+from pynamicalsys.common.validators import (
+    validate_initial_conditions,
+    validate_parameters,
+    validate_non_negative,
+    validate_positive,
     validate_transient_time,
+    validate_axis,
+    validate_clv_pairs,
+    validate_clv_subspaces,
 )
 
 from .time_series_metrics import TimeSeriesMetrics as tsm
@@ -2760,6 +2768,395 @@ class DiscreteDynamicalSystem:
             transient_time=transient_time,
             log_base=log_base,
             return_points=return_points,
+        )
+
+    def CLV(
+        self,
+        u: Union[NDArray[np.float64], Sequence[float], float],
+        total_time: int,
+        parameters: Union[
+            None, float, Sequence[np.float64], NDArray[np.float64]
+        ] = None,
+        num_clvs: Optional[int] = None,
+        transient_time: int = 0,
+        warmup_time: int = 0,
+        tail_time: int = 0,
+        seed: int = 13,
+    ) -> None:
+        """
+        Compute Covariant Lyapunov Vectors (CLVs) along a trajectory of this discrete-time system.
+
+        The CLVs form a covariant (time-dependent) basis of the tangent space that transforms
+        under the Jacobian exactly as the dynamics does. The i-th CLV is associated with the
+        i-th Lyapunov exponent (ordered from largest to smallest) and provides the local
+        expanding/contracting directions.
+
+        This routine implements a Ginelli-style algorithm:
+        (i) a forward QR iteration to obtain the orthonormal backward Lyapunov vectors (BLVs),
+        followed by (ii) a backward recursion in the triangular coefficient space to recover
+        covariant vectors.
+
+        Parameters
+        ----------
+        u : array_like, shape (system_dimension,)
+            Initial condition.
+        total_time : int
+            Number of map iterations for which CLVs are returned. The output contains
+            ``total_time + 1`` time points (including the initial state after any transient).
+        parameters : None or array_like
+            Model parameters. If ``None``, this method uses the system's stored parameters.
+        num_clvs : int, optional
+            Number of CLVs to compute/return. Defaults to ``system_dimension``.
+            Must satisfy ``1 <= num_clvs <= system_dimension``.
+        transient_time : int, default=0
+            Number of initial iterations discarded before starting the CLV computation.
+            This is useful to remove transient behavior and approach the attractor/typical set.
+        warmup_time : int, default=0
+            Number of forward QR iterations necessary to the tangent basis to converge to the
+            tangent basis of the system. Increasing ``warmup_time`` improves convergence of the
+            stored orthonormal frames to the backward Lyapunov vectors (BLVs).
+        tail_time : int, default=0
+            Number of additional forward QR steps performed *after* the main storage window
+            to initialize the backward recursion robustly. Increasing ``tail_time`` improves
+            convergence of the backward coefficient recursion that produces covariant vectors,
+            especially in weakly hyperbolic / nearly tangent regimes. Analogously to the warmup-time, 
+            but backward instead of forward.
+        seed : int, default=13
+            Seed used to initialize the random upper-triangular matrix in the backward stage.
+            The final CLVs should be insensitive to the seed if ``tail_time`` (and the window)
+            are large enough.
+
+        Returns
+        -------
+        clvs : ndarray, shape (total_time + 1, system_dimension, num_clvs)
+            Covariant Lyapunov vectors along the trajectory. At each time index ``t``,
+            ``clvs[t, :, i]`` is the i-th CLV (column vector). Columns are normalized to
+            unit Euclidean norm.
+        traj : ndarray, shape (total_time + 1, system_dimension)
+            The corresponding trajectory states (after the transient), if the underlying
+            implementation is configured to return it. Otherwise, only ``clvs`` is returned.
+
+        Raises
+        ------
+        ValueError
+            If the system dimension is less than 2.
+            If ``total_time`` is negative.
+            If ``num_clvs`` is greater than the system dimension.
+            If ``transient_time`` is negative or greater than ``total_time``.
+            If ``warmup_time`` is negative.
+            If ``tail_time`` is negative.
+
+        TypeError
+            If ``u`` cannot be interpreted as a valid initial condition.
+            If ``parameters`` cannot be interpreted as valid system parameters.
+
+        Notes
+        -----
+        Step-by-step algorithm (Ginelli-style)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        Let ``J_t`` be the Jacobian of one map iteration evaluated along the trajectory
+        at time ``t``. Let ``p = num_clvs`` and ``d = system_dimension``.
+
+        1. Transient (optional)\\
+           Iterate the map ``transient_time`` times starting from ``u`` and discard these
+           states. This aims to reach a typical region of phase space.
+
+        2. Forward QR warm-up (optional)\\
+           Initialize an orthonormal matrix ``Q`` of size ``d × p`` (typically the first
+           ``p`` columns of the identity). Then iterate:\\
+               Z = J_t @ Q\\
+               Z = Q_{t+1} R_t  (QR factorization)\\
+           and replace ``Q ← Q_{t+1}`` for ``warmup_time`` steps. This removes dependence
+           on the initial tangent basis and drives ``Q`` toward the backward Lyapunov
+           vectors (BLVs), i.e., the orthonormal Oseledets frame obtained by forward QR.
+
+        3. Forward storage window\\
+           Continue the forward QR iteration for ``total_time`` steps, storing at each step
+           the orthonormal factors ``Q_t`` and the associated upper-triangular factors
+           ``R_t`` from the QR decomposition of ``J_t @ Q_t``. These stored factors encode
+           the local tangent dynamics.
+
+        4. Tail / backward initialization\\
+           To start the backward recursion stably, perform ``tail_time`` additional forward
+           QR steps (beyond the storage window) and use the resulting sequence of triangular
+           factors to drive an arbitrary upper-triangular matrix ``A`` toward its asymptotic
+           limit ``A^-``. Intuitively, this is a "burn-in" for the backward coefficient
+           recursion so that the covariant directions do not depend on the random seed.
+
+        5. Backward recursion and CLV reconstruction\\
+           Starting from the end of the storage window and moving backward in time, update:\\
+               ``A_{t-1} = R_{t-1}^{-1} A_t``   (triangular solve)\\
+           and reconstruct CLVs at time ``t`` as:\\
+               ``V_t = Q_t @ A_t``   (columns are the CLVs)\\
+           Columns are normalized after reconstruction.
+
+        Choosing ``warmup_time`` and ``tail_time``
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        - ``warmup_time`` controls convergence of the forward orthonormal frame to the BLVs.
+          If too small, the stored ``Q_t`` may still carry memory of the initial basis,
+          affecting CLVs early in the window.
+
+        - ``tail_time`` controls convergence of the backward coefficient recursion. If too
+          small, CLVs near the end of the window can retain dependence on the random initial
+          ``A`` and may be poorly conditioned, particularly when Lyapunov exponents are close
+          or when stable/unstable subspaces are nearly tangent (weak hyperbolicity).
+
+        In strongly chaotic regimes, a few thousand iterations can be sufficient; in mixed
+        or weakly chaotic regimes, much larger values may be necessary. A practical check is
+        to repeat the computation with larger ``warmup_time``/``tail_time`` and verify that
+        the resulting CLV-based diagnostics (e.g., angles between subspaces) are stable.
+
+        Limitations
+        -----------
+        - This method is defined only for systems of dimension >= 2. In one-dimensional
+        systems there is only a single covariant direction, and angle-based diagnostics
+        are not meaningful.
+
+        References
+        ----------
+        F. Ginelli et al., Characterizing dynamics with covariant Lyapunov
+        vectors. Phys. Rev. Lett. 99, 130601 (2007).
+
+        """
+
+        if self.__system_dimension < 2:
+            raise ValueError(
+                f"System dimension must be >= 2 to compute CLV angles, "
+                f"got {self.__system_dimension}."
+            )
+
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(total_time, "total_time", Integral)
+        validate_transient_time(transient_time, total_time, Integral)
+        validate_non_negative(warmup_time, "warmup_time", Integral)
+        validate_non_negative(tail_time, "tail_time", Integral)
+
+        if num_clvs is None:
+            num_clvs = self.__system_dimension
+        elif num_clvs > self.__system_dimension:
+            raise ValueError("num_clvs must be <= system_dimension")
+
+        return compute_clvs(
+            u,
+            parameters,
+            total_time,
+            self.__mapping,
+            self.__jacobian,
+            num_clvs,
+            transient_time,
+            warmup_time,
+            tail_time,
+            seed,
+        )
+
+    def CLV_angles(
+        self,
+        u: Union[NDArray[np.float64], Sequence[float], float],
+        total_time: int,
+        parameters: Union[
+            None, float, Sequence[np.float64], NDArray[np.float64]
+        ] = None,
+        subspaces: Optional[Sequence[Tuple[Sequence[int], Sequence[int]]]] = None,
+        pairs: Optional[Sequence[Tuple[int, int]]] = None,
+        window_time: Optional[int] = None,
+        transient_time: int = 0,
+        warmup_time: int = 0,
+        tail_time: int = 0,
+        seed: int = 13,
+    ):
+        """
+        Compute angle diagnostics derived from Covariant Lyapunov Vectors (CLVs).
+
+        This method computes CLVs along a trajectory (see :meth:`CLV`) and returns time series of
+        geometric angles between user-selected CLV subspaces and/or selected
+        pairs of individual CLVs.
+
+        For details on how CLVs themselves are computed (forward QR warm-up,
+        storage of backward data, backward recursion, and the role of
+        ``warmup_time`` and ``tail_time``), see
+        :meth:`covariant_lyapunov_vectors`.
+
+        Parameters
+        ----------
+        u : array_like, shape (system_dimension,)
+            Initial condition.
+        total_time : int
+            Number of map iterations used for the angle diagnostics.
+        parameters : None or array_like, optional
+            Model parameters. If ``None``, stored system parameters are used.
+        subspaces : sequence of ((sequence[int], sequence[int])) or None
+            Specification of CLV subspace pairs for which angles are computed.
+            Each element must be a tuple ``(A, B)``, where ``A`` and ``B`` are
+            sequences of CLV indices defining two disjoint subspaces.
+            For example, if λ1 > 0, λ2 = 0, and λ3 < 0:
+                - ``([0], [1, 2])``: unstable vs (neutral+stable)
+                - ``([0, 1], [2])``: (unstable+neutral) vs stable
+            If ``None``, no subspace angles are computed.
+        pairs : sequence of (int, int) or None
+            Optional list of CLV index pairs ``(i, j)`` for which pairwise angles
+            ``angle(v_i, v_j)`` are computed. Indices refer to CLV ordering
+            (0 = most expanding, last = most contracting).
+            If ``None``, no pairwise angles are computed.
+        window_time : int or None, optional
+            If ``None``, returns the full time series of angles.
+            If an integer ``window_time >= 1``, the computation is performed in
+            consecutive windows and the angles are averaged within each window.
+            When windowing is used, an additional buffer of length ``tail_time``
+            is computed per window (for CLV conditioning), and only the first
+            ``window_time`` samples are used in the averaging.
+        transient_time : int, default=0
+            Number of initial iterations discarded before starting the diagnostic.
+        warmup_time : int, default=0
+            Forward QR warm-up length passed to the CLV computation.
+            See :meth:`CLV`.
+        tail_time : int, default=0
+            Backward-recursion convergence length passed to the CLV computation.
+            See :meth:`CLV`.
+        seed : int, default=13
+            Seed forwarded to the CLV computation.
+
+        Returns
+        -------
+        angles : ndarray, shape (T, M)
+            Array of angles in radians.
+
+            - Each column corresponds to one requested diagnostic, in the
+            following order:
+                1. angles for each subspace pair in ``subspaces`` (in the order
+                provided)
+                2. angles for each pair in ``pairs`` (in the order provided)
+
+            If ``window_time is None``:
+                ``T = total_time + 1`` and angles are instantaneous.
+
+            If ``window_time is not None``:
+                ``T = total_time // window_time`` and each row contains the
+                window-averaged angles.
+
+        trajectory_or_initial_conditions : ndarray
+            If ``window_time is None``:
+                The full trajectory used for the angle computation.
+                Shape ``(T, system_dimension)``.
+
+            If ``window_time is not None``:
+                Array of shape ``(num_windows, system_dimension)`` containing the
+                initial condition at the start of each averaging window.
+
+        Raises
+        ------
+        ValueError
+            If the system dimension is less than 2.
+            If ``total_time`` is negative.
+            If ``transient_time`` is negative or greater than ``total_time``.
+            If ``warmup_time`` is negative.
+            If ``tail_time`` is negative.
+            If ``window_time`` is not ``None`` and is not a positive integer.
+            If both ``subspaces`` and ``pairs`` are ``None``.
+            If any subspace specification contains overlapping indices, empty
+            subspaces, or indices outside the valid CLV index range.
+            If any pair in ``pairs`` contains identical indices or indices
+            outside the valid CLV index range.
+
+        TypeError
+            If ``u`` cannot be interpreted as a valid initial condition.
+            If ``parameters`` cannot be interpreted as valid system parameters.
+            If ``subspaces`` or ``pairs`` are not valid sequences.
+
+        Notes
+        -----
+        Interpretation of CLV angle diagnostics
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **Subspace angles**
+            The angle between two CLV subspaces is defined as the minimum
+            principal angle between them. Small values indicate near-tangencies
+            between expanding and contracting directions, weak domination, or
+            violations of uniform hyperbolicity.
+
+            This is the most meaningful generalization of the 2D CLV angle to
+            higher-dimensional systems and is the recommended diagnostic for
+            detecting geometric obstructions to hyperbolicity.
+
+        **Pairwise CLV angles**
+            Pairwise angles ``angle(v_i, v_j)`` provide fine-grained information
+            about the relative orientation of individual covariant directions.
+            They are useful for exploratory analysis and debugging, but they do
+            not fully characterize interactions between multidimensional
+            subspaces.
+
+        What to look for in practice
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        - Near-zero subspace angles signal near-tangencies and are the most
+        dynamically significant events.
+        - Window-averaged angles are often more robust than instantaneous ones,
+        especially in weakly chaotic or intermittent regimes.
+        - The choice of subspaces should reflect the Lyapunov spectrum
+        structure (e.g. whether neutral directions are included with
+        unstable or stable ones).
+
+        Limitations
+        -----------
+        - Defined only for systems of dimension >= 2.
+        - Interpretation assumes a reasonably well-separated Lyapunov spectrum.
+        Strong degeneracies can make CLVs ill-conditioned.
+        - Results depend on finite-time effects and on the choice of
+        ``window_time`` and ``tail_time``.
+
+        See Also
+        --------
+        covariant_lyapunov_vectors
+            Computes CLVs and documents the Ginelli-style algorithm, including
+            the roles of ``warmup_time`` and ``tail_time``.
+        """
+        if self.__system_dimension < 2:
+            raise ValueError(
+                f"System dimension must be >= 2 to compute CLV angles, "
+                f"got {self.__system_dimension}."
+            )
+
+        if (not subspaces) and (not pairs):
+            raise ValueError("At least one of `subspaces` or `pairs` must be provided.")
+
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        else:
+            parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        validate_non_negative(total_time, "total_time", Integral)
+        validate_transient_time(transient_time, total_time, Integral)
+        validate_non_negative(warmup_time, "warmup_time", Integral)
+        validate_non_negative(tail_time, "tail_time", Integral)
+
+        if window_time is not None:
+            validate_positive(window_time, "window_time", Integral)
+
+        subspaces = validate_clv_subspaces(subspaces, self.__system_dimension)
+        pairs = validate_clv_pairs(pairs, self.__system_dimension)
+
+        return clv_angles(
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            mapping=self.__mapping,
+            jacobian=self.__jacobian,
+            subspaces=subspaces,
+            pairs=pairs,
+            window_time=window_time,
+            transient_time=transient_time,
+            warmup_time=warmup_time,
+            tail_time=tail_time,
+            seed=seed,
         )
 
     def hurst_exponent(

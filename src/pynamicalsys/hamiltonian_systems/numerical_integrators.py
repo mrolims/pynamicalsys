@@ -139,7 +139,7 @@ def velocity_verlet_2nd_step_traj_tan(
 
     # on tangent momenta
     HV = hess_V(q_new, parameters)
-    HV_dot_dq = HV @ dv_new[:dof, :]  # HV cdot dq
+    HV_dot_dq = HV @ np.ascontiguousarray(dv_new[:dof, :])  # HV cdot dq
     # Update dp
     dv_new[dof:, :] -= 0.5 * time_step * HV_dot_dq
 
@@ -150,7 +150,7 @@ def velocity_verlet_2nd_step_traj_tan(
 
     # on the tangent coordinates
     HT = hess_T(p_new, parameters)
-    HT_dot_dp = HT @ dv_new[dof:, :]  # HT cdot dp
+    HT_dot_dp = HT @ np.ascontiguousarray(dv_new[:dof, :])  # HT cdot dp
     # Update dq
     dv_new[:dof, :] += time_step * HT_dot_dp
 
@@ -161,7 +161,7 @@ def velocity_verlet_2nd_step_traj_tan(
 
     # on tangent momenta
     HV = hess_V(q_new, parameters)
-    HV_dot_dq = HV @ dv_new[:dof, :]  # HV cdot dq
+    HV_dot_dq = HV @ np.ascontiguousarray(dv_new[:dof, :])  # HV cdot dq
     # Update dp
     dv_new[dof:, :] -= 0.5 * time_step * HV_dot_dq
 
@@ -296,3 +296,25 @@ def yoshida_4th_step_traj_tan(
     )
 
     return q_new, p_new, dv_new
+
+
+@njit
+def advance_block(
+    q,
+    p,
+    Q,
+    qr_steps,
+    time_step,
+    grad_T,
+    grad_V,
+    hess_T,
+    hess_V,
+    parameters,
+    integrator_traj_tan,
+):
+    """Advance (q,p,Q) by qr_steps of size time_step."""
+    for _ in range(qr_steps):
+        q, p, Q = integrator_traj_tan(
+            q, p, Q, time_step, grad_T, grad_V, hess_T, hess_V, parameters
+        )
+    return q, p, Q

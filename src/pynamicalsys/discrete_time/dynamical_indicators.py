@@ -15,8 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Callable, Optional, Tuple, Union
+from re import sub
+from typing import Callable, Optional, Tuple, Union, Any, Dict, Sequence
 
+from matplotlib.pyplot import subplot
 import numpy as np
 from numba import njit
 from numpy.typing import NDArray
@@ -27,7 +29,14 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     white_vertline_distr,
 )
 from pynamicalsys.common.time_series_metrics import hurst_exponent
-from pynamicalsys.common.utils import householder_qr, qr, wedge_norm
+from pynamicalsys.common.utils import (
+    householder_qr,
+    qr,
+    wedge_norm,
+    clv_col_normalize_inplace,
+    clv_sanitize_inplace,
+    clv_solve_upper_inplace,
+)
 from pynamicalsys.discrete_time.trajectory_analysis import (
     generate_trajectory,
     iterate_mapping,
@@ -632,6 +641,332 @@ def finite_time_lyapunov(
         return exponents
 
 
+@njit(error_model="numpy")
+def compute_clvs(
+    u,
+    parameters,
+    total_time,
+    mapping,
+    jacobian,
+    num_clvs=None,
+    transient_time=0,
+    warmup_time=0,
+    tail_time=0,
+    seed=13,
+    normalize_A=True,
+    eps_norm=1e-300,
+    rcond_guard=1e-14,
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+
+    np.random.seed(seed)
+
+    u = np.asarray(u, dtype=np.float64).copy()
+    parameters = np.asarray(parameters, dtype=np.float64)
+
+    dim = u.size
+    if num_clvs is None:
+        num_clvs = dim
+    if num_clvs < 1 or num_clvs > dim:
+        raise ValueError("num_clvs must be in [1, dim]")
+
+    # (A) Transient
+    for _ in range(transient_time):
+        u = mapping(u, parameters)
+
+    # (B) Forward GS warm-up
+    Q = np.eye(dim, num_clvs, dtype=np.float64)
+    for _ in range(warmup_time):
+        J = jacobian(u, parameters)
+        Q_full, R_full = np.linalg.qr(J @ Q)
+        Q = np.ascontiguousarray(Q_full[:, :num_clvs])
+        u = mapping(u, parameters)
+
+    # (C) Data collection window
+    Q_store = np.zeros((total_time + 1, dim, num_clvs), dtype=np.float64)
+    R_store = np.zeros((total_time, num_clvs, num_clvs), dtype=np.float64)
+    Q_store[0] = Q
+
+    traj = np.zeros((total_time + 1, dim), dtype=np.float64)
+    traj[0] = u
+
+    for i in range(total_time):
+        J = jacobian(u, parameters)
+        Q_full, R_full = np.linalg.qr(J @ Q)
+        Q = np.ascontiguousarray(Q_full[:, :num_clvs])
+        R = R_full[:num_clvs, :num_clvs]
+
+        Q_store[i + 1] = Q
+        R_store[i] = R
+
+        u = mapping(u, parameters)
+        traj[i + 1] = u
+
+    # (D) Backward initialization (A_T -> A^-)
+    A = np.triu(np.random.randn(num_clvs, num_clvs)).astype(np.float64)
+
+    # Make sure A starts finite and reasonably scaled
+    clv_sanitize_inplace(A)
+    if normalize_A:
+        clv_col_normalize_inplace(A, eps_norm)
+
+    for _ in range(tail_time):
+        J = jacobian(u, parameters)
+        Q_full, R_full = np.linalg.qr(J @ Q)
+        Q = np.ascontiguousarray(Q_full[:, :num_clvs])
+        R = R_full[:num_clvs, :num_clvs]
+
+        if normalize_A:
+            clv_col_normalize_inplace(A, eps_norm)
+
+        clv_solve_upper_inplace(R, A, rcond_guard)
+
+        clv_sanitize_inplace(A)
+        if normalize_A:
+            clv_col_normalize_inplace(A, eps_norm)
+
+        u = mapping(u, parameters)
+
+    # (E) Backward recursion (CLVs)
+    clvs = np.zeros((total_time + 1, dim, num_clvs), dtype=np.float64)
+
+    # workspace
+    V = np.empty((dim, num_clvs), dtype=np.float64)
+
+    for t in range(total_time, -1, -1):
+        if normalize_A:
+            clv_col_normalize_inplace(A, eps_norm)
+
+        V[:, :] = Q_store[t] @ A
+        clv_sanitize_inplace(V)
+        clv_col_normalize_inplace(V, eps_norm)
+        clvs[t] = V
+
+        if t > 0:
+            clv_solve_upper_inplace(R_store[t - 1], A, rcond_guard)
+            clv_sanitize_inplace(A)
+            if normalize_A:
+                clv_col_normalize_inplace(A, eps_norm)
+
+    return clvs, traj
+
+
+def _clv_angles(
+    u: np.ndarray,
+    parameters: np.ndarray,
+    total_time: int,
+    mapping: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    jacobian: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    warmup_time: int = 0,
+    tail_time: int = 0,
+    seed: int = 13,
+    subspaces: Optional[Sequence[Tuple[Sequence[int], Sequence[int]]]] = None,
+    pairs: Optional[Sequence[Tuple[int, int]]] = None,
+    use_abs: bool = True,
+    **clv_kwargs: Any,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute CLV angle diagnostics.
+
+    Computes:
+    - minimum principal angles between user-defined subspaces
+    - angles between user-defined CLV pairs
+
+    At least one of `subspaces` or `pairs` must be provided.
+
+    Returns
+    -------
+    angles : ndarray, shape (T, M)
+        One column per requested angle:
+        - first all subspace angles (in order given)
+        - then all pairwise angles (in order given)
+    traj : ndarray
+        Trajectory returned by `compute_clvs`.
+    """
+
+    # -----------------------
+    # Validate requests
+    # -----------------------
+    want_subspaces = subspaces is not None and len(subspaces) > 0
+    want_pairs = pairs is not None and len(pairs) > 0
+
+    if not want_subspaces and not want_pairs:
+        raise ValueError("At least one of `subspaces` or `pairs` must be provided.")
+
+    # -----------------------
+    # Compute CLVs
+    # -----------------------
+    clvs, traj = compute_clvs(
+        u=u,
+        parameters=parameters,
+        total_time=total_time,
+        mapping=mapping,
+        jacobian=jacobian,
+        warmup_time=warmup_time,
+        tail_time=tail_time,
+        seed=seed,
+        **clv_kwargs,
+    )
+
+    T, dim, num_clvs = clvs.shape
+
+    # Normalize CLVs
+    V = clvs / np.linalg.norm(clvs, axis=1, keepdims=True)
+
+    n_sub = len(subspaces) if subspaces is not None else 0
+    n_pairs = len(pairs) if pairs is not None else 0
+
+    angles = np.empty((T, n_sub + n_pairs), dtype=np.float64)
+
+    col = 0
+
+    # -----------------------
+    # Subspace angles
+    # -----------------------
+    if want_subspaces:
+        for A_idx, B_idx in subspaces:
+            for t in range(T):
+                A = np.take(V[t], A_idx, axis=1)  # (dim, kA)
+                B = np.take(V[t], B_idx, axis=1)  # (dim, kB)
+
+                QA, _ = np.linalg.qr(A, mode="reduced")
+                QB, _ = np.linalg.qr(B, mode="reduced")
+
+                sigma_max = np.linalg.svd(QA.T @ QB, compute_uv=False)[0]
+                if use_abs:
+                    sigma_max = abs(sigma_max)
+                sigma_max = np.clip(sigma_max, -1.0, 1.0)
+                angles[t, col] = np.arccos(sigma_max)
+            col += 1
+
+    # -----------------------
+    # Pairwise angles
+    # -----------------------
+    if want_pairs:
+        for i, j in pairs:
+            dots = np.einsum("td,td->t", V[:, :, i], V[:, :, j])
+            if use_abs:
+                dots = np.abs(dots)
+            dots = np.clip(dots, -1.0, 1.0)
+            angles[:, col] = np.arccos(dots)
+            col += 1
+
+    return angles, traj
+
+
+def clv_angles(
+    u: np.ndarray,
+    parameters: np.ndarray,
+    total_time: int,
+    mapping: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    jacobian: Callable[[np.ndarray, np.ndarray], np.ndarray],
+    subspaces: Optional[Sequence[Tuple[Sequence[int], Sequence[int]]]] = None,
+    pairs: Optional[Sequence[Tuple[int, int]]] = None,
+    window_time: Optional[int] = None,
+    transient_time: int = 0,
+    warmup_time: int = 0,
+    tail_time: int = 0,
+    seed: int = 13,
+    use_abs: bool = True,
+    **clv_kwargs: Any,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Windowed or full-time CLV angle computation.
+
+    Returns
+    -------
+    angles : ndarray
+        If window_time is None:
+            shape (T, M)
+        Else:
+            shape (num_windows, M + 1)
+            first column is window center time index
+    aux : ndarray
+        If window_time is None:
+            trajectory of the system
+        Else:
+            initial condition of each window
+    """
+
+    # -----------------------
+    # Initial transient
+    # -----------------------
+    dim = u.shape[0]
+    u = u.copy()
+
+    for _ in range(transient_time):
+        u = mapping(u, parameters)
+
+    # -----------------------
+    # No windowing
+    # -----------------------
+    if window_time is None:
+        return _clv_angles(
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            mapping=mapping,
+            jacobian=jacobian,
+            warmup_time=warmup_time,
+            tail_time=tail_time,
+            seed=seed,
+            subspaces=subspaces,
+            pairs=pairs,
+            use_abs=use_abs,
+            **clv_kwargs,
+        )
+
+    # -----------------------
+    # Windowed computation
+    # -----------------------
+    num_windows = total_time // window_time
+
+    # Determine number of angles M
+    n_sub = 0 if subspaces is None else len(subspaces)
+    n_pairs = 0 if pairs is None else len(pairs)
+
+    if n_sub == 0 and n_pairs == 0:
+        raise ValueError("At least one of `subspaces` or `pairs` must be provided.")
+
+    M = n_sub + n_pairs
+
+    # +1 column for window time index
+    avg_angles = np.zeros((num_windows, M + 1), dtype=np.float64)
+    initial_conditions = np.zeros((num_windows, dim), dtype=np.float64)
+
+    # -----------------------
+    # Window loop
+    # -----------------------
+    for i in range(num_windows):
+        angles, traj = _clv_angles(
+            u=u,
+            parameters=parameters,
+            total_time=window_time + tail_time,
+            mapping=mapping,
+            jacobian=jacobian,
+            warmup_time=warmup_time,
+            tail_time=tail_time,
+            seed=seed,
+            subspaces=subspaces,
+            pairs=pairs,
+            use_abs=use_abs,
+            **clv_kwargs,
+        )
+
+        # Store IC of this window
+        initial_conditions[i] = u.copy()
+
+        # Window "time coordinate"
+        avg_angles[i, 0] = i * window_time + 0.5 * (window_time - 1)
+
+        # Average only over the well-conditioned part
+        avg_angles[i, 1:] = angles[:window_time].mean(axis=0)
+
+        # Advance IC
+        u = traj[window_time].copy()
+
+    return avg_angles, initial_conditions
+
+
 def dig(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -640,7 +975,8 @@ def dig(
     func: Callable[[NDArray[np.float64]], NDArray[np.float64]],
     transient_time: Optional[int] = None,
 ) -> float:
-    """Compute the Dynamic Indicator for Globalness (DIG) of a trajectory.
+    """Compute the number of zeros after the decimal point (dig) of the weighted Birkhoff
+    average convergence of a trajectory.
 
     Parameters
     ----------
@@ -660,8 +996,7 @@ def dig(
     Returns
     -------
     float
-        DIG value (higher values indicate better convergence)
-        Returns 16 if perfect convergence detected
+        dig value (higher values indicate better convergence)
 
     Notes
     -----
