@@ -17,12 +17,12 @@ classifiers = [
 dependencies = [
     "numpy >=1.21",
     "matplotlib >=3.4",
-    "numba >=0.55",
+    "numba >=0.63",
     "scipy >=0.6",
     "scikit-learn >=0.14",
     "ipython >=8.0,<9",
 ]
-requires-python = ">=3.8,<3.14"
+requires-python = ">=3.8"
 
 [build-system]
 requires = ["setuptools>=77.0", "setuptools-scm>=9"]
