@@ -6,7 +6,7 @@ This section guides you through installing the **pynamicalsys** package.
 Prerequisites
 -------------
 
-- Python 3.8 or higher (but < 3.14 due to numba)
+- Python 3.8 or higher
 - pip (Python package installer)
 
 Install via PyPI
