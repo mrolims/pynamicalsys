@@ -18,7 +18,7 @@ How to Contribute
     
     .. code-block:: bash
 
-        git checkout -b fix-typo-in-readme
+        git checkout -b fix/typo-in-readme
 
 3. **Make Changes**
 
