@@ -281,9 +281,10 @@ class ContinuousDynamicalSystem:
             self.__jacobian = jacobian
 
             validate_non_negative(system_dimension, "system_dimension", Integral)
-            validate_non_negative(
-                number_of_parameters, "number_of_parameters", Integral
-            )
+            if number_of_parameters is not None:
+                validate_non_negative(
+                    number_of_parameters, "number_of_parameters", Integral
+                )
 
             self.__system_dimension = system_dimension
             self.__parameters = parameters
