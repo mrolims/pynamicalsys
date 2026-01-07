@@ -69,6 +69,7 @@ With this information, let's compute the LDI for two different initial condition
     eps2 = 0.1
     xi = 0.001
     parameters = [eps1, eps2, xi]
+    ds.set_parameters(parameters)
 
     # Number of deviation vectors
     k = [2, 3, 4]
@@ -77,13 +78,25 @@ With this information, let's compute the LDI for two different initial condition
     total_time = 1000000
 
     # Sample times for the LDI computation
-    sample_times = np.unique(np.logspace(np.log10(1), np.log10(total_time), 1000).astype(int))
+    sample_times = np.unique(
+        np.logspace(
+            np.log10(1),
+            np.log10(total_time),
+            1000,
+        ).astype(int)
+    )
 
     # Compute the LDI for each initial condition and each k
     LDIs = np.zeros((len(u), len(sample_times), len(k)))
     for i in range(len(u)):
         for j in range(len(k)):
-            ldi = ds.LDI(u[i], total_time, k[j], parameters=parameters, return_history=True, sample_times=sample_times)
+            ldi = ds.LDI(
+                u[i],
+                total_time,
+                k[j],
+                return_history=True,
+                sample_times=sample_times,
+            )
             LDIs[i, :, j] = ldi
 
 Now we can visualize the results
@@ -104,7 +117,12 @@ Now we can visualize the results
     colors = [["red", "maroon", "deeppink"], ["blue", "navy", "skyblue"]]
     for i in range(len(u)):
         for j in range(len(k)):
-            ax.plot(sample_times, LDIs[i, :, j], label=rf"$\mathrm{{LDI}}_{k[j]}^{{(1)}}$", color=colors[i][j])
+            ax.plot(
+                sample_times,
+                LDIs[i, :, j],
+                label=rf"$\mathrm{{LDI}}_{k[j]}^{{(1)}}$",
+                color=colors[i][j],
+            )
     
     # Add a legend and set the limits and labels
     ax.legend(ncol=2, frameon=False, columnspacing=0.75)
@@ -121,4 +139,4 @@ Now we can visualize the results
    :align: center
    :width: 100%
    
-   LDI for the 4-dimensional symplectic map with different initial conditions and values of k.
+   LDI for the 4-dimensional symplectic map with different initial conditions and values of :math:`k`.

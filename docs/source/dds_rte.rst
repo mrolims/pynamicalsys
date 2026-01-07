@@ -37,16 +37,22 @@ We are going to illustrate the concept of recurrence time entropy using three di
 
    # Define the initial conditions and parameters
    u = [[0.05, 0.05],
-     [0.35, 0.0],
-     [0.43, 0.2]]
+        [0.35, 0.0],
+        [0.43, 0.2]]
    k = 1.5
+   ds.set_parameters(k)
 
    # Generate trajectories for the standard map
    total_time = 500000
-   trajectories = ds.trajectory(u, total_time, parameters=k).reshape(len(u), total_time, 2)
+   trajectories = ds.trajectory(u, total_time).reshape(len(u), total_time, 2)
 
    # Set the plot style
-   ps = PlotStyler(fontsize=18, markersize=0.2, markeredgewidth=0, minor_ticks_visible=True)
+   ps = PlotStyler(
+        fontsize=18,
+        markersize=0.2,
+        markeredgewidth=0,
+        minor_ticks_visible=True,
+    )
    ps.apply_style()
 
    
@@ -93,7 +99,12 @@ Next, we will compute the recurrence matrices for these trajectories using the :
       Ps.append(P)
    
    # Set the plot style for recurrence matrices
-   ps = PlotStyler(fontsize=18, markersize=0.5, markeredgewidth=0, minor_ticks_visible=True)
+   ps = PlotStyler(
+        fontsize=18,
+        markersize=0.5,
+        markeredgewidth=0,
+        minor_ticks_visible=True,
+    )
    ps.apply_style()
 
    # Create the figure and axis for plotting the recurrence matrices
@@ -147,7 +158,12 @@ Finally, we can visualize the white vertical line distributions for the recurren
 .. code-block:: python
 
    # Set the plot style
-   ps = PlotStyler(fontsize=18, markersize=0.5, markeredgewidth=0, minor_ticks_visible=True)
+   ps = PlotStyler(
+        fontsize=18,
+        markersize=0.5,
+        markeredgewidth=0,
+        minor_ticks_visible=True,
+    )
    ps.apply_style()
 
    # Create the figure and axis for plotting the white vertical line distributions
@@ -189,11 +205,15 @@ The recurrence time entropy can also be computed using the :py:class:`DiscreteDy
    ds = dds(model="standard map")
 
    u = [[0.05, 0.05],
-     [0.35, 0.0],
-     [0.43, 0.2]]
+        [0.35, 0.0],
+        [0.43, 0.2]]
    k = 1.5
+   ds.set_parameters(k)
    total_time = 1000
-   rtes = [ds.recurrence_time_entropy(u[i], total_time, parameters=k) for i in range(len(u))]
+   rtes = [
+        ds.recurrence_time_entropy(u[i], total_time)
+        for i in range(len(u))
+    ]
    print(rtes)
 
 .. code-block:: text
@@ -226,11 +246,22 @@ As a final example. let's compute the recurrence time entropy for the standard m
    total_time = 10000  # Total time for the simulation
 
    # Compute the recurrence time entropy for each parameter value
-   rte = [ds.recurrence_time_entropy(u[i], total_time, parameters=k[j]) for i in range(num_ic) for j in range(len(k))]
+   rte = [
+        ds.recurrence_time_entropy(u[i], total_time, parameters=k[j])
+        for i in range(num_ic)
+        for j in range(len(k))
+    ]
    rte = np.array(rte).reshape(num_ic, len(k))
 
    # We also compute the trajectories for visualization
-   trajectories = [ds.trajectory(u, total_time, parameters=k[i]) for i in range(len(k))]
+   trajectories = [
+        ds.trajectory(
+            u,
+            total_time,
+            parameters=k[i],
+        )
+        for i in range(len(k))
+    ]
    trajectories_reshaped = []
    for trajectory in trajectories:
       trajectory_reshaped = trajectory.reshape(num_ic, total_time, 2)
@@ -250,14 +281,16 @@ As a final example. let's compute the recurrence time entropy for the standard m
    hms = [0, 0, 0]
    for j in range(len(k)):
       for i in range(num_ic):
-         hm = ax[j].scatter(trajectories_reshaped[j][i, :, 0],
-                           trajectories_reshaped[j][i, :, 1],
-                           c=rte[i, j] * np.ones(total_time),
-                           s=0.05,
-                           edgecolor='none',
-                           cmap="nipy_spectral",
-                           vmin=0,
-                           vmax=rte[:, j].max())
+         hm = ax[j].scatter(
+            trajectories_reshaped[j][i, :, 0],
+            trajectories_reshaped[j][i, :, 1],
+            c=rte[i, j] * np.ones(total_time),
+            s=0.05,
+            edgecolor="none",
+            cmap="nipy_spectral",
+            vmin=0,
+            vmax=rte[:, j].max(),
+        )
          hms[j] = hm
 
    [plt.colorbar(hms[i], ax=ax[i], label=rf"RTE with $k = {k[i]:.1f}$", location="top", aspect=40, pad=0.01) for i in range(len(k))]

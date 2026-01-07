@@ -31,11 +31,18 @@ The following code snippet shows how to calculate the Hurst exponent for the sta
    k_values = [0.9, 1.5, 3.9]
 
    # Calculate the Hurst exponent for each parameter value
-   H = [ds.hurst_exponent(u[i], total_time, parameters=k[j]) for i in range(num_ic) for j in range(len(k))]
+   H = [
+        ds.hurst_exponent(u[i], total_time, parameters=k[j])
+        for i in range(num_ic)
+        for j in range(len(k))
+    ]
    H = np.array(H).reshape(num_ic, len(k), 2)
 
    # We also calculate the trajectories for each initial condition
-   trajectories = [ds.trajectory(u, total_time, parameters=k[i]) for i in range(len(k))]
+   trajectories = [
+        ds.trajectory(u, total_time, parameters=k[i])
+        for i in range(len(k))
+    ]
    trajectories_reshaped = []
    for trajectory in trajectories:
       trajectory_reshaped = trajectory.reshape(num_ic, total_time, 2)

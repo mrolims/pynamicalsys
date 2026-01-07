@@ -38,7 +38,15 @@ We are going to use four different parameters values for the logistic map to ill
     total_time = 10000
     transient_time = 5000
 
-    lyapunovs_exponents = [ds.lyapunov(x0, total_time, parameters=r_i, transient_time=transient_time) for r_i in r]
+    lyapunovs_exponents = [
+        ds.lyapunov(
+            x0,
+            total_time,
+            parameters=r_i,
+            transient_time=transient_time,
+        )
+        for r_i in r
+    ]
 
 .. code-block:: text
 
@@ -63,17 +71,35 @@ The first three values are negative, indicating that the dynamics is stable for 
     transient_time = 1000
 
     # Calculate the bifurcation diagram
-    param_values, bifurcation_diagram = ds.bifurcation_diagram(x0, param_index, r, total_time, transient_time=transient_time)
+    param_values, bifurcation_diagram = ds.bifurcation_diagram(
+        x0,
+        param_index,
+        r,
+        total_time,
+        transient_time=transient_time,
+    )
     
     # Prepare the data for plotting
-    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_diagram.shape[1], axis=1)
+    param_mesh = np.repeat(
+        param_values[:, np.newaxis],
+        bifurcation_diagram.shape[1],
+        axis=1,
+    )
 
     # Flatten both arrays
     param_values = param_mesh.flatten()
     bifurcation_diagram = bifurcation_diagram.flatten()
 
     # Calculate the Lyapunov exponent for each parameter value
-    lyapunovs_exponents = [ds.lyapunov(x0, total_time, parameters=r_i, transient_time=transient_time) for r_i in r]
+    lyapunovs_exponents = [
+        ds.lyapunov(
+            x0,
+            total_time,
+            parameters=r_i,
+            transient_time=transient_time,
+        )
+        for r_i in r
+    ]
 
 We can now plot the bifurcation diagram and the Lyapunov exponent:
 
@@ -90,7 +116,13 @@ We can now plot the bifurcation diagram and the Lyapunov exponent:
     fig, ax = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
 
     # Plot the bifurcation diagram
-    ax[0].scatter(param_values, bifurcation_diagram, color='black', s=0.01, edgecolor='none')
+    ax[0].scatter(
+        param_values,
+        bifurcation_diagram,
+        color="black",
+        s=0.01,
+        edgecolor="none",
+    )
 
     # Set the labels and limits for the bifurcation diagram plot
     ax[0].set_xlim(param_range[0], param_range[1])
@@ -171,7 +203,12 @@ The calculation of the Lyapunov exponents for higher-dimensional maps can be don
     transient_time = 10000
     
     # Calculate the Lyapunov exponents
-    lyapunovs_exponents = ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time)
+    lyapunovs_exponents = ds.lyapunov(
+        u,
+        total_time,
+        parameters=parameters,
+        transient_time=transient_time,
+    )
     print(lyapunovs_exponents)
 
 .. code-block:: text
@@ -182,7 +219,13 @@ The Hénon map is a two-dimensional map, and there exist two Lyapunov exponents.
 
 .. code-block:: python
 
-    lyapunovs_exponents = ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, method="QR_HH")
+    lyapunovs_exponents = ds.lyapunov(
+        u,
+        total_time,
+        parameters=parameters,
+        transient_time=transient_time,
+        method="QR_HH",
+    )
     print(lyapunovs_exponents)
 
 .. code-block:: text
@@ -234,12 +277,16 @@ With this information, let's compute the Lyapunov exponents for two different in
     eps2 = 0.1
     xi = 0.001
     parameters = [eps1, eps2, xi]
+    ds.set_parameters(parameters)
 
     # Total time
     total_time = 1000000
 
     # Calculate the Lyapunov exponents
-    lyapunov_exponents = [ds.lyapunov(u[i], total_time, parameters=parameters) for i in range(len(u))]
+    lyapunov_exponents = [
+        ds.lyapunov(u[i], total_time)
+        for i in range(len(u))
+    ]
 
     print(lyapunov_exponents)
 
@@ -278,12 +325,24 @@ It is also possible to return the history of the Lyapunov exponents and not only
     total_time = 1000000
 
     # Sample times for the Lyapunov exponent
-    sample_times = np.unique(np.logspace(np.log10(1), np.log10(total_time), 1000).astype(int))
+    sample_times = np.unique(
+        np.logspace(
+            np.log10(1),
+            np.log10(total_time),
+            1000,
+        ).astype(int)
+    )
 
     # Calculate the Lyapunov exponents
     LEs = np.zeros((len(u), len(sample_times), 4))
     for i in range(len(u)):
-        lyapunov_exponents = ds.lyapunov(u[i], total_time, parameters=parameters, return_history=True, sample_times=sample_times)
+        lyapunov_exponents = ds.lyapunov(
+            u[i],
+            total_time,
+            parameters=parameters,
+            return_history=True,
+            sample_times=sample_times,
+        )
         LEs[i, :, :] = lyapunov_exponents
 
 We can now plot the history of the Lyapunov exponents for both initial conditions:

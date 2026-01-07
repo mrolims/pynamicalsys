@@ -42,7 +42,10 @@ Before performing the escape analysis, let's take a look at the phase space of t
     u = [np.pi, 1e-10]
 
     # Compute the trajectories for different perturbation parameters
-    trajectories = [ds.trajectory(u, total_time, parameters=[eps[i], gamma]) for i in range(len(eps))]
+    trajectories = [
+        ds.trajectory(u, total_time, parameters=[eps[i], gamma])
+        for i in range(len(eps))
+    ]
 
 We then plot the trajectories in the phase space:
 
@@ -85,6 +88,12 @@ To perform the escape analysis, we can use the following code snippet:
 
 .. code-block:: python
 
+    # Define the parameters
+    eps = 1e-3
+    gamma = 1
+    parameters = [eps, gamma]
+    ds.set_parameters(parameters)
+
     # Define the total time for the trajectories
     total_time = int(1e6)
 
@@ -109,10 +118,21 @@ To perform the escape analysis, we can use the following code snippet:
     for i in range(len(y_esc)):
         
         # Define the exit region for the escape analysis
-        exit = np.array([[x_esc[0], x_esc[1]], [-y_esc[i], y_esc[i]]])
+        exit_region = np.array(
+            [[x_esc[0], x_esc[1]],
+            [-y_esc[i], y_esc[i]]]
+        )
         
         # Perform the escape analysis for each initial condition
-        escapes[i] = [ds.escape_analysis(np.array([x[j], y[j]]), total_time, exit, parameters=parameters, escape="exiting") for j in range(num_ic)]
+        escapes[i] = [
+            ds.escape_analysis(
+                np.array([x[j], y[j]]),
+                total_time,
+                exit_region,
+                escape="exiting"
+            )
+            for j in range(num_ic)
+        ]
     
     escapes = np.array(escapes, dtype=np.int32)
 
@@ -139,7 +159,9 @@ Since we have defined the box covering the hole :math:`x` variable and :math:`x`
     fig, ax = plt.subplots(figsize=(6, 3))
 
     # Plot the histogram of escape times
-    ax.bar(escape_bins, escape_hist, color='black', linewidth=1.5, width=.1, align='center', edgecolor='black', alpha=0.7)
+    ax.bar(escape_bins, escape_hist,
+           color='black', linewidth=1.5, width=.1,
+           align='center', edgecolor='black', alpha=0.7)
 
     # Set the x and y labels and limits
     ax.set_xlabel("Escape side")
@@ -170,7 +192,10 @@ where :math:`N(n)` is the number of particles that have not escaped at time :mat
     sp = []
     times = []
     for i in range(len(y_esc)):
-        time, survival_probability = ds.survival_probability(escapes[i, :, 1], escapes[i, :, 1].max())
+        time, survival_probability = ds.survival_probability(
+            escapes[i, :, 1],
+            escapes[i, :, 1].max(),
+        )
         sp.append(survival_probability)
         times.append(time)
 
@@ -222,7 +247,13 @@ The method returns the time steps and the survival probability for each time ste
     cbar = fig.colorbar(sm, ax=ax, aspect=60, location="top", pad=1)
     cbar.set_label(r"$y_\mathrm{esc}$")
     left, right, top, bottom, wspace = 0.085, 0.97, 0.89, 0.1, 0.05
-    plt.subplots_adjust(left=left, right=right, top=top, bottom=bottom, wspace=wspace)
+    plt.subplots_adjust(
+        left=left,
+        right=right,
+        top=top,
+        bottom=bottom,
+        wspace=wspace,
+    )
     pos = [left, top + 0.01, right - left, 0.1]  # Raise it by 0.02
     cbar.ax.set_position(pos)
 
@@ -296,11 +327,19 @@ With the Weiss map defined, we can proceed with the escape analysis. We are goin
 
     # Define the array to store the escape results
     escapes = np.zeros((len(ks), grid_size, grid_size, 2))
+        
 
     # Perform the escape analysis for each value of k
     for i, k in enumerate(ks):
+        # ds.set_parameters(k) would also work
         escape = Parallel(n_jobs=-1)(
-            delayed(ds.escape_analysis)([x, y], total_time, centers, parameters=k, hole_size=size_exit)
+            delayed(ds.escape_analysis)(
+                [x, y],
+                total_time,
+                centers,
+                parameters=k,
+                hole_size=size_exit,
+            )
             for x, y in itertools.product(X, Y)
         )
         escape = np.array(escape).reshape(grid_size, grid_size, 2)
@@ -333,8 +372,20 @@ We then plot the escape basins together with the escape times. The following cod
     # Plot the escape basins and escape times for each value of k
     x_grid, y_grid = np.meshgrid(X, Y, indexing='ij')
     for i, k in enumerate(ks):
-        hm1 = ax[0, i].pcolormesh(x_grid, y_grid, escapes[i, :, :, 0], cmap=cmap, norm=norm)
-        hm2 = ax[1, i].pcolormesh(x_grid, y_grid, escapes[i, :, :, 1], cmap="nipy_spectral", norm=mpl.colors.LogNorm(vmin=1e0, vmax=total_time))
+        hm1 = ax[0, i].pcolormesh(
+            x_grid,
+            y_grid,
+            escapes[i, :, :, 0],
+            cmap=cmap,
+            norm=norm,
+        )
+        hm2 = ax[1, i].pcolormesh(
+            x_grid,
+            y_grid,
+            escapes[i, :, :, 1],
+            cmap="nipy_spectral",
+            norm=mpl.colors.LogNorm(vmin=1e0, vmax=total_time),
+        )
         ax[1, i].set_xlabel(r"$x$")
 
     # Define the labels
@@ -349,7 +400,9 @@ We then plot the escape basins together with the escape times. The following cod
     cbar1 = fig.colorbar(hm1, ax=ax[0, :], aspect=20, pad=0.005, fraction=0.02)
     cbar1.set_label(r"Escape basin")
     cbar1.set_ticks([-1, 0, 1])
-    cbar1.set_ticklabels([r"$\mathcal{B}_\infty$", r"$\mathcal{B}_0$", r"$\mathcal{B}_1$"])
+    cbar1.set_ticklabels(
+        [r"$\mathcal{B}_\infty$", r"$\mathcal{B}_0$", r"$\mathcal{B}_1$"]
+        )
 
     cbar2 = fig.colorbar(hm2, ax=ax[1, :], aspect=20, pad=0.005, fraction=0.02)
     cbar2.set_label(r"$T_\mathrm{esc}$")

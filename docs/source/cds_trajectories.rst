@@ -47,6 +47,7 @@ Next, we can generate a trajectory by specifying the initial condition, paramete
 
     # The classical parameters that yield chaotic solutions
     parameters = [10, 28, 8/3]
+    ds.set_parameters(parameters)
 
     # The initial condition
     u = [0.1, 0.1, 0.1]
@@ -55,7 +56,7 @@ Next, we can generate a trajectory by specifying the initial condition, paramete
     total_time = 100
 
     # Generate the trajectory
-    trajectory = ds.trajectory(u, total_time, parameters=parameters)
+    trajectory = ds.trajectory(u, total_time)
 
     print(trajectory.shape)
 
@@ -103,6 +104,7 @@ And using the RK45 method:
 
     # The classical parameters that yield chaotic solutions
     parameters = [10, 28, 8/3]
+    ds.set_parameters(parameters)
 
     # The initial condition
     u = [0.1, 0.1, 0.1]
@@ -111,7 +113,7 @@ And using the RK45 method:
     total_time = 100
 
     # Generate the trajectory
-    trajectory = ds.trajectory(u, total_time, parameters=parameters)
+    trajectory = ds.trajectory(u, total_time)
 
     print(trajectory.shape)
 
@@ -163,13 +165,13 @@ Let's then generate trajectories for 5 randomly chosen initial conditions in the
 
     # Parameter values and total time    
     parameters = [10, 28, 8/3]
+    ds.set_parameters(parameters)
     total_time = 100
     
     # Generate trajectories for each initial condition
-    trajectories = ds.trajectory(u, total_time, parameters=parameters)
+    trajectories = ds.trajectory(u, total_time)
     
-    # Reshape the output to get a list of trajectories
-    len(trajectories)
+    print(len(trajectories))
 
 .. code-block:: text
     
@@ -228,6 +230,7 @@ where :math:`\delta` is the damping coefficient, :math:`\alpha` and :math:`\beta
     # γ (forcing amplitude), and ω (forcing frequency)
     delta, alpha, beta, gamma, omega = 0.2, 1, 1, 0.425, 1.1
     parameters = [delta, alpha, beta, gamma, omega]
+    ds.set_parameters(parameters)
 
     # Initial condition for the system [x, ẋ]
     u0 = [1, 0]
@@ -248,7 +251,6 @@ where :math:`\delta` is the damping coefficient, :math:`\alpha` and :math:`\beta
     trajectory = ds.trajectory(
         u0,
         total_time,
-        parameters=parameters,
         transient_time=transient_time
     )
 
@@ -257,7 +259,6 @@ where :math:`\delta` is the damping coefficient, :math:`\alpha` and :math:`\beta
         u0,
         num_samples,
         sampling_time=T,
-        parameters=parameters,
         transient_time=transient_time
     )
 
@@ -267,7 +268,12 @@ Note that differently than the trajectory case, now we must inform the number of
 
     # Set the plotting style using PlotStyler with custom parameters:
     # larger font size, thinner lines, smaller markers
-    ps = PlotStyler(fontsize=18, linewidth=0.5, markersize=0.25, markeredgewidth=0)
+    ps = PlotStyler(
+        fontsize=18,
+        linewidth=0.5,
+        markersize=0.25,
+        markeredgewidth=0
+    )
     ps.apply_style()  # Apply the chosen style to Matplotlib
 
     # Create a figure with two side-by-side subplots sharing the same axes
@@ -351,7 +357,10 @@ Both integrators mentioned so far do not take into account the symplectic struct
     # Use four different absolute and relative tolerances
     atols = [1e-8, 1e-10, 1e-12, 1e-14]
     rtols = [1e-8, 1e-10, 1e-12, 1e-14]
-    labels = ["$(10^{-8}, 10^{-8})$", "$(10^{-10}, 10^{-10})$", "$(10^{-12}, 10^{-12})$", "$(10^{-14}, 10^{-14})$"]
+    labels = ["$(10^{-8}, 10^{-8})$",
+              "$(10^{-10}, 10^{-10})$",
+              "$(10^{-12}, 10^{-12})$",
+              "$(10^{-14}, 10^{-14})$"]
     energy_vs_time_rk45 = []
     times_rk45 = []
 
@@ -380,8 +389,22 @@ To check how much the energy is deviating form the initial value, we plot :math:
     fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, figsize=(10, 6))
     
     # Plot the absolute value of the difference between the energies
-    [ax[0].plot(times_rk4[i], abs(E - energy_vs_time_rk4[i]), label=f"$h = {time_steps[i]}$", color=colors[i]) for i in range(len(time_steps))]
-    [ax[1].plot(times_rk45[i], abs(E - energy_vs_time_rk45[i]), color=colors[i], label=f"(atol, rtol) = {labels[i]}") for i in range(len(atols))]
+    for i in range(len(time_steps)):
+        ax[0].plot(
+            times_rk4[i],
+            abs(E - energy_vs_time_rk4[i]),
+            label=f"$h = {time_steps[i]}$",
+            color=colors[i],
+        )
+        
+
+    for i in range(len(atols)):
+        ax[1].plot(
+            times_rk45[i],
+            abs(E - energy_vs_time_rk45[i]),
+            color=colors[i],
+            label=f"(atol, rtol) = {labels[i]}",
+        )
     
     # Set the legend, scales, labels and limits
     ax[0].legend(loc="upper left", ncol=2, frameon=False)

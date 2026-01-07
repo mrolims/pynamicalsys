@@ -35,7 +35,10 @@ We are going to generate a trajectory for this system using four different param
     r = [2.6, 3.1, 3.5, 3.8]  # List of parameter values
 
     # Generate trajectories for each parameter value (100 iterations each)
-    trajectories = [ds.trajectory(x0, 100, parameters=r[i]) for i in range(len(r))]
+    trajectories = [
+        ds.trajectory(x0, 100, parameters=r[i])
+        for i in range(len(r))
+    ]
 
 
 Visualizing the trajectory
@@ -66,7 +69,12 @@ To visualize the trajectory, we can use the :py:class:`PlotStyler <pynamicalsys.
     # Customize the plot labels and limits
     plt.xlabel("$n$")  # Iteration index
     plt.ylabel("$x$")  # State variable
-    plt.legend(loc="upper center", frameon=False, ncol=4, bbox_to_anchor=(0.5, 1.15))
+    plt.legend(
+        loc="upper center",
+        frameon=False,
+        ncol=4,
+        bbox_to_anchor=(0.5, 1.15)
+    )
     plt.ylim(0.15, 1)
     plt.xlim(-1, 100)
 
@@ -118,6 +126,7 @@ We are going to generate a trajectory for this system using the mentioned parame
     # Parameters of the Lorenz system (σ, ρ, β)
     sigma, rho, beta = 10, 28, 8/3
     parameters = [sigma, rho, beta]
+    ds.set_parameters(parameters)
 
     # Total integration time
     total_time = 200

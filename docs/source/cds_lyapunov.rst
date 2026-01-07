@@ -41,6 +41,7 @@ where :math:`a`, :math:`b`, and :math:`c` are the parameters of the system. Let'
     # Parameters of the system
     a, b, c = 0.15, 0.20, 10
     parameters = [a, b, c]
+    ds.set_parameters(parameters)
 
     # Initial conditions
     u = [0.1, 0.1, 0.1]
@@ -81,19 +82,30 @@ Now, for the Lyapunov exponents:
 .. code-block:: python
 
     total_time = 10000
-    lyapunov_exponents = ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2)
+    lyapunov_exponents = ds.lyapunov(
+        u,
+        total_time,
+        transient_time=transient_time,
+        log_base=2,
+    )
     print(lyapunov_exponents)
 
 .. code-block:: text 
 
-    [ 1.27122925e-01  3.05263459e-04 -1.41384990e+01]
+    [1.27122925e-01  3.05263459e-04 -1.41384990e+01]
 
 It is also possible to return the whole history of all Lyapunov exponents:
 
 .. code-block:: python
     
     # Using return_history=True
-    lyapunov_exponents = ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, return_history=True)
+    lyapunov_exponents = ds.lyapunov(
+        u,
+        total_time,
+        parameters=parameters,
+        transient_time=transient_time,
+        return_history=True,
+    )
     
     # Set the plot style
     ps = PlotStyler(fontsize=18, linewidth=0.75)
@@ -105,8 +117,18 @@ It is also possible to return the whole history of all Lyapunov exponents:
     # Plot each Lyapunov exponent with a different color
     colors = ["green", "gold", "blue"]
     for i in range(3):
-        ax[0].plot(lyapunov_exponents[:, 0], lyapunov_exponents[:, i + 1], color=colors[i])
-        ax[1].plot(lyapunov_exponents[:, 0], lyapunov_exponents[:, i + 1], color=colors[i], label=rf"$\lambda_{i + 1}$")
+        ax[0].plot(
+            lyapunov_exponents[:, 0],
+            lyapunov_exponents[:, i + 1],
+            color=colors[i],
+        )
+
+        ax[1].plot(
+            lyapunov_exponents[:, 0],
+            lyapunov_exponents[:, i + 1],
+            color=colors[i],
+            label=rf"$\lambda_{i + 1}$",
+        )
     
     # Set the legend, limits, and labels
     ax[1].legend(frameon=False, ncol=3)

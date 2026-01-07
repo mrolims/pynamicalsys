@@ -1,7 +1,7 @@
 Generating trajectories
 -----------------------
 
-To generate trajectories for a discrete dynamical system, we can use the :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. This method allows us to specify the initial condition, parameter values, and total time for the simulation.
+To generate trajectories for a discrete dynamical system, we can use the :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. This method allows us to specify the initial condition and total time for the simulation.
 
 Single initial condition
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -26,9 +26,10 @@ Next, we can generate a trajectory by specifying the initial condition, paramete
     # Generate a trajectory with initial condition (x, y) = (0.2, 0.5), k = 1.5, and total_time = 100000
     u = [0.2, 0.5]
     k = 1.5
+    ds.set_parameters(k)
     total_time = 100000
 
-    trajectory = ds.trajectory(u, total_time, parameters=k)
+    trajectory = ds.trajectory(u, total_time)
 
 To visualize the generated trajectory, we can use Matplotlib to plot the time series of the system's state. But before, let's import the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class from pynamicalsys to set the plot style:
 
@@ -67,6 +68,33 @@ Then, we can apply the style and plot the trajectory:
    
    Standard map trajectory for :math:`k = 1.5`.
 
+Now, to generate a trajectory for different parameter values without modifying the internal parameters, we use the `parameters` argument:
+
+.. code-block:: python
+
+    # Generate a trajectory with initial condition (x, y) = (0.2, 0.5), k = 1.5, and total_time = 100000
+    u = [0.2, 0.5]
+    k = 4.0
+    total_time = 100000
+
+    trajectory = ds.trajectory(u, total_time, parameters=k)
+
+The code above generates the trajectory for the standard map using the parameter :math:`k = 4.0`:
+
+.. figure:: images/standard_map_trajectory2.png
+   :align: center
+   :width: 100%
+   
+   Standard map trajectory for :math:`k = 4.0`.
+
+We can then check that the parameter value stored in the system has not been modified by calling the :py:meth:`get_parameters <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.get_parameters>` method:
+
+.. code-block:: python
+    print(ds.get_parameters())
+
+.. code-block:: text
+    [1.5]
+
 Multiple initial conditions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -93,10 +121,11 @@ Let's then generate trajectories for 200 randomly chosen initial conditions in t
     
     # Parameter value and total time
     k = 1.5
+    ds.set_parameters(k)
     total_time = 10000
     
     # Generate trajectories for each initial condition
-    trajectories = ds.trajectory(u, total_time, parameters=k)
+    trajectories = ds.trajectory(u, total_time)
     
     # Reshape the output to get a list of trajectories
     trajectories_reshaped = trajectory.reshape(num_ic, total_time, 2)
@@ -118,7 +147,8 @@ To visualize the results, we can plot each trajectory in a loop. We will use the
     # Plot each trajectory with a different color
     colors = sns.color_palette("husl", num_ic)
     for i in range(trajectories_reshaped.shape[0]):
-        plt.plot(trajectories_reshaped[i, :, 0], trajectories_reshaped[i, :, 1], 'o', c=colors[i])
+        plt.plot(trajectories_reshaped[i, :, 0], trajectories_reshaped[i, :, 1],
+                 'o', c=colors[i])
     
     # Set the axis limits and labels
     plt.xlim(0, 1)
@@ -159,12 +189,13 @@ where :math:`a` and :math:`b` are parameters of the system. We can create an ins
     a = 1.4
     b = 0.3
     parameters = [a, b]
+    ds.set_parameters(parameters)
     total_time = 500000
     transient_time = 50000
 
     # Generate a trajectory with initial condition (x, y) = (0.2, 0.2)
     u = [0.2, 0.2]
-    tracjectory = ds.trajectory(u, total_time, parameters=parameters, transient_time=transient_time)
+    tracjectory = ds.trajectory(u, total_time, transient_time=transient_time)
 
 
 We can then visualize the Hénon map trajectory:

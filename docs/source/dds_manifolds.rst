@@ -31,17 +31,18 @@ Then, we can compute the fixed points of the system and identify periodic orbits
 
     # Define the parameter
     k = 1.5
+    ds.set_parameters(k)
 
     # Define the fixed points
     fixed_points = [[0.0, 0.0], [0.5, 0.0]]
     
     # Classify the stability of the fixed points
-    stability_info = ds.classify_stability(fixed_points[0], period, parameters=k)
+    stability_info = ds.classify_stability(fixed_points[0], period)
     print("Stability of fixed point (0, 0):", stability_info["classification"])
     print("Eigenvalues:", stability_info["eigenvalues"])
     print("Eigenvectors:", stability_info["eigenvectors"])
 
-    stability_info = ds.classify_stability(fixed_points[1], period, parameters=k)
+    stability_info = ds.classify_stability(fixed_points[1], period)
     print("Stability of fixed point (0.5, 0):", stability_info["classification"])
     print("Eigenvalues:", stability_info["eigenvalues"])
     print("Eigenvectors:", stability_info["eigenvectors"])
@@ -61,8 +62,21 @@ Once we have the stability information, we can compute the stable and unstable m
 
 .. code-block:: python
 
-    w_unstable = ds.manifold(fixed_points[0], period, parameters=k, n_points=10000, iter_time=13, stability="unstable")
-    w_stable = ds.manifold(fixed_points[0], period, parameters=k, n_points=10000, iter_time=13, stability="stable")
+    w_unstable = ds.manifold(
+        fixed_points[0],
+        period,
+        n_points=10000,
+        iter_time=13,
+        stability="unstable",
+    )
+
+    w_stable = ds.manifold(
+        fixed_points[0],
+        period,
+        n_points=10000,
+        iter_time=13,
+        stability="stable",
+    )
 
 This method returns a list containing two arrays: the first array contains the manifold along the eigenvector while the second array contains the manifold along its negative conterpart. The `n_points` parameter specifies the number of points to sample along the eigenvectors, and `iter_time` specifies how many iterations to perform to obtain the manifold points. In the example above, we sample 10,000 points along the eigenvectors and iterate them 13 times to obtain the manifolds. However, we could have chosen different number of points or iterations for :math:`\mathbf{v}` and :math:`-\mathbf{v}` by passing the `n_points` and `iter_time` parameters as lists, e.g., `n_points=[10000, 30000]` and `iter_time=[13, 20]`.
 
@@ -71,13 +85,18 @@ Finally, we can visualize the periodic orbit and its stable and unstable manifol
 .. code-block:: python
 
     # We plot a chaotic trajectory to visualize the periodic orbit and its manifolds
-    trajectory = ds.trajectory([0.05, 0.05], 2500000, parameters=k)
+    trajectory = ds.trajectory([0.05, 0.05], 2500000)
 
     from pynamicalsys import PlotStyler
     import matplotlib.pyplot as plt
 
     # Set the plot style
-    ps = PlotStyler(fontsize=18, markersize=0.1, markeredgewidth=0, minor_ticks_visible=True)
+    ps = PlotStyler(
+        fontsize=18,
+        markersize=0.1,
+        markeredgewidth=0,
+        minor_ticks_visible=True,
+    )
     ps.apply_style()
 
     # Create the plot
@@ -99,10 +118,37 @@ Finally, we can visualize the periodic orbit and its stable and unstable manifol
                     clip_on=False, zorder=10)
 
     # Plot the manifolds: red for stable, maroon for unstable
-    plt.plot(w_stable[0][:, 0], w_stable[0][:, 1], "o", markersize=0.75, color="red")
-    plt.plot(w_stable[1][:, 0], w_stable[1][:, 1], "o", markersize=0.75, color="red")
-    plt.plot(w_unstable[0][:, 0], w_unstable[0][:, 1], "o", markersize=0.75, color="maroon")
-    plt.plot(w_unstable[1][:, 0], w_unstable[1][:, 1], "o", markersize=0.75, color="maroon")
+    plt.plot(
+        w_stable[0][:, 0],
+        w_stable[0][:, 1],
+        "o",
+        markersize=0.75,
+        color="red",
+    )
+
+    plt.plot(
+        w_stable[1][:, 0],
+        w_stable[1][:, 1],
+        "o",
+        markersize=0.75,
+        color="red",
+    )
+
+    plt.plot(
+        w_unstable[0][:, 0],
+        w_unstable[0][:, 1],
+        "o",
+        markersize=0.75,
+        color="maroon",
+    )
+
+    plt.plot(
+        w_unstable[1][:, 0],
+        w_unstable[1][:, 1],
+        "o",
+        markersize=0.75,
+        color="maroon",
+    )
 
     # Set the plot limits and labels
     plt.xlim(0, 1)
@@ -148,8 +194,14 @@ Next, we can use the `find_periodic_orbit` method to compute the periodic orbit 
     tolerance = 2 / num_points
 
     # Find the periodic orbit along the symmetry line
-    periodic_orbit = ds.find_periodic_orbit(points, period, parameters=k,
-                     tolerance=tolerance, verbose=True, symmetry_line=symmetry_line, axis=1)
+    periodic_orbit = ds.find_periodic_orbit(
+        points,
+        period,
+        tolerance=tolerance,
+        verbose=True,
+        symmetry_line=symmetry_line,
+        axis=1,
+    )
 
 .. code-block:: text
 
@@ -201,7 +253,7 @@ Now that we have the periodic orbit, we can compute its stability using the :py:
 
 .. code-block:: python
 
-    stability_info = ds.classify_stability(periodic_orbit, period, parameters=k)
+    stability_info = ds.classify_stability(periodic_orbit, period)
     print("Periodic orbit:", periodic_orbit)
     print("Stability of elliptic orbit:", stability_info["classification"])
     print("Eigenvalues:", stability_info["eigenvalues"])
@@ -246,8 +298,12 @@ We confirm what we already knew: the periodic orbit is elliptic. Now for the hyp
     # (in some cases, you may need to change this value)
     tolerance = 3 / grid_size
 
-    periodic_orbit = ds.find_periodic_orbit(grid_points, period, parameters=k,
-                     tolerance=tolerance, verbose=True)
+    periodic_orbit = ds.find_periodic_orbit(
+        grid_points,
+        period,
+        tolerance=tolerance,
+        verbose=True,
+    )
     
 
 .. code-block:: text
@@ -301,7 +357,7 @@ Now we can classify the stability of the periodic orbit as before:
 
 .. code-block:: python
 
-    stability_info = ds.classify_stability(periodic_orbit, period, parameters=k)
+    stability_info = ds.classify_stability(periodic_orbit, period)
     print("Periodic orbit:", periodic_orbit)
     print("Stability of hyperbolic periodic orbit:", stability_info["classification"])
     print("Eigenvalues:", stability_info["eigenvalues"])
@@ -320,8 +376,21 @@ Great! This periodic orbit is a saddle point, as expected. We can now compute it
 
 .. code-block:: python
 
-    w_unstable_period2 = ds.manifold(periodic_orbit, period, parameters=k, n_points=10000, iter_time=18, stability="unstable")
-    w_stable_period2 = ds.manifold(periodic_orbit, period, parameters=k, n_points=10000, iter_time=18, stability="stable")
+    w_unstable_period2 = ds.manifold(
+        periodic_orbit,
+        period,
+        n_points=10000,
+        iter_time=18,
+        stability="unstable",
+    )
+
+    w_stable_period2 = ds.manifold(
+        periodic_orbit,
+        period,
+        n_points=10000,
+        iter_time=18,
+        stability="stable",
+    )
 
 Finally, we can visualize the periodic orbit and its stable and unstable manifolds:
 
@@ -350,13 +419,40 @@ Finally, we can visualize the periodic orbit and its stable and unstable manifol
                 clip_on=False, zorder=10)
 
     # Plot the manifolds for the fixed point: red for stable, maroon for unstable
-    plt.plot(w_stable[0][:, 0], w_stable[0][:, 1], "o", markersize=0.75, color="red")
-    plt.plot(w_stable[1][:, 0], w_stable[1][:, 1], "o", markersize=0.75, color="red")
-    plt.plot(w_unstable[0][:, 0], w_unstable[0][:, 1], "o", markersize=0.75, color="maroon")
-    plt.plot(w_unstable[1][:, 0], w_unstable[1][:, 1], "o", markersize=0.75, color="maroon")
+    plt.plot(
+        w_stable[0][:, 0],
+        w_stable[0][:, 1],
+        "o",
+        markersize=0.75,
+        color="red",
+    )
+
+    plt.plot(
+        w_stable[1][:, 0],
+        w_stable[1][:, 1],
+        "o",
+        markersize=0.75,
+        color="red",
+    )
+
+    plt.plot(
+        w_unstable[0][:, 0],
+        w_unstable[0][:, 1],
+        "o",
+        markersize=0.75,
+        color="maroon",
+    )
+
+    plt.plot(
+        w_unstable[1][:, 0],
+        w_unstable[1][:, 1],
+        "o",
+        markersize=0.75,
+        color="maroon",
+    )
 
     # Plot the periodic orbit of period 2
-    p2 = ds.trajectory(elliptic_period2, 4, parameters=k)
+    p2 = ds.trajectory(elliptic_period2, 4)
     for i in range(p2.shape[0]):
         if p2[i, 0] == 0:
             plt.plot(1, p2[i, 1], "s", color="blue",
@@ -365,7 +461,7 @@ Finally, we can visualize the periodic orbit and its stable and unstable manifol
         plt.plot(p2[i, 0], p2[i, 1], "s", color="blue",
                 markersize=7, markeredgewidth=1, markeredgecolor="black",
                 clip_on=False, zorder=10)
-    p2 = ds.trajectory(saddle_period2, 4, parameters=k)
+    p2 = ds.trajectory(saddle_period2, 4)
     for i in range(p2.shape[0]):
         plt.plot(p2[i, 0], p2[i, 1], "o", color="blue",
                 markersize=7, markeredgewidth=1, markeredgecolor="black",

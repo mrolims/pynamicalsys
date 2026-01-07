@@ -54,7 +54,9 @@ Since `param_values` is a 1D array and `bifurcation_diagram` is a 2D array, we n
 
 .. code-block:: python
 
-    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_diagram.shape[1], axis=1)
+    param_mesh = np.repeat(param_values[:, np.newaxis],
+                           bifurcation_diagram.shape[1],
+                           axis=1)
 
     # Flatten both arrays
     param_values = param_mesh.flatten()
@@ -74,7 +76,8 @@ Now we can plot the bifurcation diagram using Matplotlib.
     ps.set_tick_padding(ax, pad_x = 6)
 
     # Plot the bifurcation diagram
-    plt.scatter(param_values, bifurcation_diagram, color='black', s=0.01, edgecolor='none')
+    plt.scatter(param_values, bifurcation_diagram,
+                color='black', s=0.01, edgecolor='none')
 
     # Set the labels and limits for the plot    
     plt.xlabel("$r$")
@@ -101,7 +104,7 @@ As a second example, we will create a bifurcation diagram for the Hénon map, wh
         y_{n+1} &= b x_n,
     \end{align*}
 
-where :math:`a` and :math:`b` are parameters that we will vary. We will focus on the range of :math:`a` from 1.0 to 1.4 and set :math:`b = 0.3`. Now, our system has two parameters. Since we are interested in changing :math:`a`, we will set `param_index` to 0. However, if for instance we wanted to change :math:`b`, we would set `param_index` to 1. In this case, an additional parameter has to be passed to the :py:meth:`bifurcation_diagram <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.bifurcation_diagram>` method, which is the value of :math:`b`.
+where :math:`a` and :math:`b` are parameters that we will vary. We will focus on the range of :math:`a` from 1.0 to 1.4 and set :math:`b = 0.3`. Now, our system has two parameters. Since we are interested in changing :math:`a`, we will set `param_index` to 0. However, if for instance we wanted to change :math:`b`, we would set `param_index` to 1. Additionally, we need to inform the value of :math:`b`. We do so by passing to `set_parameters` a list of two values, where the first is a dummy value and the second one is the value of :math:`b`. 
 
 .. code-block:: python
 
@@ -110,7 +113,8 @@ where :math:`a` and :math:`b` are parameters that we will vary. We will focus on
 
     # Parameters for the Hénon map
     b = 0.3
-    parameters = [b]
+    parameters = [0, b]
+    ds.set_parameters(parameters)
     total_time = 5000
     transient_time = 1000
 
@@ -120,14 +124,15 @@ where :math:`a` and :math:`b` are parameters that we will vary. We will focus on
 
     param_values, bifurcation_diagram = ds.bifurcation_diagram(
         u=[0.2, 0.2],
-        parameters=parameters,
         param_index=param_index,
         param_range=param_range,
         total_time=total_time,
         transient_time=transient_time
     )
     # Repeat the parameter values for each bifurcation value
-    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_diagram.shape[1], axis=1)
+    param_mesh = np.repeat(param_values[:, np.newaxis],
+                 bifurcation_diagram.shape[1],
+                 axis=1)
     # Flatten both arrays
     param_values = param_mesh.flatten()
     bifurcation_diagram = bifurcation_diagram.flatten()
@@ -145,7 +150,8 @@ We plot the bifurcation diagram for the Hénon map in a similar way as we did fo
     ps.set_tick_padding(ax, pad_x = 6)
 
     # Plot the bifurcation diagram
-    plt.scatter(param_values, bifurcation_diagram, color='black', s=0.01, edgecolor='none')
+    plt.scatter(param_values, bifurcation_diagram,
+                color='black', s=0.01, edgecolor='none')
 
     # Set the labels and limits for the plot    
     plt.xlabel("$a$")
@@ -201,7 +207,8 @@ Since we are changing the parameter `b`, and we have defined the parameter list 
     # Parameters for the map
     a = 0.26
     omega = 0.3
-    parameters = [a, omega]
+    parameters = [a, 0, omega]
+    ds.set_parameters(parameters)
     # Iteration and transient times
     total_time = 5000
     transient_time = 1000
@@ -212,7 +219,6 @@ Since we are changing the parameter `b`, and we have defined the parameter list 
 
     param_values, bifurcation_diagram, u_new = ds.bifurcation_diagram(
         u=[0.5],
-        parameters=parameters,
         param_index=param_index,
         param_range=param_range,
         total_time=total_time,
@@ -221,7 +227,9 @@ Since we are changing the parameter `b`, and we have defined the parameter list 
         return_last_state=True
     )
 
-    param_mesh = np.repeat(param_values[:, np.newaxis], bifurcation_diagram.shape[1], axis=1)
+    param_mesh = np.repeat(param_values[:, np.newaxis],
+                           bifurcation_diagram.shape[1],
+                           axis=1)
 
     # Flatten both arrays
     param_values = param_mesh.flatten()
@@ -234,7 +242,8 @@ Now, for the backward continuation, we will use the last state `u_new` as the in
     # Parameters for the map
     a = 0.26
     omega = 0.3
-    parameters = [a, omega]
+    parameters = [a, 0, omega]
+    ds.set_parameters(parameters)
     # Iteration and transient times
     total_time = 5000
     transient_time = 1000
@@ -245,7 +254,6 @@ Now, for the backward continuation, we will use the last state `u_new` as the in
 
     param_values_back, bifurcation_diagram_back = ds.bifurcation_diagram(
         u=u_new,
-        parameters=parameters,
         param_index=param_index,
         param_range=param_range,
         total_time=total_time,
@@ -272,8 +280,10 @@ Now we can plot the bifurcation diagram for the nontwist sine circle map, combin
     ps.set_tick_padding(ax[1], pad_x = 6)
 
     # Plot the bifurcation diagram
-    ax[0].scatter(param_values, bifurcation_diagram, color='black', s=0.01, edgecolor='none')
-    ax[1].scatter(param_values_back, bifurcation_diagram_back, color='r', s=0.01, edgecolor='none')
+    ax[0].scatter(param_values, bifurcation_diagram,
+                  color='black', s=0.01, edgecolor='none')
+    ax[1].scatter(param_values_back, bifurcation_diagram_back,
+                  color='r', s=0.01, edgecolor='none')
 
     # Set the labels and limits for the plot
     ax[0].set_ylim(0, 1)

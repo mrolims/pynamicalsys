@@ -47,6 +47,7 @@ with parameters :math:`a = 0.25`, :math:`b = 3.0`, :math:`c = 0.5`, and :math:`d
     # Parameters of the system
     a, b, c, d = 0.25, 3.0, 0.5, 0.05
     parameters = [a, b, c, d]
+    ds.set_parameters(parameters)
 
     # Initial condition
     u = [-20, 0, 0, 15]
@@ -59,9 +60,9 @@ with parameters :math:`a = 0.25`, :math:`b = 3.0`, :math:`c = 0.5`, and :math:`d
     lyapunov_exponents = ds.lyapunov(
         u,
         total_time,
-        parameters=parameters,
         transient_time=transient_time,
-        return_history=True)
+        return_history=True
+    )
     
     # Set the plot style
     ps = PlotStyler(fontsize=18)
@@ -119,6 +120,7 @@ Let's then compute the LDI's using 2, 3, and 4 deviation vectors for the 4-dimen
     # Parameters of the system
     a, b, c, d = 0.25, 3.0, 0.5, 0.05
     parameters = [a, b, c, d]
+    ds.set_parameters(parameters)
 
     # Initial condition
     u = [-20, 0, 0, 15]
@@ -136,7 +138,8 @@ Let's then compute the LDI's using 2, 3, and 4 deviation vectors for the 4-dimen
             k,
             parameters=parameters,
             transient_time=transient_time,
-            return_history=True))
+            return_history=True)
+        )
 
 The :py:meth:`LDI <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.LDI>` method returns a 2D array of shape (samples, 2), where the columns are the times samples where the LDI was calculated and the LDI value itself. We can visualize the behavior of each LDI by plotting it in a log-lin plot:
 

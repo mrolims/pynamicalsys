@@ -10,7 +10,7 @@ To check available built-in systems, you can use the :py:meth:`available_models 
 
 .. code-block:: python
 
-    available_models = HS.available_models()
+    available_models = hs.available_models()
     print(available_models)
 
 .. code-block:: text
@@ -29,7 +29,7 @@ using:
 
 .. code-block:: python
 
-    hs = HS(model="henon heiles")
+    hs = hs(model="henon heiles")
 
 and then all the methods available for the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class can be used to run simulations and analyze the system.
 
@@ -75,9 +75,42 @@ Note that we use :code:`@njit` to compile the function for performance. Most met
 
 .. code-block:: python
 
-    hs = HS(
+    ds = hs(
         grad_T=henon_heiles_grad_T,
         grad_V=henon_heiles_grad_V,
-        system_dimension=4,
+        degrees_of_freedom=2,
         number_of_parameters=0,
     )
+
+An alternative is to inform the list of parameters instead of the number of them. Since the Hénon-Heiles system has no parameter, we can pass an empty list to the `parameters` argument
+
+.. code-block:: python
+
+    ds = hs(
+        grad_T=henon_heiles_grad_T,
+        grad_V=henon_heiles_grad_V,
+        degrees_of_freedom=2,
+        parameters=[],
+    )
+    print(ds.get_parameters())
+
+.. code-block:: text
+    []
+
+After creating the object, the parameters passed to the constructor are stored internally and used by default by all methods of the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` instance. In this configuration, every method call that does not explicitly specify parameters will use the internally stored value ([]). You can permanently modify these stored parameters using the
+:py:meth:`set_parameters <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.set_parameters>` method:
+
+.. code-block:: python
+
+    ds.set_parameters([4.0])  # ds.set_parameters(4.0) works as well for single values
+
+This updates the parameters at the object level, so all subsequent method calls will use [4.0] by default.
+Note that for the Hénon–Heiles system this would result in an error, since the system does not take any parameters.
+Nevertheless, setting parameters in this way is valid for any Hamiltonian system that depends on a nonzero number of parameters. Finally, all methods of :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` also accept a parameters argument. When this argument is provided, it temporarily overrides the internally stored parameters for that specific method call only. The parameters stored in the object remain unchanged.
+
+.. note::
+
+   In other words:
+
+   - ``set_parameters(...)`` → persistent change (updates the system's internal parameters)
+   - ``parameters=...`` in a method call → temporary, local override (applies only to that call)
