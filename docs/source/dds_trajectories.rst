@@ -87,13 +87,7 @@ The code above generates the trajectory for the standard map using the parameter
    
    Standard map trajectory for :math:`k = 4.0`.
 
-We can then check that the parameter value stored in the system has not been modified by calling the :py:meth:`get_parameters <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.get_parameters>` method:
-
-.. code-block:: python
-    print(ds.get_parameters())
-
-.. code-block:: text
-    [1.5]
+We can then check that the parameter value stored in the system has not been modified by calling the :py:meth:`get_parameters <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.get_parameters>` method.
 
 Multiple initial conditions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

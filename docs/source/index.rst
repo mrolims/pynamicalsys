@@ -10,15 +10,15 @@ Overview
 
 **pynamicalsys** is designed to provide a fast, flexible, and user-friendly environment for analyzing **nonlinear dynamical systems**. It is intended for students, researchers, educators, and enthusiasts who want to explore the world of chaos and dynamical systems. Beyond standard tools like trajectory generation and Lyapunov exponents calculation, **pynamicalsys** includes advanced features such as
 
-- Numerical integration of systems of ODE with different integrators, **including symplectic ones** for separable Hamiltonians.
+- **Bifurcation diagrams**, **Poincaré sections**, and **stroboscopic maps** for analyzing system trajectories.
+- **Symplectic integrators** for analyzing Hamiltonian systems.
 - **Linear dependence index** for chaos detection.
 - **Covariant Lyapunov vectors** and the angles between them.
 - **Recurrence plots** and recurrence time statistics.
 - Chaos indicators based on **weighted Birkhoff averages**.
 - Statistical measures of **diffusion and transport** in dynamical systems.
-- Computation of **periodic orbits**, their **stability** and their **manifolds** for 2D maps.
-- Basin metric for **quantifying** the structure of **basins of attraction** and **escape basins**.
-- Time series measures such as the **Hurst exponent**.
+- Computation of **periodic orbits**, their **stability** and their **manifolds**.
+- Basin metric for **quantifying** the structure of **basins of attraction**.
 - **Plot styling** for consistent and customizable visualizations.
 
 **pynamicalsys** is built on top of NumPy and Numba, ensuring high performance and efficiency. Thanks to Numba accelerated computation, **pynamicalsys** offers speedups up to **130x** compared to the original Python implementation of the algorithms. This makes it suitable for large-scale simulations and analyses.
