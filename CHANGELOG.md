@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.5.0] - 2026-01-07
 
 ### Added
 
@@ -18,9 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Support for **Poincaré-section–restricted CLV angles** in Hamiltonian systems, enabling angle analysis directly on the section.
     - Angle diagnostics are based on **minimum principal angles between covariant subspaces**, providing a geometrically meaningful measure of hyperbolicity and near-tangencies in high-dimensional systems.
 
-[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.4.9...HEAD
+### Modified
+
+- The parameter validator now accepts empty lists for systems that take no parameters.
+
+[v1.5.0]: https://github.com/mrolims/pynamicalsys/compare/v1.4.9...v1.5.0
 
 ## [v1.4.9] - 2025-11-18
+
+### Fixed
 
 - Fix missing dependency:
   - Added `ipython (>=8.13,<9.0.0)` to `pyproject.toml` dependencies, since it is required by the `ContinuousDynamicalSystem` class.

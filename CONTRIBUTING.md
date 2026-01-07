@@ -11,7 +11,7 @@ We appreciate your interest in contributing to pynamicalsys! Whether you're fixi
    Use a descriptive branch name:
 
    ```bash
-   $ git checkout -b fix-typo-in-readme
+   $ git checkout -b fix/typo-in-readme
    ```
 
 3. **Make Changes**
