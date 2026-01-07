@@ -103,29 +103,30 @@ def validate_parameters(parameters, number_of_parameters) -> NDArray[np.float64]
     TypeError
         If `parameters` is not a scalar or array-like type.
     """
-    if number_of_parameters == 0:
-        if parameters is not None:
-            raise ValueError("This system does not expect any parameters.")
-        return np.array([0], dtype=np.float64)
-
     if parameters is None:
-        raise ValueError(
-            f"This system expects {number_of_parameters} parameter(s), but got None."
-        )
-
-    if np.isscalar(parameters):
-        parameters = np.array([parameters], dtype=np.float64)
-    else:
-        parameters = np.asarray(parameters, dtype=np.float64)
-        if parameters.ndim != 1:
+        if number_of_parameters != 0:
             raise ValueError(
-                f"`parameters` must be a 1D array or scalar. Got shape {parameters.shape}."
+                f"This system expects {number_of_parameters} parameter(s), but got None."
             )
+    else:
+        if np.isscalar(parameters):
+            parameters = np.array([parameters], dtype=np.float64)
+        else:
+            parameters = np.asarray(parameters, dtype=np.float64)
+            if parameters.ndim != 1:
+                raise ValueError(
+                    f"`parameters` must be a 1D array or scalar. Got shape {parameters.shape}."
+                )
 
-    if parameters.size != number_of_parameters:
-        raise ValueError(
-            f"Expected {number_of_parameters} parameter(s), but got {parameters.size}."
-        )
+        if number_of_parameters == 0:
+            if parameters is not None and parameters.size != 0:
+                raise ValueError("This system does not expect any parameters.")
+            return np.array([0], dtype=np.float64)
+
+        if parameters.size != number_of_parameters:
+            raise ValueError(
+                f"Expected {number_of_parameters} parameter(s), but got {parameters.size}."
+            )
 
     return parameters
 
