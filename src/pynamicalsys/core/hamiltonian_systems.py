@@ -170,9 +170,10 @@ class HamiltonianSystem:
                 raise TypeError("Custom Hessian functions must be callable")
 
             validate_non_negative(degrees_of_freedom, "degrees_of_freedom", Integral)
-            validate_non_negative(
-                number_of_parameters, "number_of_parameters", Integral
-            )
+            if number_of_parameters is not None:
+                validate_non_negative(
+                    number_of_parameters, "number_of_parameters", Integral
+                )
 
             self.__degrees_of_freedom = degrees_of_freedom
             self.__parameters = parameters
