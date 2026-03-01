@@ -8,9 +8,9 @@ We welcome feedback, questions, and contributions from the community. If you wou
 Contact Methods
 ---------------
 
-- 📧 **Email**: `rolim.sales.m[at]gmail.com <mailto:rolim.sales.m@gmail.com>`_
-- 🐙 **GitHub Issues**: `Submit an issue <https://github.com/mrolims/pynamicalsys/issues>`_
-- 🤝 **Pull Requests**: Want to contribute? See our :doc:`contributing guide <contributing>`
+- **Email**: `rolim.sales.m[at]gmail.com <mailto:rolim.sales.m@gmail.com>`_
+- **GitHub Issues**: `Submit an issue <https://github.com/mrolims/pynamicalsys/issues>`_
+- **Pull Requests**: Want to contribute? See our :doc:`contributing guide <contributing>`
 
 Contributing
 ------------

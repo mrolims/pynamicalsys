@@ -36,4 +36,6 @@ Short citation style
 Publications Using **pynamicalsys**
 -----------------------------------
 
+- M. R. Sales, E. D. Leonel, and C. G. Antonopoulos, On the behavior of Linear Dependence, Smaller, and Generalized Alignment Indices in discrete and continuous chaotic systems, `Chaos, Solitons and Fractals 205, 117884 (2026) <https://doi.org/10.1016/j.chaos.2026.117884>`_.
+
 If your work uses **pynamicalsys**, please let us know!
