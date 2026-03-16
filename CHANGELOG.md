@@ -21,8 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Threshold selection is now centralized in a new `calculate_threshold()` function, which handles
   - direct thresholds.
-  - standard-deviation–scaled thresholds (`threshold_std=True`).
-  - fixed recurrence rate thresholds (`fixed_rr=True`).
+  - standard-deviation–scaled thresholds (`threshold_mode=std`).
+  - fixed recurrence rate thresholds (`threshold_mode=rr`).
 
 [v1.5.1]: https://github.com/mrolims/pynamicalsys/compare/v1.5.0...v1.5.1
 
