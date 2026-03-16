@@ -25,8 +25,9 @@ from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
     RTEConfig,
-    recurrence_matrix,
+    build_recurrence_matrix,
     white_vertline_distr,
+    calculate_threshold,
 )
 from pynamicalsys.common.time_series_metrics import hurst_exponent
 from pynamicalsys.common.utils import (
@@ -1469,12 +1470,6 @@ def finite_time_hurst_exponent(
 
 
 @njit
-def lyapunov_vectors():
-    # ! To be implemented...
-    pass
-
-
-@njit
 def lagrangian_descriptors(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -1628,16 +1623,6 @@ def RTE(
     # Configuration handling
     config = RTEConfig(**kwargs)
 
-    # Metric setup
-    metric_map = {"supremum": np.inf, "euclidean": 2, "manhattan": 1}
-
-    try:
-        ord = metric_map[config.std_metric.lower()]
-    except KeyError:
-        raise ValueError(
-            f"Invalid std_metric: {config.std_metric}. Must be {list(metric_map.keys())}"
-        )
-
     if transient_time is not None:
         u = iterate_mapping(u, parameters, transient_time, mapping)
         total_time -= transient_time
@@ -1648,17 +1633,10 @@ def RTE(
     except Exception as e:
         raise ValueError(f"Trajectory generation failed: {str(e)}")
 
-    # Threshold calculation
-    if config.threshold_std:
-        std = np.std(time_series, axis=0)
-        eps = config.threshold * np.linalg.norm(std, ord=ord)
-        if eps <= 0:
-            eps = 0.1
-    else:
-        eps = config.threshold
+    eps = calculate_threshold(time_series, config)
 
     # Recurrence matrix calculation
-    recmat = recurrence_matrix(time_series, float(eps), metric=config.metric)
+    recmat = build_recurrence_matrix(time_series, float(eps), metric=config.metric)
 
     # White line distribution
     P = white_vertline_distr(recmat, wmin=config.lmin)

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Support for fixed recurrence rate threshold selection via `fixed_rr=True`. When enabled, the recurrence threshold is automatically chosen such that the recurrence matrix achieves the desired recurrence rate (`threshold` interpreted as the target RR).
+
+- Support for callable distance metrics for recurrence matrix computation and recurrence-rate threshold estimation. Custom metrics must have signature `metric(x, y) -> float` and must be Numba-compatible (decorated with `@numba.njit`).
+
+- New `return_eps` option in `TimeSeriesMetrics.recurrence_matrix()` to return the threshold value used to construct the recurrence matrix.
+
+### Modifed
+
+- Internal recurrence matrix computation has been refactored for improved performance and consistency between built-in metrics (supremum, euclidean, manhattan) and callable metrics.
+
+- Threshold selection is now centralized in a new `calculate_threshold()` function, which handles
+  - direct thresholds.
+  - standard-deviation–scaled thresholds (`threshold_std=True`).
+  - fixed recurrence rate thresholds (`fixed_rr=True`).
+
+[Unrealeased]: https://github.com/mrolims/pynamicalsys/compare/v1.5.0...HEAD
+
 ## [v1.5.0] - 2026-01-07
 
 ### Added
@@ -12,11 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added two new methods, `set_parameters` and `get_parameters`, to each of the three main classes to improve parameter management. Parameters can now be set once via `set_parameters` and stored internally, allowing subsequent method calls to use the stored values without requiring parameters to be passed explicitly each time. Existing workflows remain fully backward compatible: methods that accept parameters directly continue to work as before.
 
 - Added **Covariant Lyapunov Vector (CLV) angle diagnostics** to all three core system classes:
-    - The new methods `CLV` and `CLV_angles` allow computation of the **CLVs**, **angles between arbitrary CLV subspaces** and **pairwise CLV angles**, with full user control over:
-        - which subspaces are compared,
-        - which CLV pairs are measured.
-    - Support for **Poincaré-section–restricted CLV angles** in Hamiltonian systems, enabling angle analysis directly on the section.
-    - Angle diagnostics are based on **minimum principal angles between covariant subspaces**, providing a geometrically meaningful measure of hyperbolicity and near-tangencies in high-dimensional systems.
+  - The new methods `CLV` and `CLV_angles` allow computation of the **CLVs**, **angles between arbitrary CLV subspaces** and **pairwise CLV angles**, with full user control over:
+    - which subspaces are compared,
+    - which CLV pairs are measured.
+  - Support for **Poincaré-section–restricted CLV angles** in Hamiltonian systems, enabling angle analysis directly on the section.
+  - Angle diagnostics are based on **minimum principal angles between covariant subspaces**, providing a geometrically meaningful measure of hyperbolicity and near-tangencies in high-dimensional systems.
 
 ### Modified
 
