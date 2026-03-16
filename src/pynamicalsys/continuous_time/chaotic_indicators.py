@@ -23,7 +23,8 @@ from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
     RTEConfig,
-    recurrence_matrix,
+    build_recurrence_matrix,
+    calculate_threshold,
     white_vertline_distr,
 )
 from pynamicalsys.common.time_series_metrics import hurst_exponent
@@ -979,16 +980,6 @@ def recurrence_time_entropy(
     # Configuration handling
     config = RTEConfig(**kwargs)
 
-    # Metric setup
-    metric_map = {"supremum": np.inf, "euclidean": 2, "manhattan": 1}
-
-    try:
-        ord = metric_map[config.std_metric.lower()]
-    except KeyError:
-        raise ValueError(
-            f"Invalid std_metric: {config.std_metric}. Must be {list(metric_map.keys())}"
-        )
-
     # Generate the Poincaré section or stroboscopic map
     if map_type == "PS":
         points = generate_poincare_section(
@@ -1038,17 +1029,10 @@ def recurrence_time_entropy(
 
         data = points[:, 1:]  # Remove time
 
-    # Threshold calculation
-    if config.threshold_std:
-        std = np.std(data, axis=0)
-        eps = config.threshold * np.linalg.norm(std, ord=ord)
-        if eps <= 0:
-            eps = 0.1
-    else:
-        eps = config.threshold
+    eps = calculate_threshold(data, config)
 
     # Recurrence matrix calculation
-    recmat = recurrence_matrix(data, float(eps), metric=config.metric)
+    recmat = build_recurrence_matrix(data, eps, metric=config.metric)
 
     # White line distribution
     P = white_vertline_distr(recmat, wmin=config.lmin)
