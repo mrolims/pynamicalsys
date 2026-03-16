@@ -15,13 +15,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Union, Tuple
+
 import numpy as np
 from numpy.typing import NDArray
 
-from numbers import Integral, Real
+from numbers import Integral
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
-    recurrence_matrix,
+    calculate_threshold,
+    build_recurrence_matrix,
     RTEConfig,
     white_vertline_distr,
 )
@@ -45,84 +48,197 @@ class TimeSeriesMetrics:
         if time_series.ndim not in {1, 2}:
             raise ValueError("time_series must be 1D or 2D array")
 
+        if time_series.shape[0] < 2:
+            raise ValueError("time_series must contain at least two points.")
+
     def recurrence_matrix(
-        self, compute_white_vert_distr=False, **kwargs
-    ) -> NDArray[np.float64]:
+        self, compute_white_vert_distr=False, return_eps=False, **kwargs
+    ) -> Union[
+        NDArray[np.uint8],
+        Tuple[NDArray[np.uint8], NDArray[np.float64]],
+        Tuple[NDArray[np.uint8], float],
+        Tuple[NDArray[np.uint8], NDArray[np.float64], float],
+    ]:
         """
         Compute the recurrence matrix for the time series.
 
+        The recurrence threshold can be determined in three different ways,
+        controlled by ``threshold_mode``:
+
+        - ``threshold_mode="direct"``: ``threshold`` is used directly as the
+          recurrence threshold.
+
+        - ``threshold_mode="std"``: the threshold is computed from the standard
+          deviation of the data as
+
+              eps = threshold * ||sigma||_p
+
+          where ``sigma`` is the vector of component-wise standard deviations.
+
+        - ``threshold_mode="rr"``: the threshold is chosen such that the recurrence
+          matrix achieves the desired recurrence rate, where ``threshold`` is
+          interpreted as the target recurrence rate.
+
+        For backward compatibility, the deprecated parameter ``threshold_std`` may
+        still be used. If ``threshold_std=True``, the threshold strategy is treated
+        as ``threshold_mode="std"``. A warning will be issued and the parameter will
+        be removed in a future release.
+
         Parameters
         ----------
-        metric : {'supremum', 'euclidean', 'manhattan'}, default='supremum'
-            Distance metric used for phase space reconstruction.
-        std_metric : {'supremum', 'euclidean', 'manhattan'}, default='supremum'
-            Distance metric used for standard deviation calculation.
+        compute_white_vert_distr : bool, default=False
+            If True, also return the white vertical line length distribution.
+
+        return_eps : bool, default=False
+            If True, also return the threshold used in the recurrence matrix
+            construction.
+
+        metric : {'supremum', 'euclidean', 'manhattan'} or callable, default='supremum'
+            Distance metric used to compute pairwise distances between state vectors.
+
+            If a callable is provided, it must have signature ``metric(x, y) -> float``,
+            where ``x`` and ``y`` are 1D NumPy arrays representing state vectors.
+
+            The callable must be **Numba-compatible**, since it will be executed inside
+            a Numba-compiled routine. For best performance and reliability, the metric
+            should be decorated with ``@numba.njit``.
+
+        std_metric : {'supremum', 'euclidean', 'manhattan'} or callable, default='supremum'
+            Metric used in the standard-deviation-based threshold calculation.
+
+            If a callable is provided, it must take the vector of component-wise
+            standard deviations and return a scalar with signature
+            ``std_metric(sigma) -> float``. It must be **Numba-compatible**
+            (ideally decorated with ``@numba.njit``).
+
         threshold : float, default=0.1
-            Recurrence threshold (relative to data range).
-        threshold_std : bool, default=True
-            Whether to scale threshold by data standard deviation.
+            Threshold parameter. Its meaning depends on the selected strategy:
+
+            - ``threshold_mode="direct"``: direct recurrence threshold
+            - ``threshold_mode="std"``: scaling factor for the standard-deviation
+              threshold
+            - ``threshold_mode="rr"``: target recurrence rate
+
+        threshold_mode : {'direct', 'std', 'rr'}, optional
+            Strategy used to determine the recurrence threshold.
+
+        threshold_std : bool, optional
+            **Deprecated.** If set to True, the threshold will be computed using
+            the standard deviation of the data (equivalent to
+            ``threshold_mode="std"``). This parameter will be removed in a future
+            release.
+
+        lmin : int, default=1
+            Minimum white vertical line length considered when computing the
+            white vertical line length distribution.
 
         Returns
         -------
-        NDArray[np.float64]
-            The recurrence matrix of the time series.
+        NDArray[np.uint8] or tuple
+            The returned value depends on the optional flags:
+
+            - If ``compute_white_vert_distr=False`` and ``return_eps=False``:
+              returns ``recmat``.
+
+            - If ``compute_white_vert_distr=True`` and ``return_eps=False``:
+              returns ``(recmat, distr)``, where ``distr`` is the white vertical
+              line length distribution.
+
+            - If ``compute_white_vert_distr=False`` and ``return_eps=True``:
+              returns ``(recmat, eps)``, where ``eps`` is the recurrence threshold
+              used to construct the matrix.
+
+            - If ``compute_white_vert_distr=True`` and ``return_eps=True``:
+              returns ``(recmat, distr, eps)``.
         """
         config = RTEConfig(**kwargs)
-        # Metric setup
-        metric_map = {"supremum": np.inf, "euclidean": 2, "manhattan": 1}
-        try:
-            ord = metric_map[config.std_metric.lower()]
-        except KeyError:
-            raise ValueError(
-                f"Invalid std_metric: {config.std_metric}. Must be {list(metric_map.keys())}"
-            )
 
-        # Threshold calculation
-        if config.threshold_std:
-            std = np.std(self.time_series, axis=0)
-            eps = config.threshold * np.linalg.norm(std, ord=ord)
-            if eps <= 0:
-                eps = 0.1
-        else:
-            eps = config.threshold
+        eps = calculate_threshold(self.time_series, config)
+
+        recmat = build_recurrence_matrix(
+            self.time_series, float(eps), metric=config.metric
+        )
 
         if compute_white_vert_distr:
-            recmat = recurrence_matrix(
-                self.time_series, float(eps), metric=config.metric
-            )
-            P = white_vertline_distr(recmat)[config.lmin :]
+            distr = white_vertline_distr(recmat)[config.lmin :]
 
-            return recmat, P
-        else:
-            return recurrence_matrix(self.time_series, float(eps), metric=config.metric)
+            if return_eps:
+                return recmat, distr, eps
+            return recmat, distr
+
+        if return_eps:
+            return recmat, eps
+
+        return recmat
 
     def recurrence_time_entropy(self, **kwargs):
         """
-        Compute the recurrence time entropy of the time series.
+        Compute the recurrence time entropy (RTE) of the time series.
+
+        The recurrence time entropy is computed from the distribution of white
+        vertical line lengths in the recurrence matrix.
 
         Parameters
         ----------
-        metric : {'supremum', 'euclidean', 'manhattan'}, default='supremum'
-            Distance metric used for phase space reconstruction.
-        std_metric : {'supremum', 'euclidean', 'manhattan'},                default='supremum'
-            Distance metric used for standard deviation calculation.
-        lmin : int, default=1
-            Minimum line length to consider in recurrence quantification.
+        metric : {'supremum', 'euclidean', 'manhattan'} or callable, default='supremum'
+            Distance metric used to compute pairwise distances between state vectors.
+
+            If a callable is provided, it must have signature ``metric(x, y) -> float``.
+            The callable must be **Numba-compatible**, since it will be executed inside
+            a Numba-compiled routine. For best performance, decorate it with
+            ``@numba.njit``.
+
+        std_metric : {'supremum', 'euclidean', 'manhattan'} or callable, default='supremum'
+            Metric used in the standard-deviation-based threshold calculation.
+
+            If a callable is provided, it must take the vector of component-wise
+            standard deviations and return a scalar with signature
+            ``std_metric(sigma) -> float``. It must be **Numba-compatible**
+            (ideally decorated with ``@numba.njit``).
+
         threshold : float, default=0.1
-            Recurrence threshold (relative to data range).
-        threshold_std : bool, default=True
-            Whether to scale threshold by data standard deviation.
+            Threshold parameter. Its interpretation depends on ``threshold_mode``.
+
+        threshold_mode : {'direct', 'std', 'rr'}, optional
+            Strategy used to determine the recurrence threshold.
+
+            - ``direct``: use ``threshold`` directly as the recurrence threshold
+            - ``std``: compute ``eps = threshold * ||sigma||_p``
+            - ``rr``: choose the threshold so that the recurrence matrix achieves
+              the desired recurrence rate
+
+        threshold_std : bool, optional
+            **Deprecated.** If set to True, the threshold will be computed using
+            the standard deviation of the data (equivalent to
+            ``threshold_mode="std"``). This parameter will be removed in a future
+            release.
+
+        lmin : int, default=1
+            Minimum white vertical line length considered in the entropy
+            calculation.
+
         return_recmat : bool, default=False
-            Whether to return the recurrence matrix.
+            If True, also return the recurrence matrix.
+
         return_p : bool, default=False
-            Whether to return white vertical line length distribution.
+            If True, also return the normalized white vertical line length
+            distribution used to compute the entropy.
 
         Returns
         -------
-        Tuple[float, float]
-            The recurrence time entropy and its standard deviation.
-        """
+        float or tuple
+            - If ``return_recmat=False`` and ``return_p=False``:
+              returns the recurrence time entropy.
 
+            - If ``return_recmat=True``:
+              returns ``(rte, recmat)``.
+
+            - If ``return_p=True``:
+              returns ``(rte, P)``.
+
+            - If both are True:
+              returns ``(rte, recmat, P)``.
+        """
         config = RTEConfig(**kwargs)
 
         # Compute the recurrence matrix
@@ -200,5 +316,5 @@ class TimeSeriesMetrics:
 
         if self.time_series.ndim == 1:
             return result[0]
-        else:
-            return result
+
+        return result
