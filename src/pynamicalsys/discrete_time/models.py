@@ -386,6 +386,7 @@ def lozi_map_jacobian(
 def logistic_map(
     u: NDArray[np.float64], parameters: Union[NDArray[np.float64], Sequence[float]]
 ) -> NDArray[np.float64]:
+
     r = parameters[0]
     x = u[0]
     x_new = r * x * (1 - x)
