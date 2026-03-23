@@ -722,25 +722,27 @@ class DiscreteDynamicalSystem:
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        if (
-            parameters is None
-            and self.__parameters is not None
-            and self.__number_of_parameters != 1
-        ):
-            parameters = self.__parameters
+        if self.__parameters is not None:
+            if parameters is None:
+                parameters = self.__parameters
+            else:
+                parameters = validate_parameters(
+                    parameters, self.__number_of_parameters - 1
+                )
         else:
-            parameters = validate_parameters(
-                parameters, self.__number_of_parameters - 1
-            )
+            if parameters is not None:
+                parameters = validate_parameters(
+                    parameters, self.__number_of_parameters - 1
+                )
+                parameters = np.insert(parameters, param_index, 0)
+            else:
+                parameters = np.array([0], dtype=np.float64)
 
         validate_non_negative(param_index, "param_index", Integral)
         if param_index >= self.__number_of_parameters:
             raise ValueError(
                 f"param_index {param_index} out of bounds for system with {self.__number_of_parameters} parameters"
             )
-        if self.__parameters is None:
-            parameters = np.insert(parameters, param_index, 0)
-
         param_values = validate_and_convert_param_range(param_range)
 
         validate_non_negative(total_time, "total_time", Integral)
