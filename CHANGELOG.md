@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.5.2]
+
+### Fixed
+
+- `DiscreteDynamicalSystem` class:
+  - Fixed parameter handling in `DiscreteDynamicalSystem.bifurcation_diagram()` when the system has no stored default parameters:
+    - user-provided parameters are now validated and the scanned parameter is inserted at `param_index`;
+    - if no parameters are provided, a default parameter array is initialized so the scanned parameter can be assigned correctly.
+
+### Changed
+
+- Minor formatting cleanup in `logistic_map()`.
+
+[v1.5.2]: https://github.com/mrolims/pynamicalsys/compare/v1.5.1...v1.5.2
+
 ## [v1.5.1] - 2026-03-16
 
 ### Added
