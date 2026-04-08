@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - History allocation using `round` instead of integer division
 - Incorrect normalization of history array (time column was being scaled)
 
-[v1.5.2]: https://github.com/mrolims/pynamicalsys/compare/v1.5.2...v1.5.3
+[v1.5.3]: https://github.com/mrolims/pynamicalsys/compare/v1.5.2...v1.5.3
 
 ## [v1.5.2] - 2026-03-23
 
