@@ -119,7 +119,8 @@ def lyapunov_spectrum(
     dv, _ = QR(dv)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
-    history = np.zeros((round(num_steps / qr_interval), num_exponents + 1))
+    n_qr = num_steps // qr_interval
+    history = np.zeros((n_qr, num_exponents + 1))
     count = 0
     for i in range(num_steps):
         time = (i + 1) * time_step
@@ -128,7 +129,7 @@ def lyapunov_spectrum(
             q, p, dv, time_step, grad_T, grad_V, hess_T, hess_V, parameters
         )
 
-        if i % qr_interval == 0:
+        if (i + 1) % qr_interval == 0:
             count += 1
             # Orthonormalize the deviation vectors
             dv, R = QR(dv)
@@ -144,7 +145,7 @@ def lyapunov_spectrum(
                 history[count - 1, :] = result
 
     if return_history:
-        history = history / np.log(log_base)
+        history[:, 1:] /= np.log(log_base)
         return history
     else:
         spectrum = np.zeros((1, num_exponents))

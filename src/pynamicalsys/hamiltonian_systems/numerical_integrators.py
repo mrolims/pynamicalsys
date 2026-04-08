@@ -132,38 +132,26 @@ def velocity_verlet_2nd_step_traj_tan(
     dv_new = dv.copy()
     dof = len(q)
 
-    # --- Half kick --- #
-    # on the main trajectory
+    # Half kick
     gradV = grad_V(q_new, parameters)
     p_new -= 0.5 * time_step * gradV
 
-    # on tangent momenta
     HV = hess_V(q_new, parameters)
-    HV_dot_dq = HV @ np.ascontiguousarray(dv_new[:dof, :])  # HV cdot dq
-    # Update dp
-    dv_new[dof:, :] -= 0.5 * time_step * HV_dot_dq
+    dv_new[dof:, :] -= 0.5 * time_step * (HV @ np.ascontiguousarray(dv_new[:dof, :]))
 
-    # --- Drift --- #
-    # on the main trajectory
+    # Drift
     gradT = grad_T(p_new, parameters)
     q_new += time_step * gradT
 
-    # on the tangent coordinates
     HT = hess_T(p_new, parameters)
-    HT_dot_dp = HT @ np.ascontiguousarray(dv_new[:dof, :])  # HT cdot dp
-    # Update dq
-    dv_new[:dof, :] += time_step * HT_dot_dp
+    dv_new[:dof, :] += time_step * (HT @ np.ascontiguousarray(dv_new[dof:, :]))
 
-    # --- Half kick --- #
-    # on the main trajectory
+    # Half kick
     gradV = grad_V(q_new, parameters)
     p_new -= 0.5 * time_step * gradV
 
-    # on tangent momenta
     HV = hess_V(q_new, parameters)
-    HV_dot_dq = HV @ np.ascontiguousarray(dv_new[:dof, :])  # HV cdot dq
-    # Update dp
-    dv_new[dof:, :] -= 0.5 * time_step * HV_dot_dq
+    dv_new[dof:, :] -= 0.5 * time_step * (HV @ np.ascontiguousarray(dv_new[:dof, :]))
 
     return q_new, p_new, dv_new
 
