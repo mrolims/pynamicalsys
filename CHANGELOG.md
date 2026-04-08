@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.5.3] - 2026-04-08
+
+### Fixed
+- Incorrect tangent drift update in symplectic (Verlet/Yoshida) integrators (used δq instead of δp in δq update)
+- QR re-orthonormalization scheduling in Lyapunov spectrum (`(i + 1) % qr_interval`)
+- History allocation using `round` instead of integer division
+- Incorrect normalization of history array (time column was being scaled)
+
+[v1.5.2]: https://github.com/mrolims/pynamicalsys/compare/v1.5.2...v1.5.3
+
 ## [v1.5.2] - 2026-03-23
 
 ### Fixed
