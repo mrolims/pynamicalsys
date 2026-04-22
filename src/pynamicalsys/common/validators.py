@@ -165,8 +165,8 @@ def validate_non_negative(value: Any, name: str, type_: type = Integral) -> None
         raise ValueError(f"{name} must be non-negative")
 
 
-def validate_positive(value, name, type_=Integral) -> None:
-    """Ensure value is >= 1 and of specified type.
+def validate_positive(value, name, type_: type = Integral) -> None:
+    """Ensure value is > 0 and of specified type.
 
     Parameters
     ----------
@@ -181,12 +181,12 @@ def validate_positive(value, name, type_=Integral) -> None:
     TypeError
         If value is not of the expected type.
     ValueError
-        If value is less than 1.
+        If value is less than 0.
     """
     if not isinstance(value, type_):
         raise TypeError(f"{name} must be of type {type_.__name__}")
-    if value < 1:
-        raise ValueError(f"{name} must be greater than or equal to 1")
+    if value < 0:
+        raise ValueError(f"{name} must be greater than 0")
 
 
 def validate_transient_time(transient_time, total_time, type_=Integral) -> None:
