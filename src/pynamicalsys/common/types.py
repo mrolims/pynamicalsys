@@ -33,3 +33,5 @@ jacobian_t: TypeAlias = Callable[
     [NDArray[np.float64], NDArray[np.float64], map_t],
     NDArray[np.float64],
 ]
+
+observable_t = Callable[[NDArray[np.float64]], NDArray[np.float64]]
