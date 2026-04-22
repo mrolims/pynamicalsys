@@ -20,7 +20,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t, map_t, observable_t
-from pynamicalsys.discrete_time.trajectory_analysis import generate_trajectory
+from pynamicalsys.discrete_time.trajectory import generate_trajectory
 
 
 def dig(

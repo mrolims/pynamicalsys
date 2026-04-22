@@ -242,10 +242,11 @@ class TimeSeriesMetrics:
         config = RTEConfig(**kwargs)
 
         # Compute the recurrence matrix
-        rec_matrix = self.recurrence_matrix(**kwargs)
+        eps = calculate_threshold(self.time_series, config)
+        recmat = build_recurrence_matrix(self.time_series, eps, config.metric)
 
         # Calculate the white vertical line distribution
-        P = white_vertline_distr(rec_matrix)[config.lmin :]
+        P = white_vertline_distr(recmat)[config.lmin :]
         P = P[P > 0]  # Filter out zero probabilities
         P /= P.sum()  # Normalize the distribution
 
@@ -254,7 +255,7 @@ class TimeSeriesMetrics:
 
         result = [rte]
         if config.return_recmat:
-            result.append(rec_matrix)
+            result.append(recmat)
         if config.return_p:
             result.append(P)
 
