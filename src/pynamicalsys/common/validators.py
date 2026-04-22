@@ -16,9 +16,10 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from numbers import Integral, Real
+from numbers import Integral
 from numpy.typing import NDArray
-from typing import Optional, Sequence, Tuple, List
+from typing import Optional, Tuple, Any
+from pynamicalsys.common.types import int_t, numeric_like_t
 
 
 def validate_initial_conditions(
@@ -78,7 +79,10 @@ def validate_initial_conditions(
     return u
 
 
-def validate_parameters(parameters, number_of_parameters) -> NDArray[np.float64]:
+def validate_parameters(
+    parameters: numeric_like_t | None,
+    number_of_parameters: int_t,
+) -> NDArray[np.float64]:
     """
     Validate and standardize parameter vector.
 
@@ -128,10 +132,10 @@ def validate_parameters(parameters, number_of_parameters) -> NDArray[np.float64]
                 f"Expected {number_of_parameters} parameter(s), but got {parameters.size}."
             )
 
-    return parameters
+    return np.asarray(parameters, dtype=np.float64)
 
 
-def validate_non_negative(value, name, type_=Integral) -> None:
+def validate_non_negative(value: Any, name: str, type_: type = Integral) -> None:
     """Ensure value is non-negative of specified type.
 
     Parameters
@@ -149,8 +153,14 @@ def validate_non_negative(value, name, type_=Integral) -> None:
     ValueError
         If value is negative.
     """
+    type_name = getattr(type_, "__name__", str(type_))
+
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be of type {type_name}")
+
     if not isinstance(value, type_):
-        raise TypeError(f"{name} must be of type {type_.__name__}")
+        raise TypeError(f"{name} must be of type {type_name}")
+
     if value < 0:
         raise ValueError(f"{name} must be non-negative")
 
