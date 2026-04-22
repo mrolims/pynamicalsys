@@ -22,72 +22,61 @@ from numba import njit
 
 
 @njit
-def qr(M: NDArray[np.float64]) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+def qr(
+    M: NDArray[np.float64],
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
-    Perform numerically stable QR decomposition using modified Gram-Schmidt with reorthogonalization.
+    Compute the reduced QR decomposition using modified Gram-Schmidt.
 
     Parameters
     ----------
     M : NDArray[np.float64]
-        Input matrix of shape (m, n) with linearly independent columns.
+        Input matrix of shape `(m, n)` with `m >= n`.
 
     Returns
     -------
     Tuple[NDArray[np.float64], NDArray[np.float64]]
-        Q: Orthonormal matrix (m, n)
-        R: Upper triangular matrix (n, n)
+        - `Q`: Orthonormal matrix of shape `(m, n)`
+        - `R`: Upper triangular matrix of shape `(n, n)`
+
+    Raises
+    ------
+    ValueError
+        If `m < n`.
 
     Notes
     -----
-    - Implements modified Gram-Schmidt with iterative refinement
-    - Includes additional reorthogonalization steps for stability
-    - Uses double precision throughout for accuracy
-    - Automatically handles rank-deficient cases with warnings
-
-    Examples
-    --------
-    >>> M = np.array([[1.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-    >>> Q, R = qr(M)
-    >>> np.allclose(M, Q @ R)
-    True
-    >>> np.allclose(Q.T @ Q, np.eye(2))
-    True
+    This implementation uses modified Gram-Schmidt, which is more stable than
+    classical Gram-Schmidt, but generally less stable than Householder QR.
     """
     m, n = M.shape
-    Q = np.ascontiguousarray(M.copy())
-    R = np.ascontiguousarray(np.zeros((n, n)))
-    eps = np.finfo(np.float64).eps  # Machine epsilon for stability checks
+    if m < n:
+        raise ValueError("Input matrix must have m >= n for QR decomposition")
+
+    Q = M.copy().astype(np.float64)
+    R = np.zeros((n, n), dtype=np.float64)
 
     for i in range(n):
-        # First orthogonalization pass
-        for k in range(i):
-            R[k, i] = np.dot(
-                np.ascontiguousarray(Q[:, k]), np.ascontiguousarray(Q[:, i])
-            )
-            Q[:, i] -= R[k, i] * Q[:, k]
+        for j in range(i):
+            s = 0.0
+            for row in range(m):
+                s += Q[row, j] * Q[row, i]
+            R[j, i] = s
 
-        # Compute norm and check for linear dependence
-        norm = np.linalg.norm(Q[:, i])
-        if norm < eps * m:  # Adjust threshold based on matrix size
-            # Handle near-linear dependence
-            Q[:, i] = np.random.randn(m)
-            Q[:, i] /= np.linalg.norm(Q[:, i])
-            norm = 1.0
+            for row in range(m):
+                Q[row, i] -= R[j, i] * Q[row, j]
 
-        R[i, i] = norm
-        Q[:, i] /= norm
+        norm_sq = 0.0
+        for row in range(m):
+            norm_sq += Q[row, i] * Q[row, i]
+        R[i, i] = np.sqrt(norm_sq)
 
-        # Optional second reorthogonalization pass for stability
-        for k in range(i):
-            dot = np.dot(np.ascontiguousarray(Q[:, k]), np.ascontiguousarray(Q[:, i]))
-            R[k, i] += dot
-            Q[:, i] -= dot * Q[:, k]
+        if R[i, i] == 0.0:
+            continue
 
-        # Renormalize after reorthogonalization
-        new_norm = np.linalg.norm(Q[:, i])
-        if new_norm < 0.1:  # Significant cancellation occurred
-            Q[:, i] /= new_norm
-            R[i, i] *= new_norm
+        inv_norm = 1.0 / R[i, i]
+        for row in range(m):
+            Q[row, i] *= inv_norm
 
     return Q, R
 
@@ -96,90 +85,35 @@ def qr(M: NDArray[np.float64]) -> Tuple[NDArray[np.float64], NDArray[np.float64]
 def householder_qr(
     M: NDArray[np.float64],
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """
-    Compute the QR decomposition using Householder reflections with enhanced numerical stability.
-
-    This implementation includes:
-    - Column pivoting for rank-deficient matrices
-    - Careful handling of sign choices to minimize cancellation
-    - Efficient accumulation of Q matrix
-    - Special handling of small submatrices
-
-    Parameters
-    ----------
-    M : NDArray[np.float64]
-        Input matrix of shape (m, n) where m >= n
-
-    Returns
-    -------
-    Tuple[NDArray[np.float64], NDArray[np.float64]]
-        Q: Orthogonal matrix (m×m)
-        R: Upper triangular matrix (m×n)
-
-    Raises
-    ------
-    ValueError
-        If input matrix has more columns than rows (m < n)
-
-    Notes
-    -----
-    - For rank-deficient matrices, consider using column pivoting (not shown here)
-    - The implementation uses the most numerically stable sign choice
-    - Accumulates Q implicitly for better performance
-    - Automatically handles edge cases like zero columns
-
-    Examples
-    --------
-    >>> # Well-conditioned matrix
-    >>> M = np.array([[3.0, 1.0], [4.0, 2.0]], dtype=np.float64)
-    >>> Q, R = householder_qr(M)
-    >>> np.allclose(Q @ R, M, atol=1e-10)
-    True
-
-    >>> # Rank-deficient case
-    >>> M = np.array([[1.0, 2.0], [2.0, 4.0]], dtype=np.float64)
-    >>> Q, R = householder_qr(M)
-    >>> np.abs(R[1,1]) < 1e-10  # Second column is dependent
-    True
-    """
     m, n = M.shape
     if m < n:
         raise ValueError("Input matrix must have m >= n for QR decomposition")
 
-    # Initialize Q as identity matrix (will accumulate Householder transformations)
-    Q = np.eye(m)
-
-    # Initialize R as a copy of input matrix (will be transformed to upper triangular)
     R = M.copy().astype(np.float64)
+    Q = np.eye(m, dtype=np.float64)
 
     for k in range(n):
-        # Extract the subcolumn from current diagonal downward
         x = R[k:, k]
+        norm_x = np.linalg.norm(x)
 
-        # Skip if the subcolumn is already zero (for numerical stability)
-        if np.allclose(x[1:], 0.0):
+        if norm_x == 0.0:
             continue
 
-        # Create basis vector e1 = [1, 0, ..., 0] of same length as x
-        e1 = np.zeros_like(x)
-        e1[0] = 1.0
+        alpha = -np.copysign(norm_x, x[0])
+        v = x.copy()
+        v[0] -= alpha
+        v_norm = np.linalg.norm(v)
 
-        # Compute Householder vector v:
-        # v = sign(x[0])*||x||*e1 + x
-        # The sign choice ensures numerical stability (avoids cancellation)
-        v = np.sign(x[0]) * np.linalg.norm(x) * e1 + x
-        v = v / np.linalg.norm(v)  # Normalize v
+        if v_norm == 0.0:
+            continue
 
-        # Construct Householder reflector H = I - 2vv^T
-        # We build it as an extension of the identity matrix
-        H = np.eye(m)
-        H[k:, k:] -= 2.0 * np.outer(v, v)
+        v /= v_norm
 
-        # Apply reflector to R (zeroing out below-diagonal elements in column k)
-        R = H @ R
+        # Apply reflector to R[k:, k:]
+        R[k:, k:] -= 2.0 * np.outer(v, v @ R[k:, k:])
 
-        # Accumulate the reflection in Q (Q = Q * H^T, since H is symmetric)
-        Q = Q @ H.T
+        # Apply reflector to Q[:, k:]
+        Q[:, k:] -= 2.0 * np.outer(Q[:, k:] @ v, v)
 
     return Q, R
 
