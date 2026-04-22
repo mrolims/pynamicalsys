@@ -25,13 +25,13 @@ from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
+
 from pynamicalsys.common.utils import finite_difference_jacobian, qr, householder_qr
+
 from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t
+
 from pynamicalsys.discrete_time.dynamical_indicators import (
     RTE,
-    SALI,
-    GALI_k,
-    LDI_k,
     dig,
     finite_time_hurst_exponent,
     finite_time_RTE,
@@ -46,7 +46,13 @@ from pynamicalsys.discrete_time.lyapunov import (
     lyapunov_er,
     maximum_lyapunov_er,
     lyapunov_qr,
+    finite_time_lyapunov,
 )
+
+from pynamicalsys.discrete_time.sali import sali
+from pynamicalsys.discrete_time.ldi import ldi_k
+from pynamicalsys.discrete_time.gali import gali_k
+
 
 from pynamicalsys.discrete_time.models import (
     extended_standard_nontwist_map,
@@ -2479,7 +2485,7 @@ class DiscreteDynamicalSystem:
         parameters: Optional[numeric_like_t] = None,
         method: str = "QR",
         return_history: bool = False,
-        sample_times: Optional[NDArray[np.integer]] = None,
+        sample_times: NDArray[np.integer] | Sequence[int_t] | None = None,
         transient_time: Optional[int_t] = None,
         num_exponents: Optional[int] = None,
         log_base: numeric_t = np.e,
@@ -2593,14 +2599,15 @@ class DiscreteDynamicalSystem:
         if method == "QR" and self.__system_dimension == 2:
             method = "ER"  # Fallback to QR for higher dimensions
 
+        sample_times_arr: NDArray[np.int64] | None = None
         if return_history:
             if sample_times is not None:
-                sample_times = validate_sample_times(sample_times, total_time)
+                sample_times_arr = validate_sample_times(sample_times, total_time)
             else:
                 sample_size = total_time - (
                     transient_time if transient_time is not None else 0
                 )
-                sample_times = np.arange(1, sample_size + 1)
+                sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
@@ -2621,7 +2628,7 @@ class DiscreteDynamicalSystem:
                 total_time,
                 self.__mapping,
                 self.__jacobian,
-                sample_times,
+                sample_times_arr,
                 return_history=return_history,
                 transient_time=transient_time,
                 log_base=log_base,
@@ -2635,7 +2642,7 @@ class DiscreteDynamicalSystem:
                         total_time,
                         self.__mapping,
                         self.__jacobian,
-                        sample_times,
+                        sample_times_arr,
                         return_history,
                         transient_time,
                         log_base,
@@ -2647,7 +2654,7 @@ class DiscreteDynamicalSystem:
                         total_time,
                         self.__mapping,
                         self.__jacobian,
-                        sample_times,
+                        sample_times_arr,
                         return_history,
                         transient_time,
                         log_base,
@@ -2661,7 +2668,7 @@ class DiscreteDynamicalSystem:
                     self.__mapping,
                     self.__jacobian,
                     num_exponents,
-                    sample_times,
+                    sample_times_arr,
                     qr_func,
                     return_history,
                     transient_time,
@@ -3415,88 +3422,110 @@ class DiscreteDynamicalSystem:
 
     def SALI(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
         return_history: bool = False,
-        sample_times: Optional[Union[NDArray[np.int32], Sequence[int]]] = None,
-        tol: float = 1e-16,
-        transient_time: Optional[int] = None,
-        seed: int = 13,
-    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute Smallest Alignment Index(SALI) for chaos detection.
+        sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
+        tol: numeric_t = 1e-16,
+        transient_time: int_t | None = None,
+        seed: int_t = 1312,
+        return_last_state: bool = False,
+    ) -> (
+        float
+        | NDArray[np.float64]
+        | Tuple[float, NDArray[np.float64]]
+        | Tuple[NDArray[np.float64], NDArray[np.float64]]
+    ):
+        """
+        Compute the Smallest Alignment Index (SALI) for a discrete dynamical system.
+
+        SALI measures the alignment of two deviation vectors evolved in tangent
+        space. For chaotic trajectories, SALI typically decays rapidly toward
+        zero, whereas for regular trajectories it remains bounded away from zero.
 
         Parameters
         ----------
-        u: Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape(d,) where d is system dimension
-        total_time: int
-            Maximum number of iterations(must be ≥ 1)
-        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape(p,) passed to mapping function
-        return_history: bool, optional
-            If True, returns full evolution(default False)
-        sample_times: Optional[Union[NDArray[np.float64], Sequence[int]]], optional
-            Specific times to sample(must be sorted, default None)
-        tol: float, optional
-            Early termination threshold(default 1e-16)
-        transient_time: Optional[int], optional
-            Initial iterations to discard(default None → total_time//10)
-        seed: int, optional
-            Random seed for reproducibility (default 13)
+        u : numeric_like_t
+            Initial condition of shape `(d,)`, where `d` is the system dimension.
+        total_time : int_t
+            Total number of iterations used in the computation.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the
+            parameters stored in the system are used.
+        return_history : bool, optional
+            If True, return SALI evaluated at the requested sampling times.
+            Otherwise, return only the final SALI value. Default is False.
+        sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
+            Iteration times at which SALI is recorded when `return_history=True`.
+            If None and `return_history=True`, SALI is recorded at every iteration
+            after the transient.
+        tol : numeric_t, optional
+            Early stopping threshold. If `SALI < tol`, the computation is
+            interrupted. Default is `1e-16`.
+        transient_time : int_t | None, optional
+            Number of initial iterations to discard before starting the SALI
+            computation. If None, no transient is discarded.
+        seed : int_t, optional
+            Seed used to initialize the deviation vectors. Default is 1312.
+        return_last_state : bool, optional
+            If True, also return the final state of the trajectory.
 
         Returns
         -------
-        Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
-            - If return_history = False: Final SALI value(scalar)
-            - If return_history = True: Tuple of(SALI_history, final_state) where SALI_history is 1D array of values
+        float or NDArray[np.float64] or tuple
+            - If `return_history=False` and `return_last_state=False`, returns the
+              final SALI value as a scalar.
+            - If `return_history=False` and `return_last_state=True`, returns
+              `(final_sali, final_state)`.
+            - If `return_history=True` and `return_last_state=False`, returns a
+              1D array containing the sampled SALI history.
+            - If `return_history=True` and `return_last_state=True`, returns
+              `(sali_history, final_state)`.
 
         Raises
         ------
         ValueError
-            - If `u` is not an 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `sample_times` is not a 1D array of integers.
+            - If `transient_time` is invalid.
+            - If `sample_times` is not a valid 1D array of integers.
+            - If `tol` is negative.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If sample_times cannot be converted to a 1D array of integers.
-            - If `tol` is not a positive float.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `tol` is not numeric.
             - If `seed` is not an integer.
 
         Notes
         -----
-        - SALI behavior:
-        - → 0 exponentially for chaotic orbits
-        - → positive constant for regular orbits
-        - Typical threshold: SALI < 1e-8 suggests chaos
-        - For Hamiltonian systems, uses 2 deviation vectors
-        - Early termination when SALI < tol
+        SALI tends to zero for chaotic trajectories and remains bounded away from
+        zero for regular trajectories. Sample times are automatically sorted and
+        deduplicated.
 
         Examples
         --------
-        >>>  # Basic usage (final value only)
         >>> u0 = np.array([0.1, 0.2])
         >>> params = np.array([0.5, 1.0])
-        >>> sali = system.SALI(u0, params, 10000)
 
-        >>>  # With full history
-        >>> sali_hist, final = system.SALI(
-        ...     u0, params, 10000, return_history=True)
+        >>> sali = system.SALI(u0, 10000, parameters=params)
 
-        >>>  # With custom sampling
+        >>> sali_hist = system.SALI(
+        ...     u0, 10000, parameters=params, return_history=True
+        ... )
+
         >>> times = np.array([100, 1000, 5000])
-        >>> sali_samples, _ = system.SALI(
-        ...     u0, params, 10000, sample_times=times, return_history=True)
+        >>> sali_samples, final_state = system.SALI(
+        ...     u0,
+        ...     10000,
+        ...     parameters=params,
+        ...     sample_times=times,
+        ...     return_history=True,
+        ...     return_last_state=True,
+        ... )
         """
 
         u = validate_initial_conditions(
@@ -3505,140 +3534,171 @@ class DiscreteDynamicalSystem:
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
 
-        if return_history and sample_times is not None:
-            sample_times = validate_sample_times(sample_times, total_time)
-        else:
-            sample_times = np.arange(
-                1, total_time - (transient_time or 0) + 1, dtype=np.int64
-            )
+        sample_times_arr: NDArray[np.int64] | None = None
+        if return_history:
+            if sample_times is not None:
+                sample_times_arr = validate_sample_times(sample_times, total_time)
+            else:
+                sample_size = total_time - (
+                    transient_time if transient_time is not None else 0
+                )
+                sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
         validate_non_negative(tol, "tol", Real)
 
         if not isinstance(seed, Integral):
             raise TypeError("seed must be an integer")
 
-        result = SALI(
+        result, u = sali(
             u,
             parameters,
             total_time,
             self.__mapping,
             self.__jacobian,
-            sample_times,
+            sample_times_arr,
             return_history=return_history,
             transient_time=transient_time,
             tol=tol,
             seed=seed,
         )
 
-        return result if return_history else result[0]
+        if return_history:
+            if return_last_state:
+                return result, u
+            return result
+
+        value = float(np.asarray(result).ravel()[0])
+
+        if return_last_state:
+            return value, u
+        return value
 
     def LDI(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: int,
+        u: numeric_like_t,
+        total_time: int_t,
         k: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        parameters: numeric_like_t | None = None,
         return_history: bool = False,
-        sample_times: Optional[Union[NDArray[np.int32], Sequence[int]]] = None,
-        tol: float = 1e-16,
-        transient_time: Optional[int] = None,
-        seed: int = 13,
-    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute the Linear Dependence Index (LDI_k) for chaos detection.
+        sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
+        tol: numeric_t = 1e-16,
+        transient_time: int_t | None = None,
+        seed: int = 1312,
+        return_last_state: bool = False,
+    ) -> (
+        float
+        | NDArray[np.float64]
+        | Tuple[float, NDArray[np.float64]]
+        | Tuple[NDArray[np.float64], NDArray[np.float64]]
+    ):
+        """
+        Compute the Linear Dependence Index (LDI_k) for a discrete dynamical system.
+
+        LDI_k is computed from the evolution of `k` deviation vectors in tangent
+        space and is used to distinguish regular and chaotic motion.
 
         Parameters
         ----------
-        u: Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape(d,) where d is system dimension
-        total_time: int
-            Maximum number of iterations(must be ≥ 1)
-        k: int
-            Number of deviation vectors to use(2 ≤ k ≤ d, default 2)
-        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape(p,) passed to mapping function
-        return_history: bool, optional
-            If True, returns full evolution(default False)
-        sample_times: Optional[Union[NDArray[np.float64], Sequence[int]]], optional
-            Specific times to sample(must be sorted, default None)
-        tol: float, optional
-            Early termination threshold(default 1e-16)
-        transient_time: Optional[int], optional
-            Initial iterations to discard(default None → total_time//10)
-        seed: int, optional
-            Random seed for reproducibility(default 13)
+        u : numeric_like_t
+            Initial condition of shape `(d,)`, where `d` is the system dimension.
+        total_time : int_t
+            Total number of iterations used in the computation.
+        k : int
+            Number of deviation vectors used in the computation.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the
+            parameters stored in the system are used.
+        return_history : bool, optional
+            If True, return LDI_k evaluated at the requested sampling times.
+            Otherwise, return only the final LDI_k value. Default is False.
+        sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
+            Iteration times at which LDI_k is recorded when `return_history=True`.
+            If None and `return_history=True`, LDI_k is recorded at every iteration
+            after the transient.
+        tol : numeric_t, optional
+            Early stopping threshold. If `LDI_k < tol`, the computation is
+            interrupted. Default is `1e-16`.
+        transient_time : int_t | None, optional
+            Number of initial iterations to discard before starting the LDI_k
+            computation. If None, no transient is discarded.
+        seed : int, optional
+            Seed used to initialize the deviation vectors. Default is 1312.
+        return_last_state : bool, optional
+            If True, also return the final state of the trajectory.
 
         Returns
         -------
-        Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
-            - If return_history = False: Final LDI_k value(scalar)
-            - If return_history = True: Tuple of (LDI_history, final_state) where LDI_history is 1D array of values
+        float or NDArray[np.float64] or tuple
+            - If `return_history=False` and `return_last_state=False`, returns the
+              final LDI_k value as a scalar.
+            - If `return_history=False` and `return_last_state=True`, returns
+              `(final_ldi, final_state)`.
+            - If `return_history=True` and `return_last_state=False`, returns a
+              1D array containing the sampled LDI_k history.
+            - If `return_history=True` and `return_last_state=True`, returns
+              `(ldi_history, final_state)`.
 
         Raises
         ------
         ValueError
-            - If `u` is not an 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `sample_times` is not a 1D array of integers.
-            - If `k` is less than 2 or greater than system dimension.
-
+            - If `transient_time` is invalid.
+            - If `sample_times` is not a valid 1D array of integers.
+            - If `k` is not in the interval `[2, system_dimension]`.
+            - If `tol` is negative.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If sample_times cannot be converted to a 1D array of integers.
-            - If `tol` is not a positive float.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `tol` is not numeric.
             - If `seed` is not an integer.
-            - If `k` is not a positive integer.
+            - If `k` is not an integer.
 
         Notes
         -----
-        - LDI_k behavior:
-        - → 0 exponentially for chaotic orbits(rate depends on k)
-        - → positive constant for regular orbits
-        - LDI_2 ~ SALI (same convergence rate)
-        - Higher k indices decay faster for chaotic orbits
-        - For Hamiltonian systems, k should be ≤ d/2
-        - Early termination when LDI_k < tol
+        - A set of `k` initially orthonormal deviation vectors is evolved with the
+        Jacobian and renormalized at each step. LDI_k is computed as the product
+        of the singular values of the deviation-vector matrix.
+
+        - The computation is terminated early if `LDI_k < tol`.
 
         Examples
         --------
-        >>>  # Basic usage (LDI_2 final value)
         >>> u0 = np.array([0.1, 0.2, 0.0, 0.0])
         >>> params = np.array([0.5, 1.0])
-        >>> LDI = system.LDI(u0, params, 10000, k=2)
 
-        >>>  # LDI_3 with full history
-        >>> LDI_hist, final = system.LDI(
-        ...     u0, params, 10000, k=3, return_history=True)
+        >>> ldi = system.LDI(u0, 10000, k=2, parameters=params)
 
-        >>>  # With custom sampling
+        >>> ldi_hist = system.LDI(
+        ...     u0, 10000, k=3, parameters=params, return_history=True
+        ... )
+
         >>> times = np.array([100, 1000, 5000])
-        >>> LDI_samples, _ = system.LDI(
-        ...     u0, params, 10000, k=2, sample_times=times, return_history=True)
+        >>> ldi_samples, final_state = system.LDI(
+        ...     u0,
+        ...     10000,
+        ...     k=2,
+        ...     parameters=params,
+        ...     sample_times=times,
+        ...     return_history=True,
+        ...     return_last_state=True,
+        ... )
         """
-
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -3647,12 +3707,15 @@ class DiscreteDynamicalSystem:
         if k < 2 or k > self.__system_dimension:
             raise ValueError(f"k must be in range [2, {self.__system_dimension}]")
 
-        if return_history and sample_times is not None:
-            sample_times = validate_sample_times(sample_times, total_time)
-        else:
-            sample_times = np.arange(
-                1, total_time - (transient_time or 0) + 1, dtype=np.int64
-            )
+        sample_times_arr: NDArray[np.int64] | None = None
+        if return_history:
+            if sample_times is not None:
+                sample_times_arr = validate_sample_times(sample_times, total_time)
+            else:
+                sample_size = total_time - (
+                    transient_time if transient_time is not None else 0
+                )
+                sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
         validate_non_negative(tol, "tol", Real)
 
@@ -3660,137 +3723,209 @@ class DiscreteDynamicalSystem:
             raise TypeError("seed must be an integer")
 
         # Call underlying implementation
-        result = LDI_k(
+        result, u = ldi_k(
             u,
             parameters,
             total_time,
             self.__mapping,
             self.__jacobian,
             k,
-            sample_times,
+            sample_times_arr,
             return_history=return_history,
             transient_time=transient_time,
             tol=tol,
             seed=seed,
         )
 
-        return result if return_history else result[0]
+        if return_history:
+            if return_last_state:
+                return result, u
+            return result
+
+        value = float(np.asarray(result).ravel()[0])
+
+        if return_last_state:
+            return value, u
+        return value
 
     def GALI(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: int,
+        u: numeric_like_t,
+        total_time: int_t,
         k: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        parameters: numeric_like_t | None = None,
         return_history: bool = False,
-        sample_times: Optional[Union[NDArray[np.int32], Sequence[int]]] = None,
-        tol: float = 1e-16,
-        transient_time: Optional[int] = None,
-        seed: int = 13,
-    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute the Generalized Aligment Index (GALI_k) for chaos detection.
+        sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
+        method: str = "QR",
+        tol: numeric_t = 1e-16,
+        transient_time: int_t | None = None,
+        seed: int = 1312,
+        return_last_state: bool = False,
+    ) -> (
+        float
+        | NDArray[np.float64]
+        | Tuple[float, NDArray[np.float64]]
+        | Tuple[NDArray[np.float64], NDArray[np.float64]]
+    ):
+        """
+        Compute the Generalized Alignment Index (GALI_k) for a discrete dynamical system.
+
+        GALI_k quantifies the degree of alignment of `k` deviation vectors evolved in
+        tangent space. It measures the contraction of the `k`-dimensional volume
+        spanned by these vectors and is used to distinguish regular and chaotic
+        motion.
 
         Parameters
         ----------
-        u: Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape(d,) where d is system dimension
-        total_time: int
-            Maximum number of iterations(must be ≥ 1)
-        k: int
-            Number of deviation vectors to use(2 ≤ k ≤ d, default 2)
-        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape(p,) passed to mapping function
-        return_history: bool, optional
-            If True, returns full evolution(default False)
-        sample_times: Optional[Union[NDArray[np.float64], Sequence[int]]], optional
-            Specific times to sample(must be sorted, default None)
-        tol: float, optional
-            Early termination threshold(default 1e-16)
-        transient_time: Optional[int], optional
-            Initial iterations to discard(default None → total_time//10)
-        seed: int, optional
-            Random seed for reproducibility(default 13)
+        u : numeric_like_t
+            Initial condition of shape `(d,)`, where `d` is the system dimension.
+        total_time : int_t
+            Total number of iterations used in the computation.
+        k : int
+            Number of deviation vectors used in the computation.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the
+            parameters stored in the system are used.
+        return_history : bool, optional
+            If True, return GALI_k evaluated at the requested sampling times.
+            Otherwise, return only the final GALI_k value. Default is False.
+        sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
+            Iteration times at which GALI_k is recorded when `return_history=True`.
+            If None and `return_history=True`, GALI_k is recorded at every iteration
+            after the transient.
+        method : str, optional
+            Method used to compute GALI_k. Supported options are:
+
+            - `"DET"`:
+              Compute GALI_k from the Gram matrix `G = V^T V`, where `V` is the
+              deviation-vector matrix, through `GALI_k = sqrt(det(G))`.
+
+            - `"QR"`:
+              Compute GALI_k from the diagonal of the triangular factor obtained
+              from the custom QR decomposition routine `qr`, using
+              `GALI_k = prod_i |R_ii|`.
+
+            - `"QR_HH"`:
+              Compute GALI_k from the diagonal of the triangular factor obtained
+              from the Householder QR decomposition `numpy.linalg.qr`, again using
+              `GALI_k = prod_i |R_ii|`.
+
+            Default is `"QR"`.
+        tol : numeric_t, optional
+            Early stopping threshold. If `GALI_k < tol`, the computation is
+            interrupted. Default is `1e-16`.
+        transient_time : int_t | None, optional
+            Number of initial iterations to discard before starting the GALI_k
+            computation. If None, no transient is discarded.
+        seed : int, optional
+            Seed used to initialize the deviation vectors. Default is 1312.
+        return_last_state : bool, optional
+            If True, also return the final state of the trajectory.
 
         Returns
         -------
-        Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
-            - If return_history = False: Final GALI_k value(scalar)
-            - If return_history = True: Tuple of (GALI_history, final_state) where GALI_history is 1D array of values
+        float or NDArray[np.float64] or tuple
+            - If `return_history=False` and `return_last_state=False`, returns the
+              final GALI_k value as a scalar.
+            - If `return_history=False` and `return_last_state=True`, returns
+              `(final_gali, final_state)`.
+            - If `return_history=True` and `return_last_state=False`, returns a
+              1D array containing the sampled GALI_k history.
+            - If `return_history=True` and `return_last_state=True`, returns
+              `(gali_history, final_state)`.
 
         Raises
         ------
         ValueError
-            - If `u` is not an 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `sample_times` is not a 1D array of integers.
-            - If `k` is less than 2 or greater than system dimension.
-
+            - If `transient_time` is invalid.
+            - If `sample_times` is not a valid 1D array of integers.
+            - If `k` is not in the interval `[2, system_dimension]`.
+            - If `method` is not `"DET"`, `"QR"`, or `"QR_HH"`.
+            - If `tol` is negative.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If sample_times cannot be converted to a 1D array of integers.
-            - If `tol` is not a positive float.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `tol` is not numeric.
             - If `seed` is not an integer.
-            - If `k` is not a positive integer.
+            - If `k` is not an integer.
+            - If `method` is not a string.
 
         Notes
         -----
-        - GALI_k behavior:
-        - → 0 exponentially for chaotic orbits(rate depends on k)
-        - → positive constant for regular orbits
-        - GALI_2 ~ SALI (same convergence rate)
-        - Higher k indices decay faster for chaotic orbits
-        - For Hamiltonian systems, k should be ≤ d/2
-        - Early termination when GALI_k < tol
+        GALI_k can be written equivalently as
+
+            `GALI_k = sqrt(det(V^T V))`
+
+        where `V` is the deviation-vector matrix, or as
+
+            `GALI_k = |det(R)| = prod_i |R_ii|`
+
+        when `V = Q R` is a QR decomposition.
+
+        For chaotic trajectories, GALI_k typically decays rapidly toward zero due
+        to the progressive alignment of deviation vectors. For regular trajectories,
+        the decay is slower or GALI_k may remain bounded away from zero, depending
+        on `k` and on the dimension of the invariant set.
+
+        The computation is terminated early if `GALI_k < tol`.
 
         Examples
         --------
-        >>>  # Basic usage (LDI_2 final value)
         >>> u0 = np.array([0.1, 0.2, 0.0, 0.0])
         >>> params = np.array([0.5, 1.0])
-        >>> LDI = system.LDI(u0, params, 10000, k=2)
 
-        >>>  # LDI_3 with full history
-        >>> LDI_hist, final = system.LDI(
-        ...     u0, params, 10000, k=3, return_history=True)
+        >>> gali = system.GALI(u0, 10000, k=2, parameters=params)
 
-        >>>  # With custom sampling
+        >>> gali_hist = system.GALI(
+        ...     u0, 10000, k=3, parameters=params, return_history=True
+        ... )
+
         >>> times = np.array([100, 1000, 5000])
-        >>> LDI_samples, _ = system.LDI(
-        ...     u0, params, 10000, k=2, sample_times=times, return_history=True)
+        >>> gali_samples, final_state = system.GALI(
+        ...     u0,
+        ...     10000,
+        ...     k=2,
+        ...     parameters=params,
+        ...     sample_times=times,
+        ...     return_history=True,
+        ...     return_last_state=True,
+        ... )
         """
-
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
+
+        if not isinstance(method, str):
+            raise TypeError("method must be a string")
+        method = method.upper()
+        if method not in ("DET", "QR", "QR_HH"):
+            raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
         validate_positive(k, "k", Integral)
         if k < 2 or k > self.__system_dimension:
             raise ValueError(f"k must be in range [2, {self.__system_dimension}]")
 
-        if return_history and sample_times is not None:
-            sample_times = validate_sample_times(sample_times, total_time)
-        else:
-            sample_times = np.arange(
-                1, total_time - (transient_time or 0) + 1, dtype=np.int64
-            )
+        sample_times_arr: NDArray[np.int64] | None = None
+        if return_history:
+            if sample_times is not None:
+                sample_times_arr = validate_sample_times(sample_times, total_time)
+            else:
+                sample_size = total_time - (
+                    transient_time if transient_time is not None else 0
+                )
+                sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
         validate_non_negative(tol, "tol", Real)
 
@@ -3798,21 +3933,31 @@ class DiscreteDynamicalSystem:
             raise TypeError("seed must be an integer")
 
         # Call underlying implementation
-        result = GALI_k(
+        result, u = gali_k(
             u,
             parameters,
             total_time,
             self.__mapping,
             self.__jacobian,
             k,
-            sample_times,
+            sample_times_arr,
+            method=method,
             return_history=return_history,
             transient_time=transient_time,
             tol=tol,
             seed=seed,
         )
 
-        return result if return_history else result[0]
+        if return_history:
+            if return_last_state:
+                return result, u
+            return result
+
+        value = float(np.asarray(result).ravel()[0])
+
+        if return_last_state:
+            return value, u
+        return value
 
     def __lagrangian_descriptors(
         self,

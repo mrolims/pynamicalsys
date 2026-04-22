@@ -21,7 +21,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.utils import qr, householder_qr
+from pynamicalsys.common.utils import householder_qr
 
 
 @njit
@@ -352,7 +352,7 @@ def lyapunov_qr(
     sample_times: Optional[NDArray[np.integer]] = None,
     QR: Callable[
         [NDArray[np.float64]], Tuple[NDArray[np.float64], NDArray[np.float64]]
-    ] = qr,
+    ] = np.linalg.qr,
     return_history: bool = False,
     transient_time: Optional[int_t] = None,
     log_base: numeric_t = np.e,
