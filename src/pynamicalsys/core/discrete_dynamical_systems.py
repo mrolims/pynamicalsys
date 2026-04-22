@@ -1407,7 +1407,6 @@ class DiscreteDynamicalSystem:
         if n_points_tuple[0] < 1 or n_points_tuple[1] < 1:
             raise ValueError("all n_points values must be positive")
 
-        print(iter_time)
         if isinstance(iter_time, Integral):
             iter_time_tuple = (int(iter_time), int(iter_time))
         elif isinstance(iter_time, tuple) or isinstance(iter_time, list):

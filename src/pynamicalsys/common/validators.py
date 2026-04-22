@@ -185,7 +185,7 @@ def validate_positive(value, name, type_: type = Integral) -> None:
     """
     if not isinstance(value, type_):
         raise TypeError(f"{name} must be of type {type_.__name__}")
-    if value < 0:
+    if value <= 0:
         raise ValueError(f"{name} must be greater than 0")
 
 
