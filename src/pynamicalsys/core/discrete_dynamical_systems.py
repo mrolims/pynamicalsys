@@ -28,11 +28,10 @@ from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
 
 from pynamicalsys.common.utils import finite_difference_jacobian, qr, householder_qr
 
-from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t
+from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t, observable_t
 
 from pynamicalsys.discrete_time.dynamical_indicators import (
     RTE,
-    dig,
     finite_time_hurst_exponent,
     finite_time_RTE,
     hurst_exponent_wrapped,
@@ -51,6 +50,7 @@ from pynamicalsys.discrete_time.sali import sali
 from pynamicalsys.discrete_time.ldi import ldi_k
 from pynamicalsys.discrete_time.gali import gali_k
 from pynamicalsys.discrete_time.clv import compute_clvs, clv_angles
+from pynamicalsys.discrete_time.birkhoff import dig
 
 
 from pynamicalsys.discrete_time.models import (
@@ -2381,99 +2381,128 @@ class DiscreteDynamicalSystem:
 
     def dig(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        func: Callable[[NDArray[np.float64]], NDArray[np.float64]] = lambda x: np.cos(
-            2 * np.pi * x[:, 0]
-        ),
-        transient_time: Optional[int] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        func: observable_t = lambda x: np.cos(2 * np.pi * x[:, 0]),
+        transient_time: int_t | None = None,
     ) -> float:
-        """Compute the number of zeros after the decimal point of the average
-        of the observable function over time.
+        """
+        Compute the number of correct decimal digits in the convergence of a
+        weighted Birkhoff average.
+
+        This diagnostic compares weighted Birkhoff averages computed over two
+        consecutive halves of the trajectory. Larger values indicate better
+        convergence of the observable average and are typically associated with
+        more regular dynamics.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape (d,) where d is system dimension
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,)
-        total_time : int
-            Total iterations to compute (must be even and ≥ 100)
-        func : Callable[[NDArray[np.float64]], float], optional
-            Observable function (default: lambda x: np.cos(x[:, 0]))
-            Should accept a 2D array (sample_size, ndim) and return a 1D array
-            of shape (sample_size,) with the observable values
-        transient_time : Optional[int], optional
-            Initial iterations to discard (default None)
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        total_time : int_t
+            Total number of iterations used in the computation.
+            If an odd value is provided, it is increased by one internally so that
+            the trajectory can be split into two equal halves.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        func : observable_t, optional
+            Observable function applied to the generated trajectory.
+            It must accept a 2D array of shape `(n, system_dimension)` and return
+            either:
+            - a 1D array of shape `(n,)`, or
+            - a scalar value.
+            The default observable is `cos(2π x_0)`.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before the computation.
 
         Returns
         -------
         float
-            DIG value where:
-
-            - Higher values indicate better convergence, i.e., regular dynamics
+            Weighted-Birkhoff convergence indicator defined as
+            `-log10(|WB_0 - WB_1|)`, where `WB_0` and `WB_1` are the weighted
+            Birkhoff averages over the first and second halves of the trajectory.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `func` is not callable or does not return a 1D array.
+            - If `transient_time` is invalid.
+            - If `func` does not return either a scalar or a 1D array.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `func` is not callable.
+
+        Notes
+        -----
+        The computation uses a weighted Birkhoff average on two consecutive
+        trajectory segments of equal length. The observable is evaluated on the
+        generated trajectory after the transient, if any.
 
         Examples
         --------
-        >>> # Using cosine of x-coordinate observable
-        >>> x_obs = lambda X: cos(X[:, 0])
-        >>> convergence = system.dig(u0, params, 1000, x_obs)
-        >>> # Using sin of the sum of x and y coordinates
-        >>> convergence = system.dig(u0, params, 1000, func=lambda X: sin(X[:, 0] + X[:, 1]))
-        >>> # With transient period
-        >>> convergence = system.dig(u0, params, 2000, x_obs, transient_time=500)
-        """
+        >>> x_obs = lambda X: np.cos(X[:, 0])
+        >>> value = system.dig(u0, 1000, parameters=params, func=x_obs)
 
-        u = validate_initial_conditions(
+        >>> value = system.dig(
+        ...     u0,
+        ...     1000,
+        ...     parameters=params,
+        ...     func=lambda X: np.sin(X[:, 0] + X[:, 1]),
+        ... )
+
+        >>> value = system.dig(
+        ...     u0,
+        ...     2000,
+        ...     parameters=params,
+        ...     func=x_obs,
+        ...     transient_time=500,
+        ... )
+        """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
-        if total_time % 2 != 0:
-            total_time += 1  # Ensure even total_time
-
         validate_transient_time(transient_time, total_time, Integral)
 
-        if not callable(func):
-            raise ValueError("`func` must be a callable function")
-        if (
-            not isinstance(func(np.array([u])), np.ndarray)
-            or func(np.array([u])).ndim != 1
-        ):
-            raise ValueError("`func` must return a 1D array")
+        if total_time % 2 != 0:
+            total_time += 1
 
+        if not callable(func):
+            raise TypeError("func must be callable")
+
+        test_input = np.array([u_arr], dtype=np.float64)
+        test_output = func(test_input)
+
+        if not isinstance(test_output, np.ndarray):
+            raise ValueError("func must return a NumPy array")
+
+        if test_output.ndim != 1:
+            raise ValueError("func must return a 1D array")
+
+        if test_output.shape[0] != test_input.shape[0]:
+            raise ValueError(
+                "func must return a 1D array with one value for each input state"
+            )
         return dig(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
-            func,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
+            func=func,
             transient_time=transient_time,
         )
 
