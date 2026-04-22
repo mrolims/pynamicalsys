@@ -25,7 +25,8 @@ from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
-from pynamicalsys.common.utils import finite_difference_jacobian, householder_qr
+from pynamicalsys.common.utils import finite_difference_jacobian, qr, householder_qr
+from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t
 from pynamicalsys.discrete_time.dynamical_indicators import (
     RTE,
     SALI,
@@ -33,17 +34,20 @@ from pynamicalsys.discrete_time.dynamical_indicators import (
     LDI_k,
     dig,
     finite_time_hurst_exponent,
-    finite_time_lyapunov,
     finite_time_RTE,
     hurst_exponent_wrapped,
     lagrangian_descriptors,
-    lyapunov_1D,
-    lyapunov_er,
-    lyapunov_qr,
-    maximum_lyapunov_er,
     compute_clvs,
     clv_angles,
 )
+
+from pynamicalsys.discrete_time.lyapunov import (
+    lyapunov_1D,
+    lyapunov_er,
+    maximum_lyapunov_er,
+    lyapunov_qr,
+)
+
 from pynamicalsys.discrete_time.models import (
     extended_standard_nontwist_map,
     extended_standard_nontwist_map_backwards,
@@ -295,9 +299,9 @@ class DiscreteDynamicalSystem:
         mapping: Optional[Callable] = None,
         jacobian: Optional[Callable] = None,
         backwards_mapping: Optional[Callable] = None,
-        system_dimension: Optional[int] = None,
+        system_dimension: Optional[int_t] = None,
         parameters: Optional[Sequence] = None,
-        number_of_parameters: Optional[int] = None,
+        number_of_parameters: Optional[int_t] = None,
     ) -> None:
         """Initialize the discrete dynamical system with either a predefined model or custom mappings.
 
@@ -339,6 +343,14 @@ class DiscreteDynamicalSystem:
         >>> system = DynamicalSystem(mapping=my_map, jacobian=my_jacobian, system_dimension=dim)
         """
 
+        self.__mapping: Callable
+        self.__jacobian: Callable
+        self.__backwards_mapping: Optional[Callable]
+        self.__system_dimension: int
+        self.__number_of_parameters: int
+        self.__parameters: NDArray[np.float64] | None
+        self.__model: str | None
+
         warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
         if model is not None and mapping is not None:
@@ -358,11 +370,15 @@ class DiscreteDynamicalSystem:
             model_info = self.__AVAILABLE_MODELS[model]
             self.__model = model
             self.__mapping = model_info["mapping"]
-            self.__jacobian = model_info["jacobian"]
+            self.__jacobian = (
+                model_info["jacobian"]
+                if model_info["jacobian"] is not None
+                else finite_difference_jacobian
+            )
             self.__backwards_mapping = model_info["backwards_mapping"]
             self.__system_dimension = model_info["dimension"]
             self.__parameters = None
-            self.__number_of_parameters = model_info["number_of_parameters"]
+            self.__number_of_parameters = int(model_info["number_of_parameters"])
 
             if jacobian is not None:  # Allow override of default Jacobian
                 self.__jacobian = jacobian
@@ -387,15 +403,22 @@ class DiscreteDynamicalSystem:
                     number_of_parameters, "number_of_parameters", Integral
                 )
 
-            self.__system_dimension = system_dimension
-            self.__parameters = parameters
-            if self.__parameters is not None:
-                self.__number_of_parameters = len(self.__parameters)
+            self.__system_dimension = int(system_dimension)
+            if parameters is not None:
+                self.__number_of_parameters = int(np.atleast_1d(parameters).size)
                 self.__parameters = validate_parameters(
-                    self.__parameters, self.__number_of_parameters
+                    parameters, self.__number_of_parameters
                 )
+            elif number_of_parameters is not None:
+                validate_non_negative(
+                    number_of_parameters, "number_of_parameters", Integral
+                )
+                self.__parameters = None
+                self.__number_of_parameters = int(number_of_parameters)
             else:
-                self.__number_of_parameters = number_of_parameters
+                raise ValueError(
+                    "Must provide either 'parameters' or 'number_of_parameters'."
+                )
 
             # Validate custom functions
             if not callable(self.__mapping):
@@ -2451,18 +2474,17 @@ class DiscreteDynamicalSystem:
 
     def lyapunov(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: Optional[numeric_like_t] = None,
         method: str = "QR",
         return_history: bool = False,
-        sample_times: Optional[Union[NDArray[np.int32], Sequence[int]]] = None,
-        transient_time: Optional[int] = None,
+        sample_times: Optional[NDArray[np.integer]] = None,
+        transient_time: Optional[int_t] = None,
         num_exponents: Optional[int] = None,
-        log_base: float = np.e,
-    ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+        log_base: numeric_t = np.e,
+        return_last_state: bool = False,
+    ):
         """Compute Lyapunov exponents using specified numerical method.
 
         Parameters
@@ -2522,10 +2544,7 @@ class DiscreteDynamicalSystem:
 
         Notes
         -----
-        - ER method is fastest for 2D systems
-        - QR methods are more stable for higher dimensions
         - Sample times are automatically sorted and deduplicated
-        - Final exponents are averaged over last 10% of iterations
 
         References
         ----------
@@ -2558,8 +2577,7 @@ class DiscreteDynamicalSystem:
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
@@ -2575,12 +2593,14 @@ class DiscreteDynamicalSystem:
         if method == "QR" and self.__system_dimension == 2:
             method = "ER"  # Fallback to QR for higher dimensions
 
-        if return_history and sample_times is not None:
-            sample_times = validate_sample_times(sample_times, total_time)
-        else:
-            sample_times = np.arange(
-                1, total_time - (transient_time or 0) + 1, dtype=np.int64
-            )
+        if return_history:
+            if sample_times is not None:
+                sample_times = validate_sample_times(sample_times, total_time)
+            else:
+                sample_size = total_time - (
+                    transient_time if transient_time is not None else 0
+                )
+                sample_times = np.arange(1, sample_size + 1)
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
@@ -2595,41 +2615,79 @@ class DiscreteDynamicalSystem:
 
         # Dispatch to appropriate computation
         if self.__system_dimension == 1:
-            compute_func = lyapunov_1D
+            result, u = lyapunov_1D(
+                u,
+                parameters,
+                total_time,
+                self.__mapping,
+                self.__jacobian,
+                sample_times,
+                return_history=return_history,
+                transient_time=transient_time,
+                log_base=log_base,
+            )
         else:
             if method == "ER":
                 if num_exponents == 1:
-                    compute_func = maximum_lyapunov_er
+                    result, u = maximum_lyapunov_er(
+                        u,
+                        parameters,
+                        total_time,
+                        self.__mapping,
+                        self.__jacobian,
+                        sample_times,
+                        return_history,
+                        transient_time,
+                        log_base,
+                    )
                 else:
-                    compute_func = lyapunov_er
-            elif method == "QR":
-                compute_func = lyapunov_qr
-            else:  # QR_HH
-                compute_func = lambda *args, **kwargs: lyapunov_qr(
-                    *args, QR=householder_qr, **kwargs
+                    result, u = lyapunov_er(
+                        u,
+                        parameters,
+                        total_time,
+                        self.__mapping,
+                        self.__jacobian,
+                        sample_times,
+                        return_history,
+                        transient_time,
+                        log_base,
+                    )
+            else:
+                qr_func = qr if method == "QR" else householder_qr
+                result, u = lyapunov_qr(
+                    u,
+                    parameters,
+                    total_time,
+                    self.__mapping,
+                    self.__jacobian,
+                    num_exponents,
+                    sample_times,
+                    qr_func,
+                    return_history,
+                    transient_time,
+                    log_base,
                 )
-        result = compute_func(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
-            self.__jacobian,
-            num_exponents,
-            sample_times,
-            return_history=return_history,
-            transient_time=transient_time,
-            log_base=log_base,
-        )
 
         if return_history:
-            return result if self.__system_dimension == 1 else result[0]
-        else:
-            if self.__system_dimension == 1:
-                return result[0]
-            elif self.__system_dimension > 1 and num_exponents > 1:
-                return result[0][:, 0]
-            else:
-                return result[0][0]
+            if num_exponents == 1:
+                result = result.ravel()
+            if return_last_state:
+                return result, u
+            return result
+
+        # non-history case
+        result = np.asarray(result)
+
+        if num_exponents == 1:
+            value = float(result.ravel()[0])
+            if return_last_state:
+                return value, u
+            return value
+
+        value = result.ravel()
+        if return_last_state:
+            return value, u
+        return value
 
     def finite_time_lyapunov(
         self,
