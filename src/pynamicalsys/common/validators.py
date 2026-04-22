@@ -239,8 +239,8 @@ def validate_axis(axis, system_dimension):
 
 def validate_clv_subspaces(
     subspaces,
-    system_dimension: int,
-):
+    num_clvs: int,
+) -> Optional[Tuple[Tuple[Tuple[int, ...], Tuple[int, ...]], ...]]:
     """
     Validate CLV subspace specifications.
 
@@ -253,11 +253,9 @@ def validate_clv_subspaces(
     tuple of ((tuple[int], tuple[int]), ...)
         Canonicalized and validated subspace specifications.
     """
-
     if subspaces is None:
         return None
 
-    # --- Normalize: allow a single (A, B) without wrapping ---
     if (
         isinstance(subspaces, (list, tuple))
         and len(subspaces) == 2
@@ -266,7 +264,7 @@ def validate_clv_subspaces(
         and not (
             len(subspaces) > 0
             and isinstance(subspaces[0], (list, tuple))
-            and len(subspaces) > 0
+            and len(subspaces[0]) > 0
             and isinstance(subspaces[0][0], (list, tuple))
         )
     ):
@@ -289,10 +287,8 @@ def validate_clv_subspaces(
             )
 
         for i in (*A, *B):
-            if i < 0 or i >= system_dimension:
-                raise ValueError(
-                    f"Invalid CLV index {i} for system_dimension={system_dimension}."
-                )
+            if i < 0 or i >= num_clvs:
+                raise ValueError(f"Invalid CLV index {i} for num_clvs={num_clvs}.")
 
         validated.append((A, B))
 
@@ -301,7 +297,7 @@ def validate_clv_subspaces(
 
 def validate_clv_pairs(
     pairs,
-    system_dimension: int,
+    num_clvs: int,
 ) -> Optional[Tuple[Tuple[int, int], ...]]:
     """
     Validate pairwise CLV angle specifications.
@@ -315,11 +311,9 @@ def validate_clv_pairs(
     tuple of (int, int)
         Canonicalized and validated CLV index pairs.
     """
-
     if pairs is None:
         return None
 
-    # --- Normalize: allow a single (i, j) without wrapping ---
     if (
         isinstance(pairs, (list, tuple))
         and len(pairs) == 2
@@ -336,12 +330,9 @@ def validate_clv_pairs(
         if i == j:
             raise ValueError(f"Invalid CLV pair ({i}, {j}): indices must be distinct.")
 
-        if i < 0 or j < 0 or i >= system_dimension or j >= system_dimension:
-            raise ValueError(
-                f"Invalid CLV pair ({i}, {j}) for system_dimension={system_dimension}."
-            )
+        if i < 0 or j < 0 or i >= num_clvs or j >= num_clvs:
+            raise ValueError(f"Invalid CLV pair ({i}, {j}) for num_clvs={num_clvs}.")
 
-        # canonical ordering
         validated.append((i, j) if i < j else (j, i))
 
     return tuple(validated)
