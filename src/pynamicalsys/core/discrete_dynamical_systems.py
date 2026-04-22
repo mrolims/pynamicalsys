@@ -18,26 +18,47 @@
 
 import warnings
 from numbers import Integral, Real
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, Literal
 
 import numpy as np
 from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
-from pynamicalsys.common.recurrence_quantification_analysis import RTEConfig
+from pynamicalsys.common.recurrence_quantification_analysis import (
+    RTEConfig,
+    build_recurrence_matrix,
+    calculate_threshold,
+)
 
 from pynamicalsys.common.utils import finite_difference_jacobian, qr, householder_qr
 
 from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t, observable_t
 
-from pynamicalsys.discrete_time.dynamical_indicators import (
-    RTE,
-    finite_time_hurst_exponent,
-    finite_time_RTE,
-    hurst_exponent_wrapped,
-    lagrangian_descriptors,
-)
 
+from pynamicalsys.discrete_time.trajectory import (
+    iterate_mapping,
+    generate_trajectory,
+    ensemble_trajectories,
+)
+from pynamicalsys.discrete_time.bifurcation import bifurcation_diagram
+from pynamicalsys.discrete_time.periodic_orbits import (
+    period_counter,
+    is_periodic,
+    find_periodic_orbit,
+    find_periodic_orbit_symmetry_line,
+)
+from pynamicalsys.discrete_time.stability import (
+    eigenvalues_and_eigenvectors,
+    classify_stability,
+)
+from pynamicalsys.discrete_time.manifolds import calculate_manifolds
+from pynamicalsys.discrete_time.rotation import rotation_number
+from pynamicalsys.discrete_time.escape import (
+    escape_basin_and_time_entering,
+    escape_time_exiting,
+    survival_probability_core,
+)
+from pynamicalsys.discrete_time.averages import ensemble_time_average
 from pynamicalsys.discrete_time.lyapunov import (
     lyapunov_1D,
     lyapunov_er,
@@ -45,12 +66,16 @@ from pynamicalsys.discrete_time.lyapunov import (
     lyapunov_qr,
     finite_time_lyapunov,
 )
-
 from pynamicalsys.discrete_time.sali import sali
 from pynamicalsys.discrete_time.ldi import ldi_k
 from pynamicalsys.discrete_time.gali import gali_k
 from pynamicalsys.discrete_time.clv import compute_clvs, clv_angles
 from pynamicalsys.discrete_time.birkhoff import dig
+from pynamicalsys.discrete_time.hurst import (
+    hurst_exponent_wrapped,
+    finite_time_hurst_exponent,
+)
+from pynamicalsys.discrete_time.rte import RTE, rte_return_t, finite_time_RTE
 
 
 from pynamicalsys.discrete_time.models import (
@@ -79,23 +104,7 @@ from pynamicalsys.discrete_time.models import (
     symplectic_map_4D_jacobian,
     unbounded_standard_map,
 )
-from pynamicalsys.discrete_time.trajectory_analysis import (
-    bifurcation_diagram,
-    calculate_manifolds,
-    classify_stability,
-    eigenvalues_and_eigenvectors,
-    ensemble_time_average,
-    ensemble_trajectories,
-    escape_basin_and_time_entering,
-    escape_time_exiting,
-    find_periodic_orbit,
-    find_periodic_orbit_symmetry_line,
-    generate_trajectory,
-    iterate_mapping,
-    period_counter,
-    rotation_number,
-    survival_probability,
-)
+
 from pynamicalsys.discrete_time.transport import (
     average_vs_time,
     cumulative_average_vs_time,
@@ -121,8 +130,6 @@ from pynamicalsys.common.validators import (
     validate_clv_pairs,
     validate_clv_subspaces,
 )
-
-from .time_series_metrics import TimeSeriesMetrics as tsm
 
 
 class DiscreteDynamicalSystem:
@@ -482,7 +489,7 @@ class DiscreteDynamicalSystem:
         parameters = validate_parameters(parameters, self.__number_of_parameters)
         self.__parameters = parameters
 
-    def get_parameters(self) -> NDArray[np.float64]:
+    def get_parameters(self) -> NDArray[np.float64] | None:
         """
         Return the current parameter vector of the dynamical system.
 
@@ -562,193 +569,227 @@ class DiscreteDynamicalSystem:
 
     def trajectory(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        transient_time: Optional[int] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: int_t | None = None,
     ) -> NDArray[np.float64]:
-        """Generate trajectory for either single initial condition or ensemble of initial conditions.
+        """
+        Generate a trajectory from a single initial condition or from an ensemble of
+        initial conditions.
 
-        Automatically dispatches to appropriate implementation based on input dimensionality.
-        For ensembles, trajectories are concatenated along time dimension for efficient storage.
+        If `u` is one-dimensional, the trajectory of a single initial condition is
+        returned. If `u` is two-dimensional, trajectories are computed for all
+        initial conditions in the ensemble and returned in concatenated form.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition(s):
-            - Single IC: 1D array of shape (d,) where d is system dimension
-            - Ensemble: 2D array of shape (n, d) for n initial conditions
-            - Also accepts sequence types that will be converted to numpy arrays
-            - Scalar (will be converted to 1D array)
-        total_time : int
-            Total number of iterations to compute
-        parameters : Union[NDArray[np.float64], Sequence[float], float], optional
-            Parameters of the dynamical system, shape (p,) where p is number of parameters
-        transient_time : Optional[int], optional
-            Number of initial iterations to discard as transient, by default None
-            If provided, must be less than total_time
+        u : numeric_like_t
+            Initial condition or ensemble of initial conditions.
+
+            - Single initial condition: shape `(system_dimension,)`
+            - Ensemble of initial conditions: shape
+              `(num_initial_conditions, system_dimension)`
+        total_time : int_t
+            Total number of iterations used to generate the trajectory.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If `None`, the stored
+            system parameters are used.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before storing the trajectory.
+            If provided, it must satisfy `0 <= transient_time < total_time`.
 
         Returns
         -------
         NDArray[np.float64]
-            Time series array:
+            Trajectory array.
 
-            - Single IC: shape (sample_size, d)
-            - Ensemble: shape (sample_size * n, d) where sample_size = total_time - (transient_time or 0)
+            - Single initial condition:
+              shape `(sample_size, system_dimension)`
+            - Ensemble of initial conditions:
+              shape `(num_initial_conditions * sample_size, system_dimension)`
+
+            where `sample_size = total_time - transient_time` if a transient is
+            used, and `sample_size = total_time` otherwise.
+
+            For one-dimensional systems with a single initial condition, the output
+            is returned as a one-dimensional array of shape `(sample_size,)`.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, 1D, or 2D array, or if its shape does not match the expected system dimension.
-            - If `u` is a 1D array but its length does not match the system dimension, or if `u` is a 2D array but does not match the expected shape for an ensemble.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-
+            - If `u` is incompatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `total_time` is not positive.
+            - If `transient_time` is invalid.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
 
         Notes
         -----
-        - For ensembles, use reshape() to separate trajectories: result.reshape(n, sample_size, d)
+        For ensembles, trajectories are concatenated along the first axis. To recover
+        the individual trajectories, reshape the output as
+        `(num_initial_conditions, sample_size, system_dimension)`.
 
         Examples
         --------
-        >>> # Single initial condition
         >>> u0 = np.array([0.1, 0.2])
         >>> ts = system.trajectory(u0, 5000, parameters=[0.5, 1.0])
-        >>> ts.shape  # (5000, 2)
 
-        >>> # Ensemble of 100 initial conditions
         >>> ics = np.random.rand(100, 2)
         >>> ts = system.trajectory(ics, 10000, parameters=[1.0, 0.1], transient_time=1000)
-        >>> separated = ts.reshape(100, 9000, 2)  # 9000 = 10000-1000
+        >>> ts = ts.reshape(100, 9000, 2)
         """
-
-        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u,
+            self.__system_dimension,
+            allow_ensemble=True,
+        )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters,
+            self.__number_of_parameters,
+        )
 
-        validate_non_negative(total_time, "total_time", Integral)
+        validate_positive(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, type_=Integral)
 
-        if u.ndim == 1:
-            result = generate_trajectory(
-                u, parameters, total_time, self.__mapping, transient_time=transient_time
+        if u_arr.ndim == 1:
+            trajectory = generate_trajectory(
+                u=u_arr,
+                parameters=parameters_arr,
+                total_time=total_time,
+                mapping=self.__mapping,
+                transient_time=transient_time,
             )
             if self.__system_dimension == 1:
-                return result[:, 0]
-            else:
-                return result
-        else:
-            return ensemble_trajectories(
-                u, parameters, total_time, self.__mapping, transient_time=transient_time
-            )
+                return trajectory[:, 0]
+            return trajectory
+
+        return ensemble_trajectories(
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
+            transient_time=transient_time,
+        )
 
     def bifurcation_diagram(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
+        u: numeric_like_t,
         param_index: int,
-        param_range: Union[NDArray[np.float64], Tuple[float, float, int]],
-        total_time: int,
-        parameters: Optional[NDArray[np.float64]] = None,
-        transient_time: Optional[int] = None,
+        param_range: NDArray[np.float64] | tuple[float, float, int],
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: int_t = 0,
         continuation: bool = False,
         return_last_state: bool = False,
-        observable_index: int = 0,
-    ) -> Union[
-        Tuple[NDArray[np.float64], NDArray[np.float64]],
-        Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]],
-    ]:
-        """Compute bifurcation diagram by varying a specified parameter.
+        observable_index: int_t = 0,
+    ) -> (
+        tuple[NDArray[np.float64], NDArray[np.float64]]
+        | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+    ):
+        """
+        Compute a bifurcation diagram by varying one system parameter and recording
+        a scalar observable along the resulting trajectories.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition vector. Can be:
-            - 1D numpy array of shape (d,) where d is system dimension
-            - Sequence that can be converted to numpy array
-            - Scalar (will be converted to 1D array)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            Base parameter array of shape (p,)
-        param_index : int
-            Index of parameter to vary in parameters array (0 <= param_index < p)
-        param_range : Union[NDArray[np.float64], Tuple[float, float, int]]
-            Parameter range specification, either:
-            - Precomputed 1D array of parameter values, or
-            - Tuple (start, stop, num_points) for linear spacing
-        total_time : int, optional
-            Total iterations per parameter value, by default 10000
-        transient_time : Optional[int], optional
-            Burn-in iterations to discard (default: 20% of total_time)
-        continuation: bool, optional
-            Whether to perform a continuation sweep, i.e., the initial condition for the next parameter value is the last state of the previous parameter.
-        return_last_state: bool, optional
-            Whether to return the last state at the last parameter value.
-        observable_index: int, optional
-            Defines the coordinate to be used in the bifurcation diagram (default = 0).
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        param_index : int_t
+            Index of the parameter to be varied.
+        param_range : NDArray[np.float64] | tuple[float, float, int]
+            Parameter values used in the sweep. It can be either:
+            - a 1D array of parameter values, or
+            - a tuple `(start, stop, num_points)` passed to `numpy.linspace`.
+        total_time : int_t
+            Number of iterations computed for each parameter value.
+        parameters : numeric_like_t | None, optional
+            Base parameter array. The entry at `param_index` is overwritten during
+            the sweep.
+        transient_time : int_t, optional
+            Number of initial iterations discarded for each parameter value.
+            Default is `0`.
+        continuation : bool, optional
+            If True, use the final state from the previous parameter value as the
+            initial condition for the next one.
+        return_last_state : bool, optional
+            If True, also return the final state obtained at the last parameter value.
+        observable_index : int_t, optional
+            Index of the state coordinate used as the observable in the bifurcation
+            diagram. Default is `0`.
 
         Returns
         -------
-        Tuple[NDArray[np.float64], NDArray[np.float64]]
-            Tuple containing:
+        tuple
+            If `return_last_state` is False:
+                `(param_values, results)`
+            If `return_last_state` is True:
+                `(param_values, results, last_state)`
 
-            - parameter_values: 1D array of varied parameter values
-            - observables: 1D array of observable values (after transients)
+            Here:
+            - `param_values` has shape `(num_points,)`
+            - `results` has shape `(num_points, sample_size)`
+            - `last_state` has shape `(system_dimension,)`
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `param_index` is out of bounds.
+            - If `observable_index` is out of bounds.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `param_index` is negative or out of bounds for the number of parameters.
-            - If `observable_index` is negative or out of bounds for the system dimension.
+            - If `transient_time` is invalid.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `param_index`, `observable_index`, `total_time`, or `transient_time`
+              are not integers.
+            - If `continuation` or `return_last_state` are not booleans.
 
         Notes
         -----
-        - Uses Numba-optimized bifurcation_diagram function
-        - For large total_time, consider using a smaller transient_time
-        - The observable function should be vectorized for best performance
-
-        Examples
-        --------
-        >>> # Basic usage with precomputed parameter range
-        >>> param_range = np.linspace(0.5, 1.5, 100)
-        >>> u0 = np.array([0.1, 0.1])
-        >>> param_vals, obs = sys.bifurcation_diagram(
-        ...     u0, 0, param_range, 5000, parameters=[0.5, 1.0])
-
-        >>> # With tuple parameter range
-        >>> param_range = (0.5, 1.5, 100)
-        >>> param_vals, obs = sys.bifurcation_diagram(
-        ...     u0, 0, param_range, 5000, parameters=[0.5, 1.0])
-
+        The varied parameter is always stored in the full parameter array passed to
+        the low-level routine. If the system has stored parameters and `parameters`
+        is not provided, the stored array is used as the base parameter vector.
         """
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
+
+        validate_non_negative(param_index, "param_index", Integral)
+        if param_index >= self.__number_of_parameters:
+            raise ValueError(
+                f"param_index {param_index} out of bounds for system with "
+                f"{self.__number_of_parameters} parameters"
+            )
+
+        param_values: NDArray[np.float64] = validate_and_convert_param_range(
+            param_range
+        )
+
+        validate_non_negative(total_time, "total_time", Integral)
+        validate_transient_time(transient_time, total_time, Integral)
+
+        validate_non_negative(observable_index, "observable_index", Integral)
+        if observable_index >= self.__system_dimension:
+            raise ValueError(
+                f"observable_index {observable_index} out of bounds for system dimension "
+                f"{self.__system_dimension}"
+            )
+
+        if not isinstance(continuation, bool):
+            raise TypeError("continuation must be a boolean")
+
+        if not isinstance(return_last_state, bool):
+            raise TypeError("return_last_state must be a boolean")
 
         if self.__parameters is not None:
             if parameters is None:
@@ -766,27 +807,11 @@ class DiscreteDynamicalSystem:
             else:
                 parameters = np.array([0], dtype=np.float64)
 
-        validate_non_negative(param_index, "param_index", Integral)
-        if param_index >= self.__number_of_parameters:
-            raise ValueError(
-                f"param_index {param_index} out of bounds for system with {self.__number_of_parameters} parameters"
-            )
-        param_values = validate_and_convert_param_range(param_range)
-
-        validate_non_negative(total_time, "total_time", Integral)
-        validate_transient_time(transient_time, total_time, Integral)
-
-        validate_non_negative(observable_index, "observable_index", Integral)
-        if observable_index >= self.__system_dimension:
-            raise ValueError(
-                f"observable_index {observable_index} out of bounds for system dimension {self.__system_dimension}"
-            )
-
-        def observable_fn(x):
+        def observable_fn(x: NDArray[np.float64]) -> numeric_t:
             return x[observable_index]
 
         return bifurcation_diagram(
-            u=u,
+            u=u_arr,
             parameters=parameters,
             param_index=param_index,
             param_range=param_values,
@@ -800,125 +825,101 @@ class DiscreteDynamicalSystem:
 
     def period(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
-        max_time: int = 10000,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        transient_time: Optional[int] = None,
-        tolerance: float = 1e-10,
+        u: numeric_like_t,
+        max_time: int_t = 10000,
+        parameters: numeric_like_t | None = None,
+        transient_time: int_t | None = None,
+        tolerance: numeric_t = 1e-10,
         min_period: int = 1,
         max_period: int = 1000,
         stability_checks: int = 3,
     ) -> int:
-        """Compute the period of a trajectory.
+        """
+        Estimate the period of an orbit from state recurrences.
 
-        This function determines the smallest period p where the system satisfies:
-        ||x_{n+p} - x_n|| < tolerance for consecutive states after transients.
+        The method searches for repeated returns of the trajectory to its initial
+        post-transient state within a prescribed tolerance. A candidate period is
+        accepted only after repeated consistent detections.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]], float
-            Initial condition of the system. Can be:
-            - 1D numpy array of shape (d,) where d is system dimension
-            - Sequence that can be converted to numpy array
-            - Scalar (will be converted to 1D array)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            Parameters of the dynamical system, shape (p,)
-        max_time : int, optional
-            Total number of iterations to compute, by default 10000
-            Must be sufficiently large to detect periodicity
-        transient_time : Optional[int], optional
-            Number of initial iterations to discard as transient, by default None
-            If None, uses 10% of total_time
-        tolerance : float, optional
-            Numerical tolerance for period detection (default: 1e-10)
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        max_time : int_t, optional
+            Maximum number of iterations used in the search.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before the search.
+        tolerance : numeric_t, optional
+            Absolute tolerance used to detect recurrences.
         min_period : int, optional
-            Minimum period to consider (default: 1)
+            Minimum admissible period.
         max_period : int, optional
-            Maximum period to consider (default: 1000)
+            Maximum admissible period.
         stability_checks : int, optional
-            Number of consecutive period matches required (default: 3)
+            Number of identical consecutive detections required before accepting a
+            period.
 
         Returns
         -------
         int
-            The detected period of the trajectory.
+            Detected period.
 
             - A positive integer indicates a periodic orbit.
-            - -1 indicates aperiodic or chaotic behavior.
-            - 1 indicates a fixed point.
+            - `1` indicates a fixed point.
+            - `-1` indicates that no valid period was detected within the search
+              window.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
             - If `max_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `min_period` is negative or zero.
-            - If `max_period` is negative or less than min_period.
-            - If `stability_checks` is not larger than 1.
-            - If `tolerance` is negative or zero.
+            - If `transient_time` is invalid.
+            - If `tolerance <= 0`.
+            - If `min_period < 1`.
+            - If `max_period < 1`.
+            - If `max_period < min_period`.
+            - If `stability_checks < 1`.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `max_time` is not int.
-            - If `transient_time` is not int.
-            - If `min_period` is not int.
-            - If `max_period` is not int.
-            - If `stability_checks` is not int.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `max_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `min_period`, `max_period`, or `stability_checks` are not integers.
 
         Notes
         -----
-        - For reliable results, max_time should be much larger than expected period
-        - Fixed points return period 1 (constant signal)
-        - Chaotic trajectories return period -1 (no significant autocorrelation peaks)
-
-        Examples
-        --------
-        >>> # Basic usage
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> period = system.period(u0, params)
-
-        >>> # With custom time parameters
-        >>> period = system.period(
-        ...     u0, params, total_time=5000, transient_time=500)
+        For reliable detection, `max_time` should be significantly larger than the
+        expected period.
         """
-
-        #  Validate initial condition
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
-        # Validate parameters
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
-        # Validate time parameters
-        validate_non_negative(max_time, "total_time", Integral)
+        validate_non_negative(max_time, "max_time", Integral)
         validate_transient_time(transient_time, max_time, Integral)
 
-        # Validate min and max period
         validate_positive(min_period, "min_period", Integral)
         validate_positive(max_period, "max_period", Integral)
+        if max_period < min_period:
+            raise ValueError("max_period must be greater than or equal to min_period")
 
-        # Validate stability checks
-        if not isinstance(stability_checks, Integral) or stability_checks < 1:
-            raise ValueError("stability_checks must be positive integer")
-
-        # Validade tolerance
-        validate_non_negative(tolerance, "tolerance", Real)
+        validate_positive(stability_checks, "stability_checks", Integral)
+        validate_positive(tolerance, "tolerance", Real)
 
         return period_counter(
-            u=u,
-            parameters=parameters,
+            u=u_arr,
+            parameters=parameters_arr,
             mapping=self.__mapping,
             total_time=max_time,
             transient_time=transient_time,
@@ -928,1454 +929,1209 @@ class DiscreteDynamicalSystem:
             stability_checks=stability_checks,
         )
 
-    def find_periodic_orbit(
+    def is_periodic(
         self,
-        grid_points: Union[NDArray[np.float64], Sequence[float]],
+        u: numeric_like_t,
         period: int,
-        parameters: Union[None, NDArray[np.float64], Sequence[float], float] = None,
-        tolerance: float = 1e-5,
-        max_iter: int = 1000,
-        convergence_threshold: float = 1e-15,
-        tolerance_decay_factor: float = 1 / 2,
-        verbose: bool = False,
-        symmetry_line: Optional[Callable] = None,
-        axis: Optional[int] = None,
-    ) -> NDArray[np.float64]:
+        parameters: numeric_like_t | None = None,
+        tolerance: numeric_t = 1e-10,
+        transient_time: int_t | None = None,
+    ) -> bool:
         """
-        Find a periodic orbit using iterative grid refinement.
+        Check whether an initial condition belongs to a periodic orbit of a given period.
 
         Parameters
         ----------
-        grid_points : np.ndarray
-            n
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
         period : int
-            The period of the orbit to find. Must be ≥ 1.
-        parameters : Union[None, NDArray[np.float64], Sequence[float], float], optional
-            Array of system parameters (shape (p,)) or a scalar to be broadcasted.
-        tolerance : float, optional
-            Initial periodicity tolerance. Must be positive. Default is 1e-5.
-        max_iter : int, optional
-            Maximum number of refinement iterations. Must be ≥ 1. Default is 1000.
-        convergence_threshold : float, optional
-            Convergence threshold for both position and bounding box. Must be positive.
-            Default is 1e-15.
-        tolerance_decay_factor : float, optional
-            Factor by which to reduce tolerance each iteration. Must be in (0, 1).
-            Default is 0.25.
-        verbose : bool, optional
-            Whether to print iteration progress and convergence information. Default is False.
-        symmetry_line : Optional[Callable], optional
-            A callable function representing a symmetry line in the system. If provided,
-            the search will be restricted to points on this line.
-        axis : Optional[int], optional
-            Axis of symmetry line. Must be 0 (x-axis) or 1 (y-axis)
+            Period to test.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        tolerance : numeric_t, optional
+            Absolute tolerance used in the periodicity check.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before testing periodicity.
 
         Returns
         -------
-        np.ndarray
-            A 1D array of shape (2,) representing the coordinates of the found periodic orbit.
+        bool
+            True if the orbit returns to the same state after `period` iterations,
+            within the specified tolerance. False otherwise.
+        """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
+
+        validate_positive(period, "period", Integral)
+        validate_positive(tolerance, "tolerance", Real)
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Integral)
+
+        return is_periodic(
+            u=u_arr,
+            parameters=parameters_arr,
+            mapping=self.__mapping,
+            period=period,
+            tolerance=tolerance,
+            transient_time=transient_time,
+        )
+
+    def find_periodic_orbit(
+        self,
+        grid_points: numeric_like_t,
+        period: int,
+        parameters: numeric_like_t | None = None,
+        tolerance: numeric_t = 1e-5,
+        max_iter: int_t = 1000,
+        convergence_threshold: numeric_t = 1e-15,
+        tolerance_decay_factor: numeric_t = 0.5,
+        verbose: bool = False,
+        symmetry_line: Callable[..., NDArray[np.float64]] | None = None,
+        axis: int | None = None,
+        transient_time: int_t | None = None,
+    ) -> NDArray[np.float64]:
+        """
+        Find a periodic orbit through iterative grid refinement.
+
+        Parameters
+        ----------
+        grid_points : numeric_like_t
+            Initial search set.
+
+            - If `symmetry_line is None`, it must be a 3D array of shape
+              `(grid_size_x, grid_size_y, 2)`.
+            - If `symmetry_line is not None`, it must be a 1D array containing the
+              coordinates sampled along the chosen symmetry parametrization.
+        period : int
+            Period of the orbit to search for.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        tolerance : numeric_t, optional
+            Initial periodicity tolerance.
+        max_iter : int_t, optional
+            Maximum number of refinement iterations.
+        convergence_threshold : numeric_t, optional
+            Convergence threshold for orbit displacement and search-box size.
+        tolerance_decay_factor : numeric_t, optional
+            Multiplicative factor used to reduce the tolerance after each iteration.
+            Must satisfy `0 < tolerance_decay_factor < 1`.
+        verbose : bool, optional
+            If True, print iteration diagnostics.
+        symmetry_line : Callable[..., NDArray[np.float64]] | None, optional
+            Symmetry-line or symmetry-curve function. If provided, the search is
+            restricted to that line or curve.
+        axis : int | None, optional
+            Axis convention for the symmetry-line search. Must be 0 or 1 when
+            `symmetry_line` is provided.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before testing periodicity.
+
+        Returns
+        -------
+        NDArray[np.float64]
+            Approximation of the periodic orbit.
 
         Raises
         ------
         ValueError
-            - If grid_points is not of shape (grid_size_x, grid_size_y, 2).
-            - If period is less than 1.
-            - If tolerance is not positive.
-            - If max_iter is not positive.
-            - If convergence_threshold is not positive.
-            - If tolerance_decay_factor is not in (0, 1).
-            - If symmetry_line is provided but axis is not specified.
-            - If symmetry_line is not callable.
-            - If axis is not 0 (x-axis) or 1 (y-axis).
-            - If system_dimension is not 2D.
-            - If grid_points is a scalar or not a 3D array when symmetry_line is None.
-
+            - If the system dimension is not 2.
+            - If `grid_points` has invalid shape.
+            - If `period < 1`.
+            - If `tolerance <= 0`.
+            - If `max_iter < 1`.
+            - If `convergence_threshold <= 0`.
+            - If `tolerance_decay_factor` is not in `(0, 1)`.
+            - If `symmetry_line` is provided and `axis` is missing.
+            - If `axis` is not 0 or 1.
+            - If `transient_time` is negative.
         TypeError
-            - If grid_points is not a numpy array or a sequence that can be converted to a numpy array.
-            - If parameters is not None and not a numpy array or sequence that can be converted to a numpy array.
-            - If period is not an integer.
-            - If tolerance is not float.
-            - If max_iter is not int.
-            - If convergence_threshold is not float.
-            - If tolerance_decay_factor is not float.
-            - If axis is not an integer.
-
-        Notes
-        -----
-        This function wraps the core `find_periodic_orbit` function using the instance's mapping.
-        The underlying implementation performs a multiscale search for periodic points
-        through iterative refinement around previously found periodic locations.
+            - If `grid_points` cannot be interpreted as an array.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `symmetry_line` is not callable.
+            - If `period`, `max_iter`, or `axis` are not integers.
         """
-
         if self.__system_dimension != 2:
             raise ValueError("find_periodic_orbit is only implemented for 2D systems")
 
-        # Check if symmetry line is provided
-        if symmetry_line is not None and axis is None:
-            raise ValueError("axis must be provided when symmetry_line is specified")
-
-        # Check if symmetry line is valid
         if symmetry_line is not None and not callable(symmetry_line):
-            raise ValueError("symmetry_line must be a callable function")
+            raise TypeError("symmetry_line must be callable")
 
-        # Check if axis is valid
-        if axis is not None and axis not in [0, 1]:
-            raise ValueError("axis must be 0 (x-axis) or 1 (y-axis)")
+        grid_points_arr = np.asarray(grid_points, dtype=np.float64)
 
-        if np.isscalar(grid_points):
-            raise ValueError(
-                "grid_points must be a 3D array with shape (grid_size_x, grid_size_y, 2) if symmetry_line is None and 1D array otherwise"
-            )
-
-        grid_points = np.asarray(grid_points, dtype=np.float64)
-        # Validate grid points
         if symmetry_line is None:
-            if grid_points.ndim != 3 or grid_points.shape[2] != 2:
+            if grid_points_arr.ndim != 3 or grid_points_arr.shape[2] != 2:
                 raise ValueError(
-                    "grid_points must be a 3D array with shape (grid_size_x, grid_size_y, 2)"
+                    "grid_points must have shape (grid_size_x, grid_size_y, 2) when symmetry_line is None"
                 )
         else:
-            if grid_points.ndim != 1:
+            if grid_points_arr.ndim != 1:
                 raise ValueError(
                     "grid_points must be a 1D array when symmetry_line is provided"
                 )
 
-        # Validate parameters
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
-        # Validate period
         validate_positive(period, "period", Integral)
-
-        # Validate tolerance
-        validate_non_negative(tolerance, "tolerance", Real)
-
-        # Validate max_iter
+        validate_positive(tolerance, "tolerance", Real)
         validate_positive(max_iter, "max_iter", Integral)
+        validate_positive(convergence_threshold, "convergence_threshold", Real)
 
-        # Validate convergence threshold
-        validate_non_negative(convergence_threshold, "convergence_threshold", Real)
-
-        # Validate tolerance decay factor
-        validate_non_negative(tolerance_decay_factor, "tolerance_decay_factor", Real)
-
+        validate_positive(tolerance_decay_factor, "tolerance_decay_factor", Real)
         if tolerance_decay_factor >= 1:
-            raise ValueError("tolerance_decay_factor must be in (0, 1)")
+            raise ValueError("tolerance_decay_factor must satisfy 0 < value < 1")
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Integral)
 
         if symmetry_line is not None:
+            if axis is None:
+                raise ValueError(
+                    "axis must be provided when symmetry_line is specified"
+                )
+            if not isinstance(axis, Integral):
+                raise TypeError("axis must be an integer")
+            if axis not in (0, 1):
+                raise ValueError("axis must be 0 or 1")
+
+            axis_int = int(axis)
+
             return find_periodic_orbit_symmetry_line(
-                grid_points,
-                parameters,
-                self.__mapping,
-                period,
-                symmetry_line,
-                axis,
+                points=grid_points_arr,
+                parameters=parameters_arr,
+                mapping=self.__mapping,
+                period=period,
+                func=symmetry_line,
+                axis=axis_int,
                 tolerance=tolerance,
                 max_iter=max_iter,
                 convergence_threshold=convergence_threshold,
                 tolerance_decay_factor=tolerance_decay_factor,
                 verbose=verbose,
+                transient_time=transient_time,
             )
-        else:
-            return find_periodic_orbit(
-                grid_points,
-                parameters,
-                self.__mapping,
-                period,
-                tolerance=tolerance,
-                max_iter=max_iter,
-                convergence_threshold=convergence_threshold,
-                tolerance_decay_factor=tolerance_decay_factor,
-                verbose=verbose,
-            )
+
+        return find_periodic_orbit(
+            grid_points=grid_points_arr,
+            parameters=parameters_arr,
+            mapping=self.__mapping,
+            period=period,
+            tolerance=tolerance,
+            max_iter=max_iter,
+            convergence_threshold=convergence_threshold,
+            tolerance_decay_factor=tolerance_decay_factor,
+            verbose=verbose,
+            transient_time=transient_time,
+        )
 
     def eigenvalues_and_eigenvectors(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
+        u: numeric_like_t,
         period: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        parameters: numeric_like_t | None = None,
         normalize: bool = True,
         sort_by_magnitude: bool = True,
-    ) -> Tuple[NDArray[np.complex128], NDArray[np.complex128]]:
+    ) -> tuple[NDArray[np.complex128], NDArray[np.complex128]]:
         """
-        Compute eigenvalues and eigenvectors of the Jacobian matrix for a periodic orbit.
+        Compute the eigenvalues and eigenvectors of the monodromy matrix of a
+        periodic orbit of this discrete-time system.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of the system. Can be:
-            - 1D numpy array of shape (d,) where d is the system dimension
-            - Sequence that can be converted to numpy array
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,).
-        period : int
-            Period of the orbit (must be ≥ 1).
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        period : int_t
+            Period of the orbit.
+        parameters : numeric_like_t | None, optional
+            System parameters. If None, the stored system parameters are used.
         normalize : bool, optional
-            Whether to normalize eigenvectors to unit length (default is True).
+            If True, normalize the returned eigenvectors to unit Euclidean norm.
         sort_by_magnitude : bool, optional
-            Whether to sort eigenvalues and eigenvectors by the magnitude of the eigenvalues (default is True).
+            If True, sort the eigenpairs by decreasing eigenvalue magnitude.
 
         Returns
         -------
-        Tuple[NDArray[np.complex128], NDArray[np.complex128]]
+        tuple[NDArray[np.complex128], NDArray[np.complex128]]
+            A tuple `(eigenvalues, eigenvectors)` where
 
-            - eigenvalues : (d,) array of complex eigenvalues.
-            - eigenvectors : (d, d) array where each column is a normalized eigenvector corresponding to an eigenvalue.
+            - `eigenvalues` has shape `(system_dimension,)`
+            - `eigenvectors` has shape `(system_dimension, system_dimension)`
+
+            Each column of `eigenvectors` is an eigenvector associated with the
+            eigenvalue in the same position.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `period` is negative or zero.
+            - If `u` is incompatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `period` is not positive.
+            - If the system does not provide a Jacobian.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `period` is not int.
-
-        Notes
-        -----
-        - Computes the Jacobian matrix over `period` iterations using the product of Jacobians.
-        - Eigenvectors indicate local directions of stretching or contraction in phase space.
-        - Complex eigenvalues appear in conjugate pairs in real-valued systems.
-
-        Examples
-        --------
-        >>> # Example usage
-        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
-        >>> obj = dds(model="henon map")
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([1.0, 0.1])
-        >>> evals, evecs = obj.eigenvalues_and_eigenvectors(
-        ...     u0, params, period=3)
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `period` is not an integer.
+            - If `normalize` is not a boolean.
+            - If `sort_by_magnitude` is not a boolean.
         """
+        if self.__jacobian is None:
+            raise ValueError(
+                "eigenvalues_and_eigenvectors requires a Jacobian function."
+            )
 
-        # Validate initial condition
-        u = validate_initial_conditions(
-            u, self.__system_dimension, allow_ensemble=False
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u,
+            self.__system_dimension,
+            allow_ensemble=False,
         )
 
-        # Validate parameters
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters,
+            self.__number_of_parameters,
+        )
 
-        # Validate period
         validate_positive(period, "period", Integral)
 
+        if not isinstance(normalize, bool):
+            raise TypeError("normalize must be a boolean")
+
+        if not isinstance(sort_by_magnitude, bool):
+            raise TypeError("sort_by_magnitude must be a boolean")
+
         return eigenvalues_and_eigenvectors(
-            u,
-            parameters,
-            self.__mapping,
-            self.__jacobian,
-            period,
-            normalize,
-            sort_by_magnitude,
+            u=u_arr,
+            parameters=parameters_arr,
+            mapping=self.__mapping,
+            jacobian=self.__jacobian,
+            period=period,
+            normalize=normalize,
+            sort_by_magnitude=sort_by_magnitude,
         )
 
     def classify_stability(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
+        u: numeric_like_t,
         period: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        threshold: float = 1.0,
-        tol: float = 1e-8,
-    ) -> Dict[str, Union[str, NDArray[np.complex128]]]:
+        parameters: numeric_like_t | None = None,
+        threshold: numeric_t = 1.0,
+        tol: numeric_t = 1e-8,
+    ) -> dict[str, str | NDArray[np.complex128]]:
         """
-        Classify the stability of a periodic orbit using the eigenvalues of the Jacobian matrix for a 2D discrete map.
+        Classify the local linear stability of a 2D periodic orbit of this
+        discrete-time system.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of the system. Can be:
-            - 1D numpy array of shape (2,) where 2 is the system dimension
-            - Sequence that can be converted to numpy array
-        period : int
-            Period of the orbit (must be ≥ 1).
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,).
-        threshold : float, optional
-            Threshold for stability classification (default is 1.0).
-        tol : float, optional
-            Tolerance for numerical stability checks (default is 1e-8).
+        u : numeric_like_t
+            Initial condition of shape `(2,)`.
+        period : int_t
+            Period of the orbit.
+        parameters : numeric_like_t | None, optional
+            System parameters. If None, the stored system parameters are used.
+        threshold : numeric_t, optional
+            Reference radius used to separate contracting and expanding
+            multipliers. For standard discrete-time stability analysis this should
+            usually remain equal to `1.0`.
+        tol : numeric_t, optional
+            Numerical tolerance used when deciding whether a multiplier lies on
+            the threshold.
 
         Returns
         -------
-        dict
-            Dictionary with:
+        dict[str, str | NDArray[np.complex128]]
+            Dictionary with keys
 
-            - "classification": str
-            - "eigenvalues": ndarray
-            - "eigenvectors": ndarray
+            - `"classification"` : stability label
+            - `"eigenvalues"` : Floquet multipliers
+            - `"eigenvectors"` : corresponding eigenvectors
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `period` is negative or zero.
+            - If the system dimension is not 2.
+            - If `u` is incompatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `period` is not positive.
+            - If `threshold` is negative.
+            - If `tol` is negative.
+            - If the system does not provide a Jacobian.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `period` is not int.
-
-        Notes
-        -----
-        - The classification is based on the eigenvalues of the Jacobian matrix.
-        - The eigenvalues are computed over `period` iterations using the product of Jacobians.
-        - The classification can be one of:
-            - "stable node": All eigenvalues have magnitudes < threshold.
-            - "stable spiral": Complex conjugate eigenvalues with magnitudes < threshold.
-            - "unstable node": All eigenvalues have magnitudes > threshold.
-            - "unstable spiral": Complex conjugate eigenvalues with magnitudes > threshold.
-            - "saddle": One eigenvalue > threshold and one < threshold.
-            - "center": Real eigenvalues with magnitudes ≈ threshold.
-            - "elliptic": Complex eigenvalues with magnitudes ≈ threshold.
-            - "marginal or degenerate": Eigenvalues with magnitudes ≈ 1.
-
-        Examples
-        --------
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([1.0, 0.1])
-        >>> stability = obj.classify_stability(u0, params, period=3)
-        >>> print(stability["classification"])  # e.g., "stable node"
-        >>> print(stability["eigenvalues"])  # Eigenvalues of the Jacobian
-        >>> print(stability["eigenvectors"])
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `period` is not an integer.
+            - If `threshold` is not numeric.
+            - If `tol` is not numeric.
         """
-
         if self.__system_dimension != 2:
             raise ValueError("classify_stability is only implemented for 2D systems")
 
-        u = validate_initial_conditions(
-            u, self.__system_dimension, allow_ensemble=False
+        if self.__jacobian is None:
+            raise ValueError("classify_stability requires a Jacobian function.")
+
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u,
+            self.__system_dimension,
+            allow_ensemble=False,
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters,
+            self.__number_of_parameters,
+        )
 
         validate_positive(period, "period", Integral)
+        validate_non_negative(threshold, "threshold", Real)
+        validate_non_negative(tol, "tol", Real)
 
         return classify_stability(
-            u,
-            parameters,
-            self.__mapping,
-            self.__jacobian,
-            period,
+            u=u_arr,
+            parameters=parameters_arr,
+            mapping=self.__mapping,
+            jacobian=self.__jacobian,
+            period=period,
             threshold=threshold,
             tol=tol,
         )
 
     def manifold(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
+        u: numeric_like_t,
         period: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        delta: float = 1e-4,
-        n_points: Union[NDArray[np.int32], List[int], int] = 100,
-        iter_time: Union[List[int], int] = 100,
-        stability: str = "unstable",
-    ) -> List[np.ndarray]:
-        """Calculate stable or unstable manifolds of a saddle periodic orbit of the system.
+        parameters: numeric_like_t | None = None,
+        delta: numeric_t = 1e-4,
+        n_points: int | tuple[int, int] = 100,
+        iter_time: int | tuple[int, int] = 100,
+        stability: Literal["stable", "unstable"] = "unstable",
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """
+        Compute the two branches of the stable or unstable manifold of a 2D saddle
+        periodic orbit.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of the system. Can be:
-            - 1D numpy array of shape (2,) where 2 is the system dimension
-            - Sequence that can be converted to numpy array
+        u : numeric_like_t
+            Initial condition on the periodic orbit, with shape `(2,)`.
         period : int
-            Period of the orbit (must be ≥ 1)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            Parameters of the dynamical system. Can be:
-
-            - 1D numpy array of shape (p,) where p is the number of parameters
-            - Sequence that can be converted to numpy array
-            - Scalar value (will be broadcasted)
-        delta : float, optional
-            Initial displacement from orbit (default: 1e-4)
-        n_points : Union[List[int], int], optional
-            Number of points per branch (default: 100)
-        iter_time : Union[List[int], int], optional
-            Iterations per branch (default: 100)
-        stability : str, optional
-            "stable" or "unstable" manifold (default: "unstable")
+            Period of the orbit.
+        parameters : numeric_like_t | None, optional
+            System parameters. If None, the stored system parameters are used.
+        delta : numeric_t, optional
+            Initial displacement magnitude used to seed the manifold branches.
+        n_points : int | tuple[int, int], optional
+            Number of seed points used on each manifold branch. If an integer is
+            given, the same value is used for both branches.
+        iter_time : int_t | tuple[int_t, int_t], optional
+            Number of iterations used to evolve each branch. If an integer is given,
+            the same value is used for both branches.
+        stability : {"stable", "unstable"}, optional
+            Which invariant manifold to compute.
 
         Returns
         -------
-        List[np.ndarray]
-            List containing two arrays: [0] is upper branch manifold points and [1] is lower branch manifold points. Each array has shape (n_points * iter_time, 2)
+        tuple[NDArray[np.float64], NDArray[np.float64]]
+            Two arrays containing the `+` and `-` manifold branches.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `period` is negative or zero.
-            - If `delta` is negative or zero.
-            - If `n_points` is not a positive integer or a list of two positive integers.
-            - If `iter_time` is not a positive integer or a list of two positive integers.
-            - If `stability` is not "stable" or "unstable".
-            - If system dimension is not 2D.
-        TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `period` is not int.
+            - If the system is not 2-dimensional.
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `period` is not positive.
+            - If `delta` is not positive.
+            - If `n_points` is not a positive integer or a tuple of two positive integers.
+            - If `iter_time` is not a positive integer or a tuple of two positive integers.
+            - If `stability` is invalid.
         RuntimeError
-            - If `stability` is "stable" but backwards mapping function is not defined.
+            - If `stability="stable"` but no backward mapping is available.
+            - If no Jacobian is available.
 
         Notes
         -----
-        - Works only for 2D systems
-        - The periodic orbit must be a saddle point
-        - Manifold quality depends on:
-        - delta (smaller = closer to linear approximation)
-        - n_points (more = smoother manifold)
-        - iter_time (more = longer manifold)
-
-        Examples
-        --------
-        >>> # Example usage
-        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
-        >>> # Define the system
-        >>> obj = dds(model="standard map")
-        >>> # Calculate unstable manifold
-        >>> mani = obj.manifold(
-        ...     orbit_point, params,
-        ...     period=3, delta=1e-5, n_points=200, iter_time=500)
-        >>> upper_branch, lower_branch = manifolds
+        This method is only implemented for 2D systems and requires the selected
+        periodic orbit to be a saddle.
         """
-
         if self.__system_dimension != 2:
             raise ValueError("manifold is only implemented for 2D systems")
 
-        if self.__backwards_mapping is None and stability == "stable":
-            raise RuntimeError("Backwards mapping function must be provided")
+        if self.__jacobian is None:
+            raise RuntimeError("Jacobian function must be provided")
 
-        u = validate_initial_conditions(
+        if stability not in ("stable", "unstable"):
+            raise ValueError("stability must be either 'stable' or 'unstable'")
+
+        if stability == "stable" and self.__backwards_mapping is None:
+            raise RuntimeError(
+                "backward mapping function must be provided to compute the stable manifold"
+            )
+
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_positive(period, "period", Integral)
+        validate_positive(delta, "delta", Real)
 
-        validate_non_negative(delta, "delta", Real)
-
-        # Validate n_points
-        if isinstance(n_points, int):
-            # If n_points is a single integer, make it a list of two identical integers
-            n_points = [n_points] * 2
-            n_points = np.asarray(n_points, dtype=np.int32)
-        elif isinstance(n_points, (list, np.ndarray)):
+        if isinstance(n_points, Integral):
+            n_points_tuple = (int(n_points), int(n_points))
+        elif isinstance(n_points, tuple):
             if len(n_points) != 2:
-                raise ValueError("n_points must be a list or array of two integers")
-            if not all(isinstance(n, int) and n > 0 for n in n_points):
-                raise ValueError("n_points must be a list of two positive integers")
-            n_points = np.asarray(n_points, dtype=np.int32)
+                raise ValueError("n_points must be an int or a tuple of length 2")
+            n_points_tuple = (int(n_points[0]), int(n_points[1]))
         else:
-            raise ValueError("n_points must be an int or a list of two ints")
+            raise TypeError("n_points must be an int or a tuple of two ints")
+
+        if n_points_tuple[0] < 1 or n_points_tuple[1] < 1:
+            raise ValueError("all n_points values must be positive")
+
+        print(iter_time)
+        if isinstance(iter_time, Integral):
+            iter_time_tuple = (int(iter_time), int(iter_time))
+        elif isinstance(iter_time, tuple) or isinstance(iter_time, list):
+            if len(iter_time) != 2:
+                raise ValueError("iter_time must be an int or a tuple of length 2")
+            iter_time_tuple = (int(iter_time[0]), int(iter_time[1]))
+        else:
+            raise TypeError("iter_time must be an int or a tuple of two ints")
+
+        if iter_time_tuple[0] < 1 or iter_time_tuple[1] < 1:
+            raise ValueError("all iter_time values must be positive")
+
+        backward_mapping = self.__backwards_mapping
+        if backward_mapping is None:
+            backward_mapping = self.__mapping
 
         return calculate_manifolds(
-            u,
-            parameters,
-            self.__mapping,
-            self.__backwards_mapping,
-            self.__jacobian,
-            period,
+            u=u_arr,
+            parameters=parameters_arr,
+            forward_mapping=self.__mapping,
+            backward_mapping=backward_mapping,
+            jacobian=self.__jacobian,
+            period=period,
             delta=delta,
-            n_points=n_points,
-            iter_time=iter_time,
+            n_points=n_points_tuple,
+            iter_time=iter_time_tuple,
             stability=stability,
         )
 
     def rotation_number(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        mod: int = 1,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        mod: numeric_t = 1.0,
     ) -> float:
-        """Compute the rotation number of a trajectory.
+        """
+        Compute the rotation number of a trajectory.
+
+        The rotation number is estimated as the time average of the wrapped
+        increment of the first coordinate modulo ``mod``.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float], float]
-            Initial condition of the system. Can be:
-            - 1D numpy array of shape (d,) where d is system dimension
-            - Sequence that can be converted to numpy array
-            - Scalar value
-        total_time : int
-            Total number of iterations to compute
-        parameters : Union[None, float,
-            Sequence[np.float64], NDArray[np.float64]]
-            Parameters of the dynamical system, shape (p,)
-        mod : int, optional
-            Modulus for the rotation number calculation, by default 1
+        u : numeric_like_t
+            Initial condition of shape ``(system_dimension,)``.
+        total_time : int_t
+            Number of iterations used in the average.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If ``None``, the
+            stored system parameters are used.
+        mod : numeric_t, optional
+            Period used to wrap the increment of the first coordinate.
+            Must be positive. The default is ``1.0``.
 
         Returns
         -------
         float
-            The computed rotation number.
+            Estimated rotation number.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative.
+            - If the system dimension is less than 1.
+            - If ``u`` is not compatible with the system dimension.
+            - If ``parameters`` does not match the expected number of parameters.
+            - If ``total_time`` is not positive.
+            - If ``mod`` is not positive.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
+            - If ``u`` is not a scalar or array-like numeric object.
+            - If ``parameters`` is not a scalar or array-like numeric object.
+            - If ``total_time`` is not an integer.
+            - If ``mod`` is not a real number.
 
         Notes
         -----
-        - The rotation number is a measure of the average angular displacement
-          of a trajectory in phase space.
-        - It is computed as the limit of the average angular displacement
-          over a large number of iterations.
-        - The rotation number is useful for analyzing the behavior of
-          periodic orbits and chaotic dynamics.
-
-        Examples
-        --------
-        >>> # Basic usage
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> rotation_num = system.compute_rotation_number(u0, params)
-        >>> # With custom time parameters
-        >>> rotation_num = system.compute_rotation_number(
-        ...     u0, params, total_time=5000)
+        This wrapper validates the inputs and forwards the computation to the
+        low-level ``rotation_number`` routine.
         """
+        if self.__system_dimension < 1:
+            raise ValueError(
+                f"rotation_number requires system_dimension >= 1, got {self.__system_dimension}."
+            )
 
-        if self.__system_dimension != 2:
-            raise ValueError("rotation_number is only implemented for 2D systems")
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
-        validate_non_negative(total_time, "total_time", Integral)
+        validate_positive(total_time, "total_time", Integral)
+        validate_positive(mod, "mod", Real)
 
-        return rotation_number(u, parameters, total_time, self.__mapping, mod=mod)
+        return rotation_number(
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
+            mod=mod,
+        )
 
     def escape_analysis(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        max_time: int,
-        exits: Union[List[NDArray[np.float64]], NDArray[np.float64]],
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        max_time: int_t,
+        exits: NDArray[np.float64]
+        | Sequence[Sequence[float]]
+        | Sequence[NDArray[np.float64]],
+        parameters: numeric_like_t | None = None,
         escape: str = "entering",
-        hole_size: Optional[float] = None,
-    ) -> Tuple[int, int]:
-        """Compute escape basin index and time for a single trajectory.
+        hole_size: numeric_t | None = None,
+    ) -> Tuple[int, int_t]:
+        """
+        Compute the escape index and escape time for a single trajectory.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial state vector of shape (d,) where d is system dimension.
-            Can be any sequence convertible to numpy array.
-        max_time : int
-            Maximum number of iterations to simulate (must be positive).
-        exits : Union[List[NDArray[np.float64]], NDArray[np.float64]]
-            - Exit regions specification:
-                - List of d arrays of shape (2,) representing [min, max] per dimension
-                - Array of shape (n_exits, d, 2) for multiple exit regions
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,) passed to the mapping function.
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        max_time : int_t
+            Maximum number of iterations.
+        exits : NDArray[np.float64] | Sequence[Sequence[float]] | Sequence[NDArray[np.float64]]
+            Exit specification.
+
+            If `escape == "entering"`:
+                Exit centers, with shape `(n_exits, system_dimension)` or `(system_dimension,)`
+                for a single exit center. Hyperrectangular holes are built around each center
+                using `hole_size`.
+
+            If `escape == "exiting"`:
+                A bounded region of shape `(system_dimension, 2)`, where each row is
+                `[lower, upper]` for one coordinate.
+        parameters : numeric_like_t | None, optional
+            System parameters. If None, stored system parameters are used.
         escape : str, optional
-            Escape condition type: "entering" or "exiting" (default "entering").
-        hole_size : Optional[float], optional
-            Size of the hole (default None, meaning no size constraint). Only used for "entering" escape type.
+            Escape mode. Must be either `"entering"` or `"exiting"`.
+        hole_size : numeric_t | None, optional
+            Side length of the hyperrectangular holes used when `escape == "entering"`.
 
         Returns
         -------
         Tuple[int, int]
-            A tuple containing:
+            If `escape == "entering"`:
+                `(exit_index, escape_time)`
 
-            - exit_index: 0-based index of escape region (-1 if no escape)
-            - escape_time: Time step of escape (max_time if no escape)
+            If `escape == "exiting"`:
+                `(face_index, escape_time)`
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `max_time` is negative or zero.
-            - If `exits` is not a list of (d,2) arrays or (n,d,2) array.
-            - If `escape` is not "entering" or "exiting".
-            - If exit regions do not match system dimension.
-            - If exit regions do not provide [min, max] pairs.
+            - If `u` is incompatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `max_time <= 0`.
+            - If `escape` is not `"entering"` or `"exiting"`.
+            - If `hole_size` is missing or not positive when `escape == "entering"`.
+            - If `exits` has an invalid shape.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `max_time` is not int.
-
-        Notes
-        -----
-        - For "entering": trajectory must enter the exit region
-        - For "exiting": trajectory must exit the region of interest
-        - Exit regions are defined as hyperrectangles [min, max] in each dimension
-
-        Examples
-        --------
-        >>> # Single exit region (entering)
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([1.0, 0.1])
-        >>> exit_region = np.array([[-1, 1], [-1, 1]])  # 2D box
-        >>> idx, time = sys.escape_analysis(u0, params, 1000, exit_region)
-
-        >>> # Multiple exit regions (exiting)
-        >>> exits = [
-        ...     np.array([[0, 1], [0, 1]]),  # First exit region
-        ...     np.array([[-1, 0], [-1, 0]])  # Second exit region
-        ... ]
-        >>> idx, time = sys.escape_analysis(u0, params, 1000, exits, "exiting")
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `max_time` is not an integer.
         """
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
-        validate_non_negative(max_time, "max_time", Integral)
+        validate_positive(max_time, "max_time", Integral)
 
-        # Validate escape type
         if escape not in ("entering", "exiting"):
             raise ValueError("escape must be either 'entering' or 'exiting'")
 
-        if escape == "entering" and hole_size is None:
-            raise ValueError("hole_size must be specified for 'entering' escape type")
+        exits_arr = np.asarray(exits, dtype=np.float64)
 
-        # Process exit regions
         if escape == "entering":
-            # If exits is a list, convert to an array
-            if isinstance(exits, list):
-                exits_arr = np.stack(exits, axis=0)
-            else:
-                exits_arr = np.asarray(exits, dtype=np.float64)
+            if hole_size is None:
+                raise ValueError("hole_size must be provided when escape='entering'")
+            validate_positive(hole_size, "hole_size", Real)
 
-            # If exits is a single point, convert to 2D array
             if exits_arr.ndim == 1:
-                exits_arr = exits_arr.reshape(1, -1)
-
-            # Validate exits array shape
-            if exits_arr.ndim != 2:
-                raise ValueError(
-                    "Exits must be a list of (d,) arrays or a 2D array of shape (n, d)"
-                )
-
-            # Validate exits dimension
-            if exits_arr.shape[1] != self.__system_dimension:
-                raise ValueError(
-                    f"Exit region dimension {exits_arr.shape[1]} != system dimension {self.__system_dimension}"
-                )
-
-            # Create the exit regions as hyperrectangles
-            # Stack per coordinate axis
-            lower = exits_arr - hole_size / 2
-            upper = exits_arr + hole_size / 2
-            exits_arr = np.stack([lower.T, upper.T], axis=1).transpose(2, 0, 1)
-
-        if escape == "exiting":
-            if isinstance(exits, list):
-                exits_arr = np.asarray(exits, dtype=np.float64)
+                if exits_arr.shape[0] != self.__system_dimension:
+                    raise ValueError(
+                        f"single exit center must have length {self.__system_dimension}"
+                    )
+                exits_arr = exits_arr.reshape(1, self.__system_dimension)
+            elif exits_arr.ndim == 2:
+                if exits_arr.shape[1] != self.__system_dimension:
+                    raise ValueError(
+                        f"exit centers must have shape (n_exits, {self.__system_dimension})"
+                    )
             else:
-                exits_arr = np.asarray(exits, dtype=np.float64)
-
-            # Validate exits array shape
-            if exits_arr.ndim != 2 or exits_arr.shape[1] != 2:
                 raise ValueError(
-                    "Exits must be a 2D array of shape (d, 2) for exiting escape type"
+                    "for escape='entering', exits must have shape "
+                    "(system_dimension,) or (n_exits, system_dimension)"
                 )
 
-            # Validate exits dimension
-            if exits_arr.shape[0] != self.__system_dimension:
-                raise ValueError(
-                    f"Exit region dimension {exits_arr.shape[0]} != system dimension {self.__system_dimension}"
-                )
+            lower = exits_arr - hole_size / 2.0
+            upper = exits_arr + hole_size / 2.0
+            holes = np.empty(
+                (exits_arr.shape[0], self.__system_dimension, 2), dtype=np.float64
+            )
+            holes[:, :, 0] = lower
+            holes[:, :, 1] = upper
 
-        # Dispatch to appropriate computation
-        if escape == "entering":
             return escape_basin_and_time_entering(
-                u=u,
-                parameters=parameters,
+                u=u_arr,
+                parameters=parameters_arr,
                 mapping=self.__mapping,
                 max_time=max_time,
-                exits=exits_arr,
+                exits=holes,
             )
-        else:
-            return escape_time_exiting(
-                u=u,
-                parameters=parameters,
-                mapping=self.__mapping,
-                max_time=max_time,
-                region_limits=exits_arr,
+
+        if exits_arr.ndim != 2 or exits_arr.shape != (self.__system_dimension, 2):
+            raise ValueError(
+                f"for escape='exiting', exits must have shape ({self.__system_dimension}, 2)"
             )
+
+        if np.any(exits_arr[:, 0] > exits_arr[:, 1]):
+            raise ValueError("each region limit must satisfy lower <= upper")
+
+        return escape_time_exiting(
+            u=u_arr,
+            parameters=parameters_arr,
+            mapping=self.__mapping,
+            max_time=max_time,
+            region_limits=exits_arr,
+        )
 
     def survival_probability(
-        self, escape_times: Union[NDArray[np.int32], Sequence[int]], max_time: np.int32
+        self,
+        escape_times: NDArray[np.integer] | Sequence[int],
+        max_time: int_t,
+        min_time: int_t = 1,
+        time_step: int_t = 1,
     ) -> Tuple[NDArray[np.int64], NDArray[np.float64]]:
-        """Compute the survival probability based on escape times.
+        """
+        Compute the survival probability from an array of escape times.
 
         Parameters
         ----------
-        escape_times : Union[NDArray[np.float64], Sequence[int]]
-            Array of escape times for N trajectories where:
-            - escape_times[i] = time when i-th trajectory escaped
-            - Use max_time for trajectories that didn't escape
-            - Should be shape (N,) with dtype=int32
-        max_time : int
-            Maximum simulation time (must be > 0)
+        escape_times : NDArray[np.integer] | Sequence[int]
+            Escape times for an ensemble of trajectories.
+        max_time : int_t
+            Maximum evaluation time.
+        min_time : int_t, optional
+            Minimum evaluation time. Default is `1`.
+        time_step : int_t, optional
+            Step between consecutive evaluation times. Default is `1`.
 
         Returns
         -------
-        NDArray[np.float64][float64]
-            Survival probability curve S(t) where:
+        Tuple[NDArray[np.int64], NDArray[np.float64]]
+            Tuple `(t_values, survival_probs)`, where:
 
-            - S[0] = 1.0 (all trajectories survive at t=0)
-            - S[t] = fraction surviving at time t
-            - Shape (max_time + 1,)
+            - `t_values` contains the evaluation times,
+            - `survival_probs` contains the corresponding survival probabilities.
 
         Raises
         ------
         ValueError
-            - If escape_times contains values > max_time
-            - If escape_times contains negative values
-            - If max_time <= 0
+            - If `escape_times` is not one-dimensional.
+            - If any escape time is smaller than `1`.
+            - If `max_time <= min_time`.
+            - If `time_step <= 0`.
         TypeError
-            - If escape_times cannot be converted to int32 array
-
-        Notes
-        -----
-        - S(t) = P(T > t) where T is escape time
-        - Implemented via survival_probability() function
-        - For N trajectories: S(t) = (number of T_i > t) / N
-
-        Examples
-        --------
-        >>> escape_times = np.array([5, 10, 10, 20], dtype=np.int32)
-        >>> surv = system.compute_survival_probability(escape_times, 20)
-        >>> surv[0]   # 1.0 at t=0
-        >>> surv[5]   # 0.75 at t=5
-        >>> surv[10]  # 0.25 at t=10
-        >>> surv[20]  # 0.0 at t=20
+            - If `escape_times` cannot be converted to an integer NumPy array.
+            - If `max_time`, `min_time`, or `time_step` are not integers.
         """
-        # Input validation
+        validate_positive(max_time, "max_time", Integral)
+        validate_positive(min_time, "min_time", Integral)
+        validate_positive(time_step, "time_step", Integral)
+
         try:
-            escape_arr = np.asarray(escape_times, dtype=np.int32)
-        except (TypeError, ValueError) as e:
-            raise TypeError("escape_times must be convertible to int32 array") from e
+            escape_arr = np.asarray(escape_times, dtype=np.int64)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                "escape_times must be convertible to a 1D integer array"
+            ) from exc
 
         if escape_arr.ndim != 1:
-            raise ValueError("escape_times must be 1D array")
+            raise ValueError("escape_times must be a 1D array")
 
-        validate_non_negative(max_time, "max_time", Integral)
+        if np.any(escape_arr < 1):
+            raise ValueError("all escape_times must be >= 1")
 
-        if np.any(escape_arr < 0):
-            raise ValueError("escape_times cannot contain negative values")
-
-        if np.any(escape_arr > max_time):
-            raise ValueError(f"escape_times cannot exceed max_time ({max_time})")
-
-        # Compute survival probability
-        return survival_probability(escape_arr, max_time)
+        return survival_probability_core(
+            escape_times=escape_arr,
+            max_time=max_time,
+            min_time=min_time,
+            time_step=time_step,
+        )
 
     def diffusion_coefficient(
         self,
-        u: Union[NDArray[np.float64], Sequence[Sequence[float]]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
         axis: int = 1,
     ) -> np.float64:
-        """Compute the diffusion coefficient from ensemble trajectories.
+        """
+        Compute the diffusion coefficient from an ensemble of trajectories.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[Sequence[float]]]
-            Initial conditions array where:
-            - Shape (N, d) for N trajectories in d-dimensional space
-            - Can be list of lists or numpy array
-        total_time : int
-            Number of iterations to compute (must be ≥ 1)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters passed to mapping function, shape (p,)
-        axis : int, default=1
-            Coordinate index to compute diffusion (0 for x, 1 for y, etc.)
+        u : numeric_like_t
+            Ensemble of initial conditions with shape `(num_ic, system_dimension)`.
+        total_time : int_t
+            Number of iterations used in the transport estimate.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        axis : int, optional
+            Coordinate index used in the displacement calculation.
 
         Returns
         -------
-        float
-            Diffusion coefficient D calculated as:
-            D = ⟨(y(t) - y(0))²⟩/(2t) where y is typically the second coordinate and ⟨·⟩ denotes ensemble average
+        np.float64
+            Estimated diffusion coefficient.
 
         Raises
         ------
         ValueError
-            - If `u` is not a 2D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative or zero.
-            - If `axis` is not valid for the system dimension.
+            If `u` is not a 2D array of valid initial conditions.
+            If `parameters` does not match the expected number of parameters.
+            If `total_time` is negative.
+            If `axis` is not a valid coordinate index.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `axis` is not int.
-
-        Notes
-        -----
-        - Uses the system's mapping function for evolution
-        - For accurate results, use:
-        - total_time >> 1
-        - N >> 1 initial conditions
-        - Implements Einstein relation for discrete time
-
-        Examples
-        --------
-        >>> # With numpy array input
-        >>> ics = np.random.rand(100, 2)  # 100 trajectories in 2D
-        >>> params = np.array([0.5, 1.0])
-        >>> D = system.diffusion_coefficient(ics, params, 1000)
-
-        >>> # With list input
-        >>> ics = [[0.1, 0.2], [0.3, 0.4]]  # 2 trajectories
-        >>> D = system.diffusion_coefficient(ics, params, 500)
+            If `u`, `parameters`, `total_time`, or `axis` have invalid types.
         """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=True
+        )
 
-        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
-
-        if u.ndim != 2:
+        if u_arr.ndim != 2:
             raise ValueError(
-                f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
+                f"u must be a 2D array of shape (num_ic, {self.__system_dimension})"
             )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
         validate_axis(axis, self.__system_dimension)
 
         return diffusion_coefficient(
-            u, parameters, total_time, self.__mapping, axis=axis
+            u0=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
+            axis=axis,
         )
 
     def average_in_time(
         self,
-        u: Union[NDArray[np.float64], Sequence[Sequence[float]]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        sample_times: Optional[Union[NDArray[np.float64], Sequence[int]]] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        sample_times: NDArray[np.integer] | Sequence[int] | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
-        """Compute time evolution of coordinate average across trajectories.
+        """
+        Compute the ensemble average of one coordinate as a function of time.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[Sequence[float]]]
-            Initial conditions array where:
-            - Shape (N, d) for N trajectories in d-dimensional space
-            - Can be list of lists or numpy array
-        total_time : int
-            Total number of iterations to compute (must be ≥ 1)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters passed to mapping function, shape (p,)
-        sample_times : Optional[Union[NDArray[np.float64], Sequence[int]]], default=None
-            Specific time steps to record (1D array of integers). If None,
-            records at every time step from 0 to total_time.
-        axis : int, default=1
-            Coordinate index to average over (0 for x, 1 for y, etc.)
+        u : numeric_like_t
+            Ensemble of initial conditions with shape `(num_ic, system_dimension)`.
+        total_time : int_t
+            Total number of iterations.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
+            Sampling times at which the average is recorded. If None, all times from
+            `1` to `total_time` are used.
+        axis : int, optional
+            Coordinate index whose ensemble average is computed.
 
         Returns
         -------
         NDArray[np.float64]
-            Array of average values with shape:
-
-            - (len(sample_times),) if sample_times provided
-            - (total_time + 1,) if sample_times=None
-
-        Raises
-        ------
-        ValueError
-            - If `u` is not a 2D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative or zero.
-            - If `sample_times` contains invalid values.
-            - If `sample_times` is not a 1D array of integers.
-            - If `axis` is not valid for the system dimension.
-        TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `axis` is not int.
-
-        Notes
-        -----
-        - Uses the system's mapping function for trajectory evolution
-        - For smooth results, use N >> 1 initial conditions
-        - The average is computed as ⟨xᵢ(t)⟩ where i is the axis index
-        - First output value (t=0) is the initial average
-
-        Examples
-        --------
-        >>> # Basic usage with default sampling
-        >>> ics = np.random.rand(100, 2)  # 100 trajectories in 2D
-        >>> params = np.array([1.0, 0.1])
-        >>> avg = system.average_in_time(ics, params, 1000)
-
-        >>> # With custom sampling times
-        >>> times = np.linspace(0, 1000, 11, dtype=int)
-        >>> avg = system.average_in_time(ics, params, 1000, times)
+            Ensemble-average time series.
         """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=True
+        )
 
-        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
-
-        if u.ndim != 2:
+        if u_arr.ndim != 2:
             raise ValueError(
-                f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
+                f"u must be a 2D array of shape (num_ic, {self.__system_dimension})"
             )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
-        sample_times_arr = validate_sample_times(sample_times, total_time)
-
         validate_axis(axis, self.__system_dimension)
 
+        sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None:
+            sample_times_arr = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
+
         return average_vs_time(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
             sample_times=sample_times_arr,
             axis=axis,
         )
 
     def cumulative_average(
         self,
-        u: Union[NDArray[np.float64], Sequence[Sequence[float]]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        sample_times: Optional[Union[NDArray[np.float64], Sequence[int]]] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        sample_times: NDArray[np.int32] | Sequence[int] | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
-        """Compute cumulative average of a coordinate across trajectories.
+        """
+        Compute the cumulative ensemble average of one coordinate as a function of time.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[Sequence[float]]]
-            Initial conditions array where:
-            - Shape (N, d) for N trajectories in d-dimensional space
-            - Can be list of lists or numpy array
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters passed to mapping function, shape (p,)
-        total_time : int
-            Total number of iterations to compute (must be ≥ 1)
-        sample_times : Optional[Union[NDArray[np.float64], Sequence[int]]], default=None
-            Specific time steps to record (1D array of integers). If None,
-            records at every time step from 0 to total_time.
-        axis : int, default=1
-            Coordinate index to average over (0 for x, 1 for y, etc.)
+        u : numeric_like_t
+            Ensemble of initial conditions with shape `(num_ic, system_dimension)`.
+        total_time : int_t
+            Total number of iterations.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
+            Sampling times at which the cumulative average is recorded. If None, all
+            times from `1` to `total_time` are used.
+        axis : int, optional
+            Coordinate index whose cumulative ensemble average is computed.
 
         Returns
         -------
         NDArray[np.float64]
-            Array of average values with shape:
-
-            - (len(sample_times),) if sample_times provided
-            - (total_time + 1,) if sample_times=None
-
-        Raises
-        ------
-        ValueError
-            - If `u` is not a 2D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative or zero.
-            - If `sample_times` contains invalid values.
-            - If `sample_times` is not a 1D array of integers.
-            - If `axis` is not valid for the system dimension.
-        TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `axis` is not int.
-
-        Notes
-        -----
-        - Uses the system's mapping function for trajectory evolution
-        - For smooth results, use N >> 1 initial conditions
-        - The average is computed as ⟨xᵢ(t)⟩ where i is the axis index
-        - First output value (t=0) is the initial average
-
-        Examples
-        --------
-        >>> # Basic usage with default sampling
-        >>> ics = np.random.rand(100, 2)  # 100 trajectories in 2D
-        >>> params = np.array([1.0, 0.1])
-        >>> avg = system.cumulative_average(ics, params, 1000)
-
-        >>> # With custom sampling times
-        >>> times = np.linspace(0, 1000, 11, dtype=int)
-        >>> avg = system.cumulative_average(ics, params, 1000, times)
+            Cumulative ensemble-average time series.
         """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=True
+        )
 
-        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
-
-        if u.ndim != 2:
+        if u_arr.ndim != 2:
             raise ValueError(
-                f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
+                f"u must be a 2D array of shape (num_ic, {self.__system_dimension})"
             )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
-        sample_times_arr = validate_sample_times(sample_times, total_time)
-
         validate_axis(axis, self.__system_dimension)
 
+        sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None:
+            sample_times_arr = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
+
         return cumulative_average_vs_time(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
             sample_times=sample_times_arr,
             axis=axis,
         )
 
     def root_mean_squared(
         self,
-        u: Union[NDArray[np.float64], Sequence[Sequence[float]]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        sample_times: Optional[Union[NDArray[np.float64], Sequence[int]]] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        sample_times: NDArray[np.int32] | Sequence[int] | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
-        """Compute root mean squared (RMS) evolution of a coordinate across trajectories.
+        """
+        Compute the root-mean-squared value of one coordinate as a function of time.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[Sequence[float]]]
-            Initial conditions array where:
-            - Shape (N, d) for N trajectories in d-dimensional space
-            - Can be list of lists or numpy array
-        total_time : int
-            Total number of iterations to compute (must be ≥ 1)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters passed to mapping function, shape (p,)
-            Must be 1D float array
-        sample_times : Optional[Union[NDArray[np.float64], Sequence[int]]], default=None
-            Specific time steps to record (1D array of integers). If None,
-            records at every time step from 0 to total_time.
-        axis : int, default=1
-            Coordinate index for RMS calculation (0 for x, 1 for y, etc.)
+        u : numeric_like_t
+            Ensemble of initial conditions with shape `(num_ic, system_dimension)`.
+        total_time : int_t
+            Total number of iterations.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
+            Sampling times at which the RMS value is recorded. If None, all times
+            from `1` to `total_time` are used.
+        axis : int, optional
+            Coordinate index whose RMS value is computed.
 
         Returns
         -------
         NDArray[np.float64]
-            root mean squared values with shape:
-
-            - (len(sample_times),) if sample_times provided
-            - (total_time + 1,) if sample_times=None
-
-        Raises
-        ------
-        ValueError
-            - If `u` is not a 2D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative or zero.
-            - If `sample_times` contains invalid values.
-            - If `sample_times` is not a 1D array of integers.
-            - If `axis` is not valid for the system dimension.
-        TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `axis` is not int.
-
-        Notes
-        -----
-        - root mean squared is computed as sqrt(⟨xᵢ(t)²⟩) where:
-        - i is the axis index
-        - ⟨·⟩ denotes ensemble average
-        - First output value (t=0) is the initial RMS
-        - For diffusion analysis, often used with axis=1 (y-coordinate)
-
-        Examples
-        --------
-        >>> # Basic usage with default sampling
-        >>> ics = np.random.rand(100, 2)  # 100 trajectories in 2D
-        >>> params = np.array([1.0, 0.1], dtype=np.float64)
-        >>> rms = system.root_mean_squared(ics, params, 1000)
-
-        >>> # With custom sampling times and x-coordinate (axis=0)
-        >>> times = np.arange(0, 1001, 100, dtype=int)
-        >>> rms = system.root_mean_squared(ics, params, 1000, times, axis=0)
+            RMS time series.
         """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=True
+        )
 
-        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
-
-        if u.ndim != 2:
+        if u_arr.ndim != 2:
             raise ValueError(
-                f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
+                f"u must be a 2D array of shape (num_ic, {self.__system_dimension})"
             )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
-        sample_times_arr = validate_sample_times(sample_times, total_time)
-
         validate_axis(axis, self.__system_dimension)
 
+        sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None:
+            sample_times_arr = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
+
         return root_mean_squared(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
             sample_times=sample_times_arr,
             axis=axis,
         )
 
     def mean_squared_displacement(
         self,
-        u: Union[NDArray[np.float64], Sequence[Sequence[float]]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        sample_times: Optional[Union[NDArray[np.int32], Sequence[int]]] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        sample_times: NDArray[np.int32] | Sequence[int] | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
-        """Compute the Mean Squared Displacement (MSD) for system trajectories.
+        """
+        Compute the mean squared displacement of one coordinate as a function of time.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[Sequence[float]]]
-            Initial conditions array where:
-            - Shape (N, d) for N trajectories in d-dimensional space
-            - Can be list of lists or numpy array
-        total_time : int
-            Total number of iterations (must be > transient_time)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,) passed to mapping function
-        sample_times : Optional[Union[NDArray[np.float64], Sequence[int]]], default=None
-            Specific time steps to record (1D array of integers). If None,
-            records at every time step after transient_time.
-        axis : int, default=1
-            Coordinate index to analyze (0 for x, 1 for y, etc.)
-        transient_time : Optional[int], default=None
-            Initial iterations to discard (default: 0 if None)
+        u : numeric_like_t
+            Ensemble of initial conditions with shape `(num_ic, system_dimension)`.
+        total_time : int_t
+            Total number of iterations.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
+            Sampling times at which the MSD is recorded. If None, all times from
+            `1` to `total_time` are used.
+        axis : int, optional
+            Coordinate index used in the displacement calculation.
 
         Returns
         -------
         NDArray[np.float64]
-            Mean Squared Displacement values with shape:
-
-            - (len(sample_times),) if sample_times provided
-            - (total_time - transient_time,) if sample_times=None
-
-        Raises
-        ------
-        ValueError
-            - If `u` is not a 2D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative or zero.
-            - If `sample_times` contains invalid values.
-            - If `sample_times` is not a 1D array of integers.
-            - If `axis` is not valid for the system dimension.
-        TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `axis` is not int.
-
-        Notes
-        -----
-        - Mean Squared Displacement is calculated as ⟨(x_i(t) - x_i(0))²⟩ where ⟨·⟩ is ensemble average
-        - For normal diffusion, Mean Squared Displacement ∝ t
-        - For anomalous diffusion, Mean Squared Displacement ∝ t^α (α≠1)
-        - Uses parallel processing for efficient computation
-
-        Examples
-        --------
-        >>> # Basic usage with default sampling
-        >>> ics = np.random.rand(100, 2)  # 100 trajectories in 2D
-        >>> params = np.array([1.0, 0.1])
-        >>> msd_vals = system.mean_squared_displacement(ics, params, 1000)
-
-        >>> # With custom sampling times
-        >>> times = np.arange(0, 1000, 10, dtype=int)
-        >>> msd_vals = system.mean_squared_displacement(ics, params, 1000, sample_times=times)
+            Mean-squared-displacement time series.
         """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=True
+        )
 
-        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
-
-        if u.ndim != 2:
+        if u_arr.ndim != 2:
             raise ValueError(
-                f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
+                f"u must be a 2D array of shape (num_ic, {self.__system_dimension})"
             )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
-        sample_times_arr = validate_sample_times(sample_times, total_time)
-
         validate_axis(axis, self.__system_dimension)
 
+        sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None:
+            sample_times_arr = validate_sample_times(sample_times, total_time)
+        else:
+            sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
+
         return mean_squared_displacement(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
+            u0=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
             sample_times=sample_times_arr,
             axis=axis,
         )
 
     def ensemble_time_average(
         self,
-        u: Union[NDArray[np.float64], Sequence[Sequence[float]]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
-        """Compute ensemble time average of a coordinate across trajectories.
+        """
+        Compute the centered time average for each trajectory in an ensemble.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[Sequence[float]]]
-            Initial conditions array where:
-            - Shape (N, d) for N trajectories in d-dimensional space
-            - Can be list of lists or numpy array
-        total_time : int
-            Total number of iterations to compute (must be ≥ 1)
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters passed to mapping function, shape (p,)
-        axis : int, default=1
-            Coordinate index to average over (0 for x, 1 for y, etc.)
+        u : numeric_like_t
+            Ensemble of initial conditions with shape `(num_ic, system_dimension)`.
+        total_time : int_t
+            Total number of iterations.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        axis : int, optional
+            Coordinate index used in the time average.
 
         Returns
         -------
         NDArray[np.float64]
-            Array of average values with shape (u.shape[0],)
-
-        Raises
-        ------
-        ValueError
-            - If `u` is not a 2D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative or zero.
-            - If `axis` is not valid for the system dimension.
-        TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `axis` is not int.
-
-        Notes
-        -----
-        - Uses the system's mapping function for trajectory evolution
-        - For smooth results, use N >> 1 initial conditions
-        - The average is computed as ⟨xᵢ(t)⟩ where i is the axis index
-        - First output value (t=0) is the initial average
-
-        Examples
-        --------
-        >>> # Basic usage with default axis (1)
-        >>> ics = np.random.rand(100, 2)  # 100 trajectories in 2D
-        >>> params = np.array([1.0, 0.1])
-        >>> avg = system.ensemble_time_average(ics, params, 1000)
-        >>> # With custom axis (0 for x-coordinate)
-        >>> avg_x = system.ensemble_time_average(ics, params, 1000, axis=0)
+            One centered time-average value for each initial condition.
         """
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=True
+        )
 
-        u = validate_initial_conditions(u, self.__system_dimension, allow_ensemble=True)
-
-        if u.ndim != 2:
+        if u_arr.ndim != 2:
             raise ValueError(
-                f"Initial conditions must be a 2D array of shape (N, d), got shape {u.shape}"
+                f"u must be a 2D array of shape (num_ic, {self.__system_dimension})"
             )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
         validate_axis(axis, self.__system_dimension)
 
         return ensemble_time_average(
-            u, parameters, self.__mapping, total_time, axis=axis
+            u=u_arr,
+            parameters=parameters_arr,
+            mapping=self.__mapping,
+            total_time=total_time,
+            axis=axis,
         )
 
     def recurrence_times(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        eps: float = 1e-2,
-        transient_time: Optional[int] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        eps: numeric_t = 1e-2,
+        transient_time: int_t | None = None,
     ) -> NDArray[np.float64]:
         """
-        Compute recurrence times to a neighborhood around the initial condition.
+        Compute recurrence times to an `eps`-neighborhood of the reference point.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], list, tuple]
-            Initial condition vector (shape: `(neq,)`). Will be converted to a contiguous float64 NumPy array.
-        total_time : int
-            Total number of iterations to simulate. Must be a positive integer.
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters passed to the mapping function. Scalars and sequences will be converted automatically.
-        eps : float, optional
-            Size of the neighborhood for recurrence detection (default is 1e-2).
-            Must be a positive number.
-        transient_time : Optional[int], optional
-            Initial iterations to discard (default is None, meaning no transient time).
-            If provided, must be a non-negative integer.
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        total_time : int_t
+            Total number of iterations used to detect recurrences.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        eps : numeric_t, optional
+            Side length of the recurrence neighborhood.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before defining the recurrence box.
 
         Returns
         -------
         NDArray[np.float64]
-            Array of recurrence times (time steps between re-entries into the neighborhood). Returns an empty array if no recurrences occur.
-
-        Raises
-        ------
-        TypeError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `eps` is not a positive float.
-        TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If `eps` is not float.
-
-
-        Notes
-        -----
-        - This method wraps a JIT-compiled function for performance.
-        - A recurrence is counted when the system state re-enters the axis-aligned hypercube:
-            [u - eps/2, u + eps/2]^d
-        - This is commonly used in nonlinear dynamics to study:
-            - Stickiness
-            - Poincaré recurrences
-            - Mixing and ergodicity
-
-        Examples
-        --------
-        >>> u0 = [0.1, 0.1]
-        >>> parameters = [0.6, 0.4]
-        >>> rec_times = system.recurrence_times(u0, parameters, 10000, eps=0.01)
-        >>> print(rec_times)
-        array([400, 523, 861, ...])
+            Array containing the recurrence times between successive returns to the
+            `eps`-neighborhood.
         """
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
-
         validate_transient_time(transient_time, total_time, Integral)
-
         validate_non_negative(eps, "eps", Real)
 
         return recurrence_times(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
-            eps,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
+            eps=eps,
             transient_time=transient_time,
         )
 
@@ -3134,194 +2890,193 @@ class DiscreteDynamicalSystem:
 
     def hurst_exponent(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
         wmin: int = 2,
-        transient_time: Optional[int] = None,
-    ) -> NDArray[np.float64]:
+        transient_time: int_t | None = None,
+    ) -> float | NDArray[np.float64]:
         """
-        Estimate the Hurst exponent for a system trajectory using the rescaled range (R/S) method.
+        Estimate the Hurst exponent of each component of a trajectory generated by
+        the discrete-time system.
 
         Parameters
         ----------
-        u : NDArray[np.float64]
-            Initial condition vector of shape (n,).
-        total_time : int
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        total_time : int_t
             Total number of iterations used to generate the trajectory.
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            Parameters passed to the mapping function.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, stored
+            parameters are used.
         wmin : int, optional
-            Minimum window size for the rescaled range calculation. Default is 2.
-        transient_time : Optional[int], optional
-            Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
+            Minimum window size used in the rescaled-range analysis. Must satisfy
+            `2 <= wmin < effective_time // 2`, where
+            `effective_time = total_time - transient_time`.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before generating the trajectory.
 
         Returns
         -------
-        NDArray[np.float64]
-            Estimated Hurst exponents for each dimension of the input vector `u`, of shape (n,).
+        float | NDArray[np.float64]
+            - If `system_dimension == 1`, returns a scalar Hurst exponent.
+            - Otherwise, returns an array of shape `(system_dimension,)` containing
+              one Hurst exponent per coordinate.
 
         Raises
         ------
         ValueError
-            - If `u` is not a 2D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative or zero.
-            - If `transient_time` is negative or greater than or equal to `total_time`.
-            - If `wmin` is not a positive integer or is less than 2 or greater than total_time // 2.
-
+            - If `u` is incompatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `total_time` is negative.
+            - If `transient_time` is invalid.
+            - If `wmin < 2`.
+            - If `wmin` is too large for the effective trajectory length.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `wmin` is not a positive integer.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `wmin` is not an integer.
 
         Notes
         -----
-        The Hurst exponent is a measure of the long-term memory of a time series:
-
-        - H = 0.5 indicates a random walk (no memory).
-        - H > 0.5 indicates persistent behavior (positive autocorrelation).
-        - H < 0.5 indicates anti-persistent behavior (negative autocorrelation).
-
-        This implementation computes the rescaled range (R/S) for various window sizes and
-        performs a linear regression in log-log space to estimate the exponent.
-
-        The function supports multivariate time series, estimating one Hurst exponent per dimension.
+        The Hurst exponent is estimated independently for each coordinate of the
+        generated trajectory using the rescaled-range method.
         """
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
-
         validate_positive(wmin, "wmin", Integral)
 
-        if (
-            wmin < 2
-            or wmin
-            >= (total_time - (transient_time if transient_time is not None else 0)) // 2
-        ):
+        effective_time = total_time - (
+            transient_time if transient_time is not None else 0
+        )
+
+        if wmin < 2:
+            raise ValueError("wmin must be >= 2")
+
+        if wmin >= effective_time // 2:
             raise ValueError(
-                f"`wmin` must be an integer >= 2 and <= total_time / 2. Got {wmin}."
+                "wmin must be smaller than half of the effective trajectory length"
             )
 
         result = hurst_exponent_wrapped(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
             wmin=wmin,
             transient_time=transient_time,
         )
 
         if self.__system_dimension == 1:
-            return result[0]
-        else:
-            return result
+            return float(result[0])
+
+        return result
 
     def finite_time_hurst_exponent(
         self,
-        u: Union[NDArray[np.float64], Sequence[float], float],
-        total_time: int,
-        finite_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        finite_time: int_t,
+        parameters: numeric_like_t | None = None,
         wmin: int = 2,
         return_points: bool = False,
-    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute finite-time Hurst exponent along a trajectory.
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """
+        Compute finite-time Hurst exponents along a trajectory.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape (d,) where d is system dimension
-        total_time : int
-            Total simulation time steps (must be > finite_time
-        finite_time : int
-            Averaging window size in time steps
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,) passed to mapping function
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        total_time : int_t
+            Total number of iterations used in the computation.
+        finite_time : int_t
+            Length of each non-overlapping analysis window.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, stored
+            parameters are used.
         wmin : int, optional
-            Minimum window size for the rescaled range calculation (default 2)
+            Minimum window size used in the rescaled-range analysis within each
+            finite-time window.
         return_points : bool, optional
-            If True, returns full evolution (default False)
+            If True, also return the final phase-space point of each window.
 
         Returns
         -------
-        Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]
-            - If return_points=False: Hurst exponent(scalar)
-            - If return_points=True: Tuple of (Hurst history, final state) where Hurst history is 1D array of values
+        NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]
+            - If `return_points=False`, returns an array of shape
+              `(num_windows, system_dimension)` containing the finite-time Hurst
+              exponents.
+            - If `return_points=True`, returns:
+                - `h_values`: shape `(num_windows, system_dimension)`
+                - `phase_space_points`: shape `(num_windows, system_dimension)`
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is incompatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
-            - If `finite_time` is negative or zero.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `wmin` is not a positive integer or is less than 2 or greater than total_time // 2.
-
+            - If `finite_time` is not positive.
+            - If `finite_time > total_time`.
+            - If `wmin < 2`.
+            - If `wmin >= finite_time // 2`.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `finite_time` is not int.
-            - If `wmin` is not a positive integer.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `finite_time` is not an integer.
+            - If `wmin` is not an integer.
             - If `return_points` is not a boolean.
 
         Notes
         -----
-        - Finite-time Hurst exponent measures local scaling behavior over finite intervals
-        - For chaotic systems, FTHE → true exponents as finite_time → ∞
-        - Results are more reliable when:
-        - finite_time >> 1
-        - (total_time - transient_time) // finite_time >> 1
-
-        Examples
-        --------
-        >>> # Basic usage with defaults
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> fthe = system.finite_time_hurst_exponent(u0, 100000, 100, parameters=params)
-
+        The trajectory is divided into consecutive non-overlapping windows of length
+        `finite_time`, and one Hurst exponent per coordinate is computed in each
+        window.
         """
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_positive(finite_time, "finite_time", Integral)
         validate_finite_time(finite_time, total_time)
+        validate_positive(wmin, "wmin", Integral)
+
+        if wmin < 2:
+            raise ValueError("wmin must be >= 2")
+
+        if wmin >= finite_time // 2:
+            raise ValueError("wmin must be smaller than half of finite_time")
+
+        if not isinstance(return_points, bool):
+            raise TypeError("return_points must be a boolean")
 
         return finite_time_hurst_exponent(
-            u,
-            parameters,
-            total_time,
-            finite_time,
-            self.__mapping,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            finite_time=finite_time,
+            mapping=self.__mapping,
             wmin=wmin,
             return_points=return_points,
         )
@@ -3865,116 +3620,6 @@ class DiscreteDynamicalSystem:
             return value, u
         return value
 
-    def __lagrangian_descriptors(
-        self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        parameters: Union[float, Sequence[np.float64], NDArray[np.float64]],
-        total_time: int = 10000,
-        transient_time: Optional[int] = None,
-    ) -> NDArray[np.float64]:
-        """Compute Lagrangian Descriptors(LDs) for the dynamical system.
-
-        Parameters
-        ----------
-        u: Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape(d,) where d is system dimension.
-            Can be any sequence convertible to numpy array.
-        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape(p,) passed to mapping functions.
-        total_time: int, optional
-            Total number of iterations to compute(default 10000, must be > 0).
-        transient_time: Optional[int], optional
-            Number of initial iterations to discard(default None → no transient).
-
-        Returns
-        -------
-        NDArray[np.float64]
-            Array of shape(2,) containing:
-
-            - [0]: Forward Lagrangian descriptor
-            - [1]: Backward Lagrangian descriptor
-
-        Raises
-        ------
-        NotImplementedError
-            If mapping is not defined
-            If backwards mapping is not defined for this system
-        ValueError
-            If initial condition has wrong dimension
-            If parameters are invalid
-            If time parameters are invalid
-        TypeError
-            If inputs cannot be converted to required types
-
-        Notes
-        -----
-        - LDs reveal phase space structures and invariant manifolds
-        - Higher values indicate stronger stretching in phase space
-        - For meaningful results:
-        - Use total_time >> 1 (typically ≥ 1000)
-        - Ensure mapping and backwards_mapping are exact inverses
-        - Transient period helps avoid initialization artifacts
-
-        Examples
-        --------
-        >>>  # Basic usage
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> lds = system.compute_lagrangian_descriptors(u0, params)
-        >>> forward_ld, backward_ld = lds
-
-        >>>  # With transient period
-        >>> lds = system.compute_lagrangian_descriptors(
-        ...     u0, params, total_time=5000, transient_time=1000)
-        """
-
-        # Check if mapping function is defined
-        if self.__mapping is None:
-            raise RuntimeError("Mapping function must be provided")
-
-        # Check if jacobian function is defined
-        if self.__backwards_mapping is None:
-            raise RuntimeError("Backwards mapping function must be provided")
-
-        # Input validation
-        try:
-            u_arr = np.asarray(u, dtype=np.float64)
-            if u_arr.ndim != 1:
-                raise ValueError("Initial condition must be 1D array")
-        except (TypeError, ValueError) as e:
-            raise TypeError(
-                "Initial condition must be convertible to 1D float array"
-            ) from e
-
-        if np.isscalar(parameters):
-            parameters = np.array([parameters], dtype=np.float64)
-        elif not isinstance(parameters, np.ndarray):
-            parameters = np.asarray(parameters, dtype=np.float64)
-
-        if len(u_arr) != self.__system_dimension:
-            raise ValueError(
-                f"Initial condition dimension {len(u_arr)} != system dimension {self.__system_dimension}"
-            )
-
-        if not isinstance(total_time, int) or total_time <= 0:
-            raise ValueError("total_time must be positive integer")
-
-        if transient_time is not None:
-            if not isinstance(transient_time, int) or transient_time < 0:
-                raise ValueError("transient_time must be non-negative integer")
-            if transient_time >= total_time:
-                raise ValueError("transient_time must be < total_time")
-
-        # Call the compiled computation function
-        return lagrangian_descriptors(
-            u_arr,
-            parameters,
-            total_time,
-            self.__mapping,
-            self.__backwards_mapping,
-            transient_time=transient_time,
-        )
-
     def recurrence_matrix(
         self,
         u: Union[NDArray[np.float64], Sequence[float]],
@@ -3984,7 +3629,7 @@ class DiscreteDynamicalSystem:
         ] = None,
         transient_time: Optional[int] = None,
         **kwargs: Any,
-    ) -> NDArray[np.float64]:
+    ) -> NDArray[np.uint8]:
         """
         Compute the recurrence matrix of a univariate or multivariate time series.
 
@@ -4059,237 +3704,232 @@ class DiscreteDynamicalSystem:
             total_time -= transient_time
 
         time_series = generate_trajectory(u, parameters, total_time, self.__mapping)
+        eps = calculate_threshold(time_series, config)
 
         # Recurrence matrix calculation
-        TSM = tsm(time_series)
-        recmat = TSM.recurrence_matrix(
-            threshold=float(config.threshold),
-            metric=config.metric,
-            std_metric=config.std_metric,
-            threshold_std=config.threshold_std,
-        )
-
+        recmat = build_recurrence_matrix(time_series, eps, config.metric)
         return recmat
 
     def recurrence_time_entropy(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        transient_time: Optional[int] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: int_t | None = None,
         **kwargs: Any,
-    ):
-        """Compute Recurrence Time Entropy(RTE) for dynamical system analysis.
+    ) -> rte_return_t:
+        """
+        Compute the recurrence time entropy (RTE) of a trajectory.
 
         Parameters
         ----------
-        u: Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape(d,) where d is system dimension
-        total_time: int
-            Number of iterations to simulate(must be > 100 for meaningful results)
-        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape(p,) passed to mapping function
-        metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
-            Distance metric used for phase space reconstruction.
-        std_metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
-            Distance metric used for standard deviation calculation.
-        lmin: int, default = 1
-            Minimum line length to consider in recurrence quantification.
-        threshold: float, default = 0.1
-            Recurrence threshold(relative to data range).
-        threshold_std: bool, default = True
-            Whether to scale threshold by data standard deviation.
-        return_final_state: bool, default = False
-            Whether to return the final system state in results.
-        return_recmat: bool, default = False
-            Whether to return the recurrence matrix.
-        return_p: bool, default = False
-            Whether to return white vertical line length distribution.
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        total_time : int_t
+            Total number of iterations used in the computation.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        transient_time : int_t | None, optional
+            Number of initial iterations discarded before the computation.
+
+        Other Parameters
+        ----------------
+        metric : {"supremum", "euclidean", "manhattan"} or callable, optional
+            Pairwise metric used to construct the recurrence matrix.
+        std_metric : {"supremum", "euclidean", "manhattan"} or callable, optional
+            Metric used in the standard-deviation-based threshold calculation.
+        threshold : float, optional
+            Threshold parameter. Its meaning depends on `threshold_mode`:
+            - direct threshold if `threshold_mode="direct"`
+            - standard-deviation scale if `threshold_mode="std"`
+            - target recurrence rate if `threshold_mode="rr"`
+        threshold_mode : {"direct", "std", "rr"} | None, optional
+            Mode used to determine the recurrence threshold.
+        threshold_std : bool, optional
+            Deprecated legacy option. Kept for backward compatibility.
+        lmin : int, optional
+            Minimum white vertical line length used in the recurrence-time
+            distribution.
+        return_final_state : bool, optional
+            If True, include the final state of the trajectory in the output.
+        return_recmat : bool, optional
+            If True, include the recurrence matrix in the output.
+        return_p : bool, optional
+            If True, include the white-vertical-line distribution in the output.
 
         Returns
         -------
-        Union[float, Tuple[float, NDArray[np.float64]]]
-            - float: RTE value(base case)
-            - Tuple: (RTE, white_line_distribution) if return_distribution = True
+        float or tuple
+            - If no optional outputs are requested, returns the scalar RTE value.
+            - Otherwise returns a tuple whose first entry is the RTE value, followed
+              by the requested outputs in this order:
+                1. final state, if `return_final_state=True`
+                2. recurrence matrix, if `return_recmat=True`
+                3. white-vertical-line distribution, if `return_p=True`
 
         Raises
         ------
         ValueError
-            - If `u` is not an 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
+            - If `u` is incompatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `lmin` is not a positive integer or is less than 1.
-            - If `metric` or `std_metric` is not a valid string.
-            - If `threshold` is not within [0, 1].
+            - If `transient_time` is invalid.
+            - If the RTE configuration is invalid.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If `metric` or `std_metric` cannot be converted to a string.
-            - If `threshold` is not a positive float.
-            - If `lmin` is not an integer.
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
 
         Notes
         -----
-        - Higher RTE indicates more complex dynamics
-        - For reliable results:
-            - Use total_time > 1000
-            - Typical threshold range: 0.01-0.3
-            - Set min_recurrence_time = 2 to ignore single-point recurrences
-        - Implementation follows[1]
-
-        References
-        ----------
-        [1] Sales et al., Chaos 33, 033140 (2023)
-
-        Examples
-        --------
-        >>>  # Basic usage
-        >>> rte = system.recurrence_time_entropy(u0, params, 5000)
-
-        >>>  # With distribution output
-        >>> rte, dist = system.recurrence_time_entropy(
-        ...     u0, params, 5000,
-        ...     return_distribution=True,
-        ...     recurrence_threshold=0.1
-        ...)
+        Higher RTE values generally indicate more complex recurrence-time structure.
+        Input validation is handled here; the low-level `RTE` routine assumes valid input.
         """
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
 
+        RTEConfig(**kwargs)
+
         return RTE(
-            u,
-            parameters,
-            total_time,
-            self.__mapping,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            mapping=self.__mapping,
             transient_time=transient_time,
             **kwargs,
         )
 
     def finite_time_recurrence_time_entropy(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: int,
-        finite_time: int,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
+        u: numeric_like_t,
+        total_time: int_t,
+        finite_time: int_t,
+        parameters: numeric_like_t | None = None,
         return_points: bool = False,
         **kwargs: Any,
-    ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute the finite-time Recurrence Time Entropy(RTE) for dynamical system analysis.
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """
+        Compute the finite-time recurrence time entropy (RTE) over consecutive
+        non-overlapping windows of a trajectory.
 
         Parameters
         ----------
-        u: Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape(d,) where d is system dimension
-        total_time: int
-            Number of iterations to simulate(must be > 100 for meaningful results)
-        finite_time: int
-            Averaging window size in time steps
-        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape(p,) passed to mapping function
-        return_points: bool, default = False
-            Whether to return the finite-time RTE phase space points
-        metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
-            Distance metric used for phase space reconstruction.
-        std_metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
-            Distance metric used for standard deviation calculation.
-        lmin: int, default = 1
-            Minimum line length to consider in recurrence quantification.
-        threshold: float, default = 0.1
-            Recurrence threshold(relative to data range).
-        threshold_std: bool, default = True
-            Whether to scale threshold by data standard deviation.
-        return_final_state: bool, default = False
-            Whether to return the final system state in results.
-        return_recmat: bool, default = False
-            Whether to return the recurrence matrix.
-        return_p: bool, default = False
-            Whether to return white vertical line length distribution.
+        u : numeric_like_t
+            Initial condition of shape ``(system_dimension,)``.
+        total_time : int_t
+            Total number of iterations used in the computation.
+        finite_time : int_t
+            Length of each non-overlapping analysis window.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping function. If None, the stored
+            system parameters are used.
+        return_points : bool, optional
+            If True, also return the final phase-space point of each window.
+        **kwargs : Any
+            Additional keyword arguments forwarded to ``RTE`` through
+            ``finite_time_RTE``. Supported options are:
+
+            metric : {"supremum", "euclidean", "manhattan"} or callable, optional
+                Pairwise distance metric used to build the recurrence matrix.
+            std_metric : {"supremum", "euclidean", "manhattan"} or callable, optional
+                Metric used in threshold estimation when ``threshold_mode="std"``.
+            threshold : float, optional
+                Recurrence threshold value, threshold scale, or target recurrence
+                rate depending on ``threshold_mode``.
+            threshold_mode : {"direct", "std", "rr"}, optional
+                Strategy used to determine the recurrence threshold.
+            threshold_std : bool, optional
+                Deprecated legacy option. Retained for backward compatibility.
+            lmin : int, optional
+                Minimum white vertical line length used in the distribution.
+            return_final_state : bool, optional
+                Ignored here. The finite-time wrapper manages final-state handling
+                internally.
+            return_recmat : bool, optional
+                Whether to include the recurrence matrix in the low-level RTE call.
+            return_p : bool, optional
+                Whether to include the white-vertical-line distribution in the
+                low-level RTE call.
 
         Returns
         -------
-        NDArray[np.float64]
+        NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]
+            - If ``return_points=False``, returns an array of shape
+              ``(num_windows,)`` containing the finite-time RTE values.
+            - If ``return_points=True``, returns:
+                - ``rte_values``: array of shape ``(num_windows,)``
+                - ``phase_space_points``: array of shape
+                  ``(num_windows, system_dimension)`` containing the final point of
+                  each window
 
         Raises
         ------
         ValueError
-            - If `u` is not an 1D array, or if its shape does not match the expected system dimension.
-            - If `parameters` is not None and does not match the expected number of parameters.
-            - If `parameters` is None but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `lmin` is not a positive integer or is less than 1.
-            - If `metric` or `std_metric` is not a valid string.
-            - If `threshold` is not within [0, 1].
+            - If ``u`` is not compatible with the system dimension.
+            - If ``parameters`` does not match the expected number of parameters.
+            - If ``total_time`` is negative.
+            - If ``finite_time`` is not positive.
+            - If ``finite_time`` is larger than ``total_time`` or otherwise invalid.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If `metric` or `std_metric` cannot be converted to a string.
-            - If `threshold` is not a positive float.
-            - If `lmin` is not an integer.
+            - If ``u`` is not a scalar or array-like numeric object.
+            - If ``parameters`` is not a scalar or array-like numeric object.
+            - If ``total_time`` is not an integer.
+            - If ``finite_time`` is not an integer.
+            - If ``return_points`` is not a boolean.
 
         Notes
         -----
-        - Higher RTE indicates more complex dynamics
-        - For reliable results:
-            - Use total_time > 1000
-            - Typical threshold range: 0.01-0.3
-            - Set min_recurrence_time = 2 to ignore single-point recurrences
-        - Implementation follows [1]
-
-        References
-        ----------
-        [1] Sales et al., Chaos 33, 033140 (2023)
+        The trajectory is split into consecutive non-overlapping windows of length
+        ``finite_time``. One RTE value is computed per window.
 
         Examples
         --------
-        >>>  # Basic usage
-        >>> ftrte = system.finite_time_recurrence_time_entropy(u0, params, 50000, 100)
-
+        >>> ftrte = system.finite_time_recurrence_time_entropy(
+        ...     u0,
+        ...     total_time=50000,
+        ...     finite_time=100,
+        ...     parameters=params,
+        ... )
         """
-
-        u = validate_initial_conditions(
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_positive(finite_time, "finite_time", Integral)
         validate_finite_time(finite_time, total_time)
 
+        if not isinstance(return_points, bool):
+            raise TypeError("return_points must be a boolean")
+
+        kwargs = dict(kwargs)
+        kwargs.pop("return_final_state", None)
+
         return finite_time_RTE(
-            u,
-            parameters,
-            total_time,
-            finite_time,
-            self.__mapping,
+            u=u_arr,
+            parameters=parameters_arr,
+            total_time=total_time,
+            finite_time=finite_time,
+            mapping=self.__mapping,
             return_points=return_points,
             **kwargs,
         )
