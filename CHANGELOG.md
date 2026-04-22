@@ -5,9 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.5.3] - 2026-04-08
+## [Unreleased]
+
+### Added
+
+- `DiscreteDynamicalSystem` class:
+  - Added `return_last_state` to the `SALI`, `LDI`, and `GALI` methods.
+  - Added `method` option to `GALI` with the following implementations:
+    - `"DET"`: computes `GALI_k` from the Gram matrix determinant.
+    - `"QR"`: computes `GALI_k` from the diagonal of the triangular factor returned by the internal QR routine.
+    - `"QR_HH"`: computes `GALI_k` from the diagonal of the triangular factor returned by `numpy.linalg.qr`.
+
+- `discrete_time` module:
+  - Added dedicated low-level modules:
+    - `sali.py`
+    - `ldi.py`
+    - `gali.py`
+    - `clv.py`
+    - `birkhoff.py`
+
+### Changed
+
+- Refactored low-level chaos-indicator implementations by moving `SALI`, `LDI`, `GALI`, CLV-related routines, and the weighted-Birkhoff `dig` implementation out of `dynamical_indicators.py` into dedicated modules for improved project organization and maintainability.
+
+- `DiscreteDynamicalSystem` class:
+  - Updated `SALI`, `LDI`, `GALI`, `CLV`, `CLV_angles`, and `dig` wrappers with improved type annotations, return annotations, and docstrings.
+  - Standardized handling of `sample_times` in `lyapunov`, `SALI`, `LDI`, and `GALI` wrappers by explicitly validating user input and constructing an internal `sample_times_arr` only when `return_history=True`.
+  - Updated `dig` observable validation so the observable must be callable and return a 1D NumPy array with one value per input state.
+
+- `common.validators`:
+  - Refactored `validate_clv_subspaces()` and `validate_clv_pairs()` to validate indices against `num_clvs` instead of the full system dimension.
+  - Improved normalization of single subspace and single pair inputs into canonical tuple-based representations.
+
+- `common.types`:
+  - Added `observable_t` type alias for weighted-Birkhoff observable functions.
+
+- `common.utils`:
+  - Refactored the internal QR routine to a simpler reduced modified Gram-Schmidt implementation with manual inner products for better Numba compatibility and lower overhead.
+  - Simplified `householder_qr()` implementation.
+  - Temporarily kept shared CLV helper routines in `utils.py` because they are still used by the continuous and Hamiltonian classes during the refactor.
 
 ### Fixed
+
+- `DiscreteDynamicalSystem` class:
+  - Fixed `SALI`, `LDI`, and `GALI` wrappers so that scalar outputs are returned consistently when `return_history=False`, while preserving the final state when `return_last_state=True`.
+  - Fixed `GALI` computation by using stable QR-based volume evaluation.
+  - Fixed `CLV_angles` validation so subspace and pair indices are checked against the number of computed CLVs rather than the ambient phase-space dimension.
+
+- `discrete_time` module:
+  - Fixed low-level `SALI`, `LDI`, and `GALI` implementations to return both the computed result and the final state consistently.
+  - Fixed history allocation and sampling logic in low-level `SALI`, `LDI`, and `GALI` implementations for `return_history=True`.
+  - Fixed the weighted-Birkhoff `dig` implementation to live in its own dedicated module while preserving wrapper behavior.
+
+[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.5.3...HEAD
+
+### Fixed
+
 - Incorrect tangent drift update in symplectic (Verlet/Yoshida) integrators (used δq instead of δp in δq update)
 - QR re-orthonormalization scheduling in Lyapunov spectrum (`(i + 1) % qr_interval`)
 - History allocation using `round` instead of integer division
