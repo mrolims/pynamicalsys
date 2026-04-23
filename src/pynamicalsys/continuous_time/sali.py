@@ -26,7 +26,7 @@ from pynamicalsys.continuous_time.step import evolve_system, step
 
 
 @njit
-def SALI(
+def sali(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
     total_time: np.float64,
