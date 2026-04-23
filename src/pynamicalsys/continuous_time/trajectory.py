@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+from typing import cast
 from numpy.typing import NDArray
 import numpy as np
 from numba import njit
@@ -129,7 +130,7 @@ def ensemble_trajectories(
     atol: np.float64 = np.float64(1e-6),
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
-) -> NDArray[np.float64]:
+) -> list[NDArray[np.float64]]:
     """
     Generate trajectories for an ensemble of initial conditions.
 
@@ -192,4 +193,4 @@ def ensemble_trajectories(
         for i in range(len(u))
     )
 
-    return np.asarray(results, dtype=np.float64)
+    return cast(list[NDArray[np.float64]], results)

@@ -25,7 +25,6 @@ from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t, numeric_t, numeric_like_t
-from pynamicalsys.common.utils import qr
 
 from pynamicalsys.continuous_time.step import evolve_system
 
@@ -592,7 +591,7 @@ class ContinuousDynamicalSystem:
         total_time: numeric_t,
         parameters: numeric_like_t | None = None,
         transient_time: numeric_t | None = None,
-    ) -> NDArray[np.float64]:
+    ) -> NDArray[np.float64] | list[NDArray[np.float64]]:
         """
         Compute the trajectory of the dynamical system over a specified time interval.
 
@@ -612,14 +611,18 @@ class ContinuousDynamicalSystem:
 
         Returns
         -------
-        NDArray[np.float64]
+        NDArray[np.float64] | list[NDArray[np.float64]]
             The computed trajectory.
 
             - If `u` is one initial condition, returns an array of shape
               `(num_steps, neq + 1)`, where the first column contains time and the
               remaining columns contain the state coordinates.
-            - If `u` is an ensemble of initial conditions, returns an array of shape
-              `(num_ic, num_steps, neq + 1)`.
+            - If `u` is an ensemble of initial conditions and all trajectories have the
+              same number of stored time steps, the result may be represented as arrays
+              with common shape `(num_ic, num_steps, neq + 1)`.
+            - If `u` is an ensemble of initial conditions and the trajectories have
+              different numbers of stored time steps, returns a list of arrays, where
+              each element has shape `(num_steps_i, neq + 1)`.
 
         Raises
         ------
@@ -1312,11 +1315,7 @@ class ContinuousDynamicalSystem:
             raise TypeError("method must be a string")
 
         method = method.upper()
-        if method == "QR":
-            qr_func = qr
-        elif method == "QR_HH":
-            qr_func = np.linalg.qr
-        else:
+        if method not in ["QR", "QR_HH"]:
             raise ValueError("method must be 'QR' or 'QR_HH'")
 
         validate_non_negative(log_base, "log_base", Real)
@@ -1355,7 +1354,7 @@ class ContinuousDynamicalSystem:
                 integrator=self.__integrator_func,
                 return_history=return_history,
                 seed=int(seed),
-                QR=qr_func,
+                method=method,
             )
 
         if return_history:
@@ -1835,6 +1834,7 @@ class ContinuousDynamicalSystem:
         parameters: numeric_like_t | None = None,
         transient_time: numeric_t | None = None,
         return_history: bool = False,
+        method: str = "QR",
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         endpoint: bool = True,
@@ -1859,6 +1859,11 @@ class ContinuousDynamicalSystem:
             Initial integration time discarded before computing GALI.
         return_history : bool, optional
             If `True`, return the time evolution of GALI.
+        method : str, optional
+            Method used to compute GALI. Supported options are:
+            - `"DET"`   : determinant of the Gram matrix
+            - `"QR"`    : custom QR routine
+            - `"QR_HH"` : `numpy.linalg.qr`
         seed : int_t, optional
             Seed used to initialize the deviation vectors.
         threshold : numeric_t, optional
@@ -1883,9 +1888,11 @@ class ContinuousDynamicalSystem:
             - If `total_time`, `transient_time`, or `threshold` is negative.
             - If `k < 2`.
             - If `k > system_dimension`.
+            - If `method` is not one of `"DET"`, `"QR"`, or `"QR_HH"`.
         TypeError
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `k` or `seed` is not an integer.
+            - If `method` is not a string.
         """
         if self.__jacobian is None:
             raise ValueError("Jacobian function is required to compute GALI")
@@ -1910,6 +1917,13 @@ class ContinuousDynamicalSystem:
         validate_non_negative(threshold, "threshold", Real)
         validate_non_negative(seed, "seed", Integral)
 
+        if not isinstance(method, str):
+            raise TypeError("method must be a string")
+
+        method = method.upper()
+        if method not in ("DET", "QR", "QR_HH"):
+            raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
+
         threshold = np.float64(threshold)
 
         time_step = self.__get_initial_time_step(u, parameters)
@@ -1930,6 +1944,7 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
+            method=method,
             seed=int(seed),
             threshold=threshold,
         )

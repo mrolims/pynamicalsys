@@ -40,7 +40,7 @@ def lyapunov_exponents(
     integrator=rk4_step_wrapped,
     return_history: bool = False,
     seed: int = 13,
-    QR=qr,
+    method: str = "QR",
 ) -> NDArray[np.float64]:
     """
     Compute the first `num_exponents` Lyapunov exponents of a continuous-time
@@ -124,7 +124,11 @@ def lyapunov_exponents(
     np.random.seed(seed)
     uv[neq:] = -1.0 + 2.0 * np.random.rand(nt - neq)
     v = uv[neq:].reshape(neq, num_exponents)
-    v, _ = QR(v)
+    if method == "QR":
+        v, _ = qr(v)
+    else:
+        v, _ = np.linalg.qr(v)
+        v = np.ascontiguousarray(v)
     uv[neq:] = v.reshape(neq * num_exponents)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
@@ -150,7 +154,12 @@ def lyapunov_exponents(
         )
 
         v = uv[neq:].reshape(neq, num_exponents).copy()
-        v, R = QR(v)
+        if method == "QR":
+            v, R = qr(v)
+        else:
+            v, R = np.linalg.qr(v)
+            v = np.ascontiguousarray(v)
+            R = np.ascontiguousarray(R)
         exponents += np.log(np.abs(np.diag(R)))
 
         if return_history:
