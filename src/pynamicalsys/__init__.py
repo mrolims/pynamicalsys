@@ -1,6 +1,6 @@
 # __init__.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,6 +16,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from pynamicalsys.core.discrete_dynamical_systems import DiscreteDynamicalSystem
+
 from pynamicalsys.core.continuous_dynamical_systems import ContinuousDynamicalSystem
 from pynamicalsys.core.hamiltonian_systems import HamiltonianSystem
 from pynamicalsys.core.basin_metrics import BasinMetrics

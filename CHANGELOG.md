@@ -5,9 +5,177 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `DiscreteDynamicalSystem` class:
+  - Added `return_last_state` to the `SALI`, `LDI`, and `GALI` methods.
+  - Added `method` option to `GALI` with the following implementations:
+    - `"DET"`: computes `GALI_k` from the Gram matrix determinant.
+    - `"QR"`: computes `GALI_k` from the diagonal of the triangular factor returned by the internal QR routine.
+    - `"QR_HH"`: computes `GALI_k` from the diagonal of the triangular factor returned by `numpy.linalg.qr`.
+
+- `ContinuousDynamicalSystem` class:
+  - Added `method` option to `GALI` with the following implementations:
+    - `"DET"`: computes `GALI_k` from the Gram matrix determinant.
+    - `"QR"`: computes `GALI_k` from the diagonal of the triangular factor returned by the internal QR routine.
+    - `"QR_HH"`: computes `GALI_k` from the diagonal of the triangular factor returned by `numpy.linalg.qr`.
+
+- `HamiltonianSystem` class:
+  - Added `method` option to `GALI` with the following implementations:
+    - `"DET"`: computes `GALI_k` from the Gram matrix determinant.
+    - `"QR"`: computes `GALI_k` from the diagonal of the triangular factor returned by the internal QR routine.
+    - `"QR_HH"`: computes `GALI_k` from the diagonal of the triangular factor returned by `numpy.linalg.qr`.
+
+- `discrete_time` module:
+  - Added dedicated low-level modules:
+    - `trajectory.py`
+    - `bifurcation.py`
+    - `birkhoff.py`
+    - `hurst.py`
+    - `rte.py`
+    - `periodic_orbits.py`
+    - `stability.py`
+    - `manifolds.py`
+    - `rotation.py`
+    - `escape.py`
+    - `transport.py`
+    - `averages.py`
+    - `symmetry.py`
+    - `sali.py`
+    - `ldi.py`
+    - `gali.py`
+    - `clv.py`
+
+- `continuous_time` module:
+  - Added dedicated low-level modules:
+    - `fixed_step.py`
+    - `adaptive_step.py`
+    - `step_methods.py`
+    - `variational.py`
+    - `step.py`
+    - `trajectory.py`
+    - `poincare.py`
+    - `stroboscopic.py`
+    - `maxima_map.py`
+    - `basins.py`
+    - `lyapunov.py`
+    - `sali.py`
+    - `ldi.py`
+    - `gali.py`
+    - `clv.py`
+    - `rte.py`
+    - `hurst.py`
+
+- `hamiltonian_systems` module:
+  - Added dedicated low-level modules:
+    - `coefficients.py`
+    - `fixed_step.py`
+    - `tangent.py`
+    - `trajectory.py`
+    - `poincare.py`
+    - `lyapunov.py`
+    - `sali.py`
+    - `ldi.py`
+    - `gali.py`
+    - `clv.py`
+    - `rte.py`
+    - `hurst.py`
+
+- `common.types`:
+  - Added `observable_t` type alias for weighted-Birkhoff observable functions.
+  - Added `flow_t` and `flow_jacobian_t` type aliases for continuous-time vector fields and their Jacobians.
+  - Added `grad_t` and `hess_t` type aliases for Hamiltonian gradients and Hessians.
+  - Added `symplectic_step_t` and `symplectic_tangent_step_t` type aliases for Hamiltonian fixed-step integrators and their tangent-map variants.
+
+### Changed
+
+- Refactored low-level discrete-time analysis routines by splitting the old monolithic modules into dedicated files for improved project organization, readability, and maintainability.
+- Refactored low-level continuous-time analysis routines by splitting the old monolithic modules into dedicated files for improved project organization, readability, and maintainability.
+- Refactored low-level Hamiltonian-system analysis and integration routines by splitting the old monolithic modules into dedicated files for improved project organization, readability, and maintainability.
+
+- `DiscreteDynamicalSystem` class:
+  - Updated wrappers across the discrete-time analysis API with improved type annotations, return annotations, argument validation, and docstrings.
+  - Standardized handling of `sample_times` in wrappers that support sampled outputs by explicitly validating user input and constructing internal sampling arrays only when needed.
+  - Updated `dig` observable validation so the observable must be callable and return a 1D NumPy array with one value per input state.
+  - Improved validation and normalization of wrapper inputs for periodic-orbit, manifold, transport, escape, Hurst, and recurrence diagnostics.
+
+- `ContinuousDynamicalSystem` class:
+  - Reorganized imports and internal plumbing to use the new continuous-time module layout.
+  - Updated constructor, integrator configuration, and wrapper methods with improved type annotations, return annotations, argument validation, and docstrings.
+  - Standardized validation of continuous-time arguments by using dedicated time validation helpers and more explicit normalization of parameters and wrapper inputs.
+  - Updated trajectory-related wrappers to reflect adaptive-step behavior more faithfully when ensemble trajectories do not all share the same stored length.
+  - Updated Lyapunov-related return annotations and docstrings so the scalar `num_exponents=1` case is documented and handled consistently.
+
+- `HamiltonianSystem` class:
+  - Reorganized imports and internal plumbing to use the new Hamiltonian-system module layout.
+  - Updated constructor, integrator configuration, and wrapper methods with improved type annotations, return annotations, argument validation, and docstrings.
+  - Standardized validation of Hamiltonian wrapper inputs for coordinates, momenta, parameters, section arguments, CLV configuration, and time-like arguments.
+  - Updated Lyapunov-, CLV-, SALI-, LDI-, GALI-, RTE-, Hurst-, trajectory-, and Poincaré-related wrappers to use the refactored low-level modules and more explicit scalar/array return semantics.
+
+- `continuous_time.validators`:
+  - Refactored `validate_times()` to return validated `np.float64` values and to enforce stricter type and range checks for continuous-time arguments.
+
+- `hamiltonian_systems.validators`:
+  - Refactored `validate_times()` and `validate_initial_conditions()` with stricter typing, shape checks, and `np.float64` normalization for Hamiltonian-system inputs.
+
+- `common.validators`:
+  - Refactored `validate_clv_subspaces()` and `validate_clv_pairs()` to validate indices against `num_clvs` instead of the full system dimension.
+  - Improved normalization of single subspace and single pair inputs into canonical tuple-based representations.
+
+- `common.utils`:
+  - Refactored the internal QR routine to a simpler reduced modified Gram-Schmidt implementation with manual inner products for better Numba compatibility and lower overhead.
+  - Simplified `householder_qr()` implementation.
+  - Temporarily kept shared CLV helper routines in `utils.py` because they are still used by the continuous and Hamiltonian classes during the refactor.
+  - Added typed `qr_truncate()` helper documentation and return annotations for CLV-related truncation logic.
+
+### Fixed
+
+- `DiscreteDynamicalSystem` class:
+  - Fixed `SALI`, `LDI`, and `GALI` wrappers so that scalar outputs are returned consistently when `return_history=False`, while preserving the final state when `return_last_state=True`.
+  - Fixed `GALI` computation by using stable QR-based volume evaluation.
+  - Fixed `CLV_angles` validation so subspace and pair indices are checked against the number of computed CLVs rather than the ambient phase-space dimension.
+  - Removed a stray debug `print(iter_time)` from `manifold()`.
+
+- `ContinuousDynamicalSystem` class:
+  - Fixed wrapper regressions introduced during the continuous-time refactor in trajectory, reduced-map, Lyapunov, CLV, SALI, LDI, GALI, RTE, and Hurst-related methods.
+  - Fixed `trajectory()` return handling for ensembles evolved with adaptive integrators, where different initial conditions may produce trajectories with different numbers of stored time steps.
+  - Fixed `lyapunov()` so `method="QR_HH"` works correctly with the refactored low-level implementation.
+  - Fixed `lyapunov()` so `num_exponents=1` returns a scalar instead of a length-1 array when `return_history=False`.
+  - Fixed `GALI()` wrapper so the selected low-level computation method is validated and passed through correctly.
+
+- `HamiltonianSystem` class:
+  - Fixed wrapper validation bugs in trajectory, Poincaré-section, Lyapunov, CLV, CLV-angle, SALI, LDI, GALI, RTE, and Hurst-related methods introduced during the Hamiltonian refactor.
+  - Fixed wrapper shape checks so coordinate and momentum arrays are validated by full shape compatibility rather than only by matching dimensionality.
+  - Fixed `lyapunov()` so `num_exponents=1` returns a scalar instead of a length-1 array when `return_history=False`.
+  - Fixed `GALI()` wrapper so the selected low-level computation method is validated and passed through correctly.
+  - Fixed section-index validation in Hamiltonian reduced-map wrappers so section coordinates are checked against the number of degrees of freedom rather than the full phase-space dimension where appropriate.
+
+- `discrete_time` module:
+  - Fixed low-level `SALI`, `LDI`, and `GALI` implementations to return both the computed result and the final state consistently.
+  - Fixed history allocation and sampling logic in low-level `SALI`, `LDI`, and `GALI` implementations for `return_history=True`.
+  - Fixed the weighted-Birkhoff `dig` implementation to live in its own dedicated module while preserving wrapper behavior.
+  - Fixed dtype consistency in sampled transport routines to avoid Numba typing errors from mixing `int32` and `int64` sampling arrays.
+
+- `continuous_time` module:
+  - Fixed QR-related low-level Lyapunov and GALI computations to handle Householder-based QR consistently under Numba.
+  - Fixed array contiguity issues in low-level QR-based continuous-time routines to avoid reshape/type failures after `numpy.linalg.qr`.
+
+- `hamiltonian_systems` module:
+  - Fixed low-level Lyapunov and GALI computations to support both internal QR and Householder-based QR through method dispatch instead of passing unsupported callable QR objects into Numba-compiled routines.
+  - Fixed low-level trajectory and reduced-map helpers with clearer typing, stricter validation, and dedicated Poincaré-section extraction from stored trajectories.
+  - Fixed Hamiltonian recurrence-time-entropy returns by replacing dynamically assembled list-based returns with explicit tuple branches compatible with static typing.
+
+- `common.validators`:
+  - Fixed `validate_positive()` so zero is rejected correctly.
+
+[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.5.3...HEAD
+
 ## [v1.5.3] - 2026-04-08
 
 ### Fixed
+
 - Incorrect tangent drift update in symplectic (Verlet/Yoshida) integrators (used δq instead of δp in δq update)
 - QR re-orthonormalization scheduling in Lyapunov spectrum (`(i + 1) % qr_interval`)
 - History allocation using `round` instead of integer division

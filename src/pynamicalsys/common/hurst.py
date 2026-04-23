@@ -1,9 +1,26 @@
-from typing import Optional, Tuple, Union, Callable
+# hurst.py
+
+# Copyright (C) 2025-2026 Matheus Rolim Sales
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+
 from numpy.typing import NDArray
 import numpy as np
 from numba import njit, prange
 
-from pynamicalsys.common.utils import fit_poly
+from pynamicalsys.common.fitting import fit_poly
 
 
 @njit(parallel=True)

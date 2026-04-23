@@ -1,6 +1,6 @@
 # models.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,7 +15,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Callable, Optional
 
 import numpy as np
 from numba import njit
@@ -219,47 +218,3 @@ def duffing_jacobian(time, u, parameters):
     J[1, 0] = alpha - 3 * beta * u[0] ** 2
     J[1, 1] = -delta
     return J
-
-
-@njit
-def variational_equations(
-    time: float,
-    state: NDArray[np.float64],
-    parameters: NDArray[np.float64],
-    equations_of_motion: Callable[
-        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
-    ],
-    jacobian: Callable[
-        [np.float64, NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]
-    ],
-    number_of_deviation_vectors: Optional[int] = None,
-) -> NDArray[np.float64]:
-
-    state = state.copy()
-    nt = len(state)  # Total number of equations
-
-    if number_of_deviation_vectors is not None:
-        ndv = number_of_deviation_vectors
-        neq = round(nt / (1 + ndv))  # Number of system's equation
-    else:
-        neq = round((-1 + np.sqrt(1 + 4 * nt)) / 2)
-        ndv = neq
-
-    # Split the state into state variables, u, and deviation matrix, v
-    u = state[:neq].copy()  # State vector
-    v = state[neq:].reshape(neq, ndv).copy()  # Deviation matrix
-    # Compute the Jacobian matrix
-    J = jacobian(time, u, parameters)
-
-    # Compute system's dynamics
-    dudt = equations_of_motion(time, u, parameters)
-
-    # Variational equation: dvdt = J * v
-    dvdt = J @ v
-
-    # Combine into a single output vector of length nt = neq + neq * ndv
-    dstatedt = np.zeros(nt, dtype=np.float64)
-    dstatedt[:neq] = dudt
-    dstatedt[neq:] = dvdt.reshape(neq * ndv)
-
-    return dstatedt

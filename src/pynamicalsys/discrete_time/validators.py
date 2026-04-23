@@ -1,6 +1,6 @@
 # validators.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -69,9 +69,9 @@ def validate_and_convert_param_range(param_range) -> NDArray[np.float64]:
     return param_values
 
 
-def validate_sample_times(sample_times, total_time):
+def validate_sample_times(sample_times, total_time) -> NDArray[np.int64]:
     """
-    Validate and convert sample_times to a 1D int32 array within [0, total_time].
+    Validate and convert sample_times to a 1D int64 array within [0, total_time].
 
     Parameters
     ----------
@@ -88,20 +88,19 @@ def validate_sample_times(sample_times, total_time):
     Raises
     ------
     TypeError
-        If sample_times is not convertible to a 1D int32 array.
+        If sample_times is not convertible to a 1D int64 array.
     ValueError
         If sample_times is not 1D or contains out-of-bound values.
     """
-    if sample_times is None:
-        return None
-
     try:
         sample_times_arr = np.asarray(sample_times, dtype=np.int64)
-        if sample_times_arr.ndim != 1:
-            raise ValueError("sample_times must be a 1D array")
-        if np.any(sample_times_arr < 0) or np.any(sample_times_arr > total_time):
-            raise ValueError("sample_times must be in the range [0, total_time]")
     except (TypeError, ValueError) as e:
-        raise TypeError("sample_times must be convertible to a 1D int32 array") from e
+        raise TypeError("sample_times must be convertible to a 1D int64 array") from e
 
-    return sample_times_arr
+    if sample_times_arr.ndim != 1:
+        raise ValueError("sample_times must be a 1D array")
+
+    if np.any(sample_times_arr < 0) or np.any(sample_times_arr > total_time):
+        raise ValueError("sample_times must be in the range [0, total_time]")
+
+    return np.unique(sample_times_arr)

@@ -1,6 +1,6 @@
 # validators.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -16,9 +16,10 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
-from numbers import Integral, Real
+from numbers import Integral
 from numpy.typing import NDArray
-from typing import Optional, Sequence, Tuple, List
+from typing import Optional, Tuple, Any
+from pynamicalsys.common.types import int_t, numeric_like_t
 
 
 def validate_initial_conditions(
@@ -78,7 +79,10 @@ def validate_initial_conditions(
     return u
 
 
-def validate_parameters(parameters, number_of_parameters) -> NDArray[np.float64]:
+def validate_parameters(
+    parameters: numeric_like_t | None,
+    number_of_parameters: int_t,
+) -> NDArray[np.float64]:
     """
     Validate and standardize parameter vector.
 
@@ -128,10 +132,10 @@ def validate_parameters(parameters, number_of_parameters) -> NDArray[np.float64]
                 f"Expected {number_of_parameters} parameter(s), but got {parameters.size}."
             )
 
-    return parameters
+    return np.asarray(parameters, dtype=np.float64)
 
 
-def validate_non_negative(value, name, type_=Integral) -> None:
+def validate_non_negative(value: Any, name: str, type_: type = Integral) -> None:
     """Ensure value is non-negative of specified type.
 
     Parameters
@@ -149,14 +153,20 @@ def validate_non_negative(value, name, type_=Integral) -> None:
     ValueError
         If value is negative.
     """
+    type_name = getattr(type_, "__name__", str(type_))
+
+    if isinstance(value, bool):
+        raise TypeError(f"{name} must be of type {type_name}")
+
     if not isinstance(value, type_):
-        raise TypeError(f"{name} must be of type {type_.__name__}")
+        raise TypeError(f"{name} must be of type {type_name}")
+
     if value < 0:
         raise ValueError(f"{name} must be non-negative")
 
 
-def validate_positive(value, name, type_=Integral) -> None:
-    """Ensure value is >= 1 and of specified type.
+def validate_positive(value, name, type_: type = Integral) -> None:
+    """Ensure value is > 0 and of specified type.
 
     Parameters
     ----------
@@ -171,12 +181,12 @@ def validate_positive(value, name, type_=Integral) -> None:
     TypeError
         If value is not of the expected type.
     ValueError
-        If value is less than 1.
+        If value is less than 0.
     """
     if not isinstance(value, type_):
         raise TypeError(f"{name} must be of type {type_.__name__}")
-    if value < 1:
-        raise ValueError(f"{name} must be greater than or equal to 1")
+    if value <= 0:
+        raise ValueError(f"{name} must be greater than 0")
 
 
 def validate_transient_time(transient_time, total_time, type_=Integral) -> None:
@@ -229,8 +239,8 @@ def validate_axis(axis, system_dimension):
 
 def validate_clv_subspaces(
     subspaces,
-    system_dimension: int,
-):
+    num_clvs: int,
+) -> Optional[Tuple[Tuple[Tuple[int, ...], Tuple[int, ...]], ...]]:
     """
     Validate CLV subspace specifications.
 
@@ -243,11 +253,9 @@ def validate_clv_subspaces(
     tuple of ((tuple[int], tuple[int]), ...)
         Canonicalized and validated subspace specifications.
     """
-
     if subspaces is None:
         return None
 
-    # --- Normalize: allow a single (A, B) without wrapping ---
     if (
         isinstance(subspaces, (list, tuple))
         and len(subspaces) == 2
@@ -256,7 +264,7 @@ def validate_clv_subspaces(
         and not (
             len(subspaces) > 0
             and isinstance(subspaces[0], (list, tuple))
-            and len(subspaces) > 0
+            and len(subspaces[0]) > 0
             and isinstance(subspaces[0][0], (list, tuple))
         )
     ):
@@ -279,10 +287,8 @@ def validate_clv_subspaces(
             )
 
         for i in (*A, *B):
-            if i < 0 or i >= system_dimension:
-                raise ValueError(
-                    f"Invalid CLV index {i} for system_dimension={system_dimension}."
-                )
+            if i < 0 or i >= num_clvs:
+                raise ValueError(f"Invalid CLV index {i} for num_clvs={num_clvs}.")
 
         validated.append((A, B))
 
@@ -291,7 +297,7 @@ def validate_clv_subspaces(
 
 def validate_clv_pairs(
     pairs,
-    system_dimension: int,
+    num_clvs: int,
 ) -> Optional[Tuple[Tuple[int, int], ...]]:
     """
     Validate pairwise CLV angle specifications.
@@ -305,11 +311,9 @@ def validate_clv_pairs(
     tuple of (int, int)
         Canonicalized and validated CLV index pairs.
     """
-
     if pairs is None:
         return None
 
-    # --- Normalize: allow a single (i, j) without wrapping ---
     if (
         isinstance(pairs, (list, tuple))
         and len(pairs) == 2
@@ -326,12 +330,9 @@ def validate_clv_pairs(
         if i == j:
             raise ValueError(f"Invalid CLV pair ({i}, {j}): indices must be distinct.")
 
-        if i < 0 or j < 0 or i >= system_dimension or j >= system_dimension:
-            raise ValueError(
-                f"Invalid CLV pair ({i}, {j}) for system_dimension={system_dimension}."
-            )
+        if i < 0 or j < 0 or i >= num_clvs or j >= num_clvs:
+            raise ValueError(f"Invalid CLV pair ({i}, {j}) for num_clvs={num_clvs}.")
 
-        # canonical ordering
         validated.append((i, j) if i < j else (j, i))
 
     return tuple(validated)
