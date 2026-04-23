@@ -133,62 +133,59 @@ from pynamicalsys.common.validators import (
 
 
 class DiscreteDynamicalSystem:
-    """Class representing a discrete dynamical system with various models and methods for analysis.
+    """
+    Class for defining, iterating, and analyzing discrete-time dynamical systems.
 
-    This class allows users to work with predefined dynamical models or custom mappings,
-    compute trajectories, bifurcation diagrams, periods, and perform various dynamical analyses.
-    It supports both single initial conditions and ensembles of initial conditions, providing
-    methods for generating trajectories, computing bifurcation diagrams, and analyzing stability.
+    This class represents maps of the form
+
+        u_{n+1} = F(u_n; parameters),
+
+    where `u_n` is the state at iteration `n` and `F` is the discrete-time
+    mapping. A system can be created either from one of the built-in models or
+    from a user-supplied mapping, with optional Jacobian and backward mapping.
+
+    The class provides tools for orbit generation and nonlinear-dynamics
+    analysis, including bifurcation diagrams, Lyapunov exponents, covariant
+    Lyapunov vectors (CLVs), SALI, LDI, GALI, recurrence-based diagnostics,
+    Hurst exponent estimation, periodic orbits, invariant manifolds, transport,
+    escape analysis, rotation numbers, weighted Birkhoff averages, and related
+    discrete-time observables.
 
     Parameters
     ----------
-    model : str, optional
-        Name of the predefined model to use (e.g., "henon map"). If provided, overrides custom mappings.
-    mapping : callable, optional
-        Custom mapping function with signature f(u, parameters) -> array_like.
-        If provided, model must be None.
-    jacobian : callable, optional
-        Custom Jacobian function with signature J(u, parameters, *args) -> array_like.
-        If provided, must be compatible with the mapping function.
-    backwards_mapping : callable, optional
-        Custom inverse mapping function with signature f_inv(u, parameters) -> array_like.
-        If provided, must be compatible with the mapping function.
-    system_dimension : int, optional
-        Dimension of the system (number of variables in the mapping).
-        Required if using custom mappings without a predefined model.
-
-    Raises
-    ------
-    ValueError
-        - If neither model nor mapping is provided, or if provided model name is not implemented.
-        - If mapping is provided without jacobian for models requiring it.
-
-    TypeError
-        - If provided mapping or jacobian is not callable.
+    model : str or None, optional
+        Name of a built-in discrete-time model.
+    mapping : callable or None, optional
+        User-defined mapping with signature
+        `F(u, parameters) -> NDArray[np.float64]`.
+    jacobian : callable or None, optional
+        Jacobian of the mapping with signature
+        `J(u, parameters) -> NDArray[np.float64]`.
+    backwards_mapping : callable or None, optional
+        Inverse or backward mapping associated with the system.
+    system_dimension : int or None, optional
+        Dimension of the state space for a custom mapping.
+    parameters : array_like or None, optional
+        Parameter vector for the system.
+    number_of_parameters : int or None, optional
+        Number of parameters expected by the custom mapping.
 
     Notes
     -----
-    - When providing custom functions, either provide both mapping and jacobian,
-        or just mapping (in which case finite differences will be used for Jacobian)
-    - When providing custom functions, the mapping function signature should be f(u, parameters) -> NDArray[np.float64]
-    - The class supports various predefined models such as the standard map, Hénon map, logistic map, and others.
-    - The available models can be queried using the `available_models` class method.
+    - A system can be created either from a built-in model or from a custom
+      mapping, but not both at the same time.
+    - The Jacobian is optional for orbit-level computations, but it is required
+      for Lyapunov exponents, CLVs, SALI, LDI, GALI, and other tangent-space
+      diagnostics.
+    - A backward mapping is only needed for analyses that explicitly require
+      inverse iteration, such as certain manifold computations.
+    - Built-in models and supported analyses can be queried with the
+      corresponding class methods.
 
-    Examples
+    See Also
     --------
-    >>> # Using predefined model
-    >>> system = DiscreteDynamicalSystem(model="henon map")
-    >>> # Using custom mappings
-    >>> def my_map(u, parameters):
-    ...     return np.array([u[0] + parameters[0] * u[1], u[1] - parameters[1] * u[0]])
-    >>> def my_jacobian(u, parameters):
-    ...     return np.array([[1, parameters[0]], [-parameters[1], 1]])
-    >>> system = DiscreteDynamicalSystem(
-        mapping=my_map,
-        jacobian=my_jacobian,
-        system_dimension=2,
-        number_of_parameters=2
-    )
+    ContinuousDynamicalSystem : Class for continuous-time systems.
+    HamiltonianSystem : Class for separable Hamiltonian systems.
     """
 
     # Class-level constant defining all available models

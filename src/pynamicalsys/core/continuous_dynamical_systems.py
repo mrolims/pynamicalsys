@@ -104,46 +104,54 @@ from pynamicalsys.common.validators import (
 
 
 class ContinuousDynamicalSystem:
-    """Class representing a continuous-time dynamical system with various models and methods for analysis.
+    """
+    Class for defining, integrating, and analyzing continuous-time dynamical systems.
 
-    This class allows users to work with predefined dynamical models or with user-provided equations of motion, compute trajectories, Lyapunov exponents and more dynamical analyses.
+    This class represents systems of ordinary differential equations of the form
+
+        du/dt = f(t, u; parameters),
+
+    where `u` is the state vector and `f` is the vector field. A system can be
+    created either from one of the built-in models or from user-supplied
+    equations of motion, with an optional Jacobian for tangent-space and
+    stability computations.
+
+    The class provides fixed-step and adaptive-step integration together with
+    tools for trajectory generation and nonlinear-dynamics analysis, including
+    Poincaré sections, stroboscopic maps, maxima maps, Lyapunov exponents,
+    covariant Lyapunov vectors (CLVs), SALI, LDI, GALI, recurrence time
+    entropy, Hurst exponent estimation, and basin-of-attraction analysis.
 
     Parameters
     ----------
-    model : str, optional
-        Name of the predefined model to use (e.g. "lorenz system").
-    equations_of_motion : callable, optional
-        Custom function that describes the equations of motion with signature f(time, state, parameters) -> array_like. If provided, `model` must be None.
-    jacobian : callable, optional
-        Custom function that describes the Jacobian matrix of the system with signature J(time, state, parameters) -> array_like
-    system_dimension : int, optional
-        Dimension of the system (number of equations). Required if using custom equations of motion and not a predefined model.
-    number_of_parameters : int, optional
-        Number of parameters of the system. Required if using custom equations of motion and not a predefined model.
-
-    Raises
-    ------
-    ValueError
-        - If neither model nor equations_of_motion is provided, or if provided model is not implemented.
-        - If `system_dimension` is negative.
-        - If `number_of_parameters` is negative.
-
-    TypeError
-        - If `equations_of_motion` or `jacobian` are not callable.
-        - If `system_dimension` or `number_of_parameters` are not valid integers.
+    model : str or None, optional
+        Name of a built-in continuous-time model.
+    equations_of_motion : callable or None, optional
+        User-defined vector field with signature
+        `f(time, u, parameters) -> NDArray[np.float64]`.
+    jacobian : callable or None, optional
+        Jacobian of the vector field with signature
+        `J(time, u, parameters) -> NDArray[np.float64]`.
+    system_dimension : int or None, optional
+        Dimension of the state space for a custom system.
+    parameters : array_like or None, optional
+        Parameter vector for the system.
+    number_of_parameters : int or None, optional
+        Number of parameters expected by the custom system.
 
     Notes
     -----
-    - When providing custom functions, either provide both `equations_of_motion` and `jacobian`, or just the `equations_of_motion`.
-    - When providing custom functions, the equations of motion functions signature should be f(time, u, parameters) -> NDArray[np.float64].
-    - The class supports various predefined models, such as the Lorenz and Rössler system.
-    - The available models can be queried using the 'available_models' class method.
+    - A system can be created either from a built-in model or from custom
+      equations of motion, but not both at the same time.
+    - The Jacobian is optional for trajectory-level analysis, but it is required
+      for Lyapunov exponents, CLVs, SALI, LDI, and GALI.
+    - Built-in models and supported integrators can be queried with the
+      corresponding class methods.
 
-    Examples
+    See Also
     --------
-    >>> from pynamicalsys import ContinuousDynamicalSystem as cds
-    >>> #  Using predefined model
-    >>> ds = cds(model="lorenz system")
+    HamiltonianSystem : Class for separable Hamiltonian systems.
+    DiscreteDynamicalSystem : Class for discrete-time maps.
     """
 
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {

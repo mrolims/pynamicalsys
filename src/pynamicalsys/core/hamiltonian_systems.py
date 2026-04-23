@@ -93,13 +93,52 @@ from pynamicalsys.hamiltonian_systems.validators import (
 
 class HamiltonianSystem:
     """
-    Class for defining, simulating, and analyzing separable Hamiltonian dynamical systems.
+    Class for defining, integrating, and analyzing separable Hamiltonian systems.
 
-    This class provides access to predefined Hamiltonian models (e.g., the
-    Hénon-Heiles system) or allows the user to define a custom Hamiltonian
-    system via gradient and optional Hessian functions. It supports multiple
-    numerical symplectic integrators and a variety of trajectory and chaos
-    analysis tools, such as Lyapunov exponents, SALI, LDI, and GALI.
+    This class represents Hamiltonian systems of the form
+
+        H(q, p) = T(p) + V(q),
+
+    where `q` denotes the generalized coordinates and `p` the conjugate
+    momenta. A system can be created either from one of the built-in models
+    or from user-supplied gradient functions for the kinetic and potential
+    energies, with optional Hessians for tangent-space computations.
+
+    The class provides symplectic fixed-step integration routines together with
+    tools for trajectory generation and nonlinear-dynamics analysis, including
+    Poincaré sections, Lyapunov exponents, covariant Lyapunov vectors (CLVs),
+    SALI, LDI, GALI, recurrence time entropy, and Hurst exponent estimation.
+
+    Parameters
+    ----------
+    model : str or None, optional
+        Name of a built-in Hamiltonian model.
+    grad_T : callable or None, optional
+        Gradient of the kinetic energy with respect to the momenta.
+    grad_V : callable or None, optional
+        Gradient of the potential energy with respect to the coordinates.
+    hess_T : callable or None, optional
+        Hessian of the kinetic energy with respect to the momenta.
+    hess_V : callable or None, optional
+        Hessian of the potential energy with respect to the coordinates.
+    degrees_of_freedom : int or None, optional
+        Number of degrees of freedom of the custom system.
+    parameters : array_like or None, optional
+        Parameter vector for the system.
+    number_of_parameters : int or None, optional
+        Number of parameters expected by the custom system.
+
+    Notes
+    -----
+    - The class is designed for separable Hamiltonians only.
+    - Lyapunov exponents, CLVs, SALI, LDI, and GALI require Hessian functions.
+    - Ensemble trajectory and reduced-map methods accept multiple initial
+      conditions when supported by the corresponding wrapper.
+
+    See Also
+    --------
+    ContinuousDynamicalSystem : Class for general continuous-time dynamical systems.
+    DiscreteDynamicalSystem : Class for discrete-time maps.
 
     Examples
     --------
