@@ -1,4 +1,4 @@
-# time_series_metrics.py
+# hurst.py
 
 # Copyright (C) 2025-2026 Matheus Rolim Sales
 #
@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 import numpy as np
 from numba import njit, prange
 
-from pynamicalsys.common.utils import fit_poly
+from pynamicalsys.common.fitting import fit_poly
 
 
 @njit(parallel=True)
