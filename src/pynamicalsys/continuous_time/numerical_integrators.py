@@ -18,9 +18,9 @@
 from typing import Optional, Callable  # , Union, Tuple, Dict, List, Any, Sequence
 from numpy.typing import NDArray
 import numpy as np
-from numba import njit, prange
+from numba import njit
 
-from pynamicalsys.continuous_time.models import variational_equations
+from pynamicalsys.continuous_time.variational import variational_equations
 
 
 @njit
