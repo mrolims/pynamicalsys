@@ -1,6 +1,6 @@
 # clv.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,81 +22,11 @@ from numba import njit
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-
-
-@njit
-def _clv_sanitize_inplace(M: NDArray[np.float64]) -> None:
-    nrows, ncols = M.shape
-    for i in range(nrows):
-        for j in range(ncols):
-            x = M[i, j]
-            if not np.isfinite(x):
-                M[i, j] = 0.0
-
-
-@njit
-def _clv_col_normalize_inplace(M: NDArray[np.float64], eps_norm: numeric_t) -> None:
-    nrows, ncols = M.shape
-    for j in range(ncols):
-        s = 0.0
-        for i in range(nrows):
-            v = M[i, j]
-            s += v * v
-
-        nrm = np.sqrt(s)
-
-        if (not np.isfinite(nrm)) or (nrm < eps_norm):
-            for i in range(nrows):
-                M[i, j] = 0.0
-            continue
-
-        inv = 1.0 / nrm
-        for i in range(nrows):
-            M[i, j] *= inv
-
-
-@njit
-def _clv_solve_upper_inplace(
-    R: NDArray[np.float64],
-    B: NDArray[np.float64],
-    rcond_guard: numeric_t,
-) -> None:
-    """
-    Solve the upper-triangular system ``R X = B`` in place.
-
-    Parameters
-    ----------
-    R : NDArray[np.float64]
-        Upper-triangular matrix of shape `(p, p)`.
-    B : NDArray[np.float64]
-        Right-hand side matrix of shape `(p, m)`. Overwritten in place with
-        the solution `X`.
-    rcond_guard : numeric_t
-        Minimum absolute value allowed for diagonal entries of `R` during the
-        back-substitution step.
-
-    Notes
-    -----
-    This function modifies `B` in place and does not modify `R`.
-    """
-    p = R.shape[0]
-    ncols = B.shape[1]
-
-    for col in range(ncols):
-        for i in range(p - 1, -1, -1):
-            s = B[i, col]
-
-            for k in range(i + 1, p):
-                s -= R[i, k] * B[k, col]
-
-            rii = R[i, i]
-            if (not np.isfinite(rii)) or (np.abs(rii) < rcond_guard):
-                rii = rcond_guard if rii >= 0.0 else -rcond_guard
-
-            if not np.isfinite(s):
-                B[i, col] = 0.0
-            else:
-                B[i, col] = s / rii
+from pynamicalsys.common.utils import (
+    clv_col_normalize_inplace,
+    clv_sanitize_inplace,
+    clv_solve_upper_inplace,
+)
 
 
 @njit(error_model="numpy")
@@ -219,9 +149,9 @@ def compute_clvs(
     A = np.triu(np.random.randn(num_clvs, num_clvs)).astype(np.float64)
 
     # Make sure A starts finite and reasonably scaled
-    _clv_sanitize_inplace(A)
+    clv_sanitize_inplace(A)
     if normalize_A:
-        _clv_col_normalize_inplace(A, eps_norm)
+        clv_col_normalize_inplace(A, eps_norm)
 
     for _ in range(tail_time):
         J = jacobian(u, parameters, mapping)
@@ -230,13 +160,13 @@ def compute_clvs(
         R = R_full[:num_clvs, :num_clvs]
 
         if normalize_A:
-            _clv_col_normalize_inplace(A, eps_norm)
+            clv_col_normalize_inplace(A, eps_norm)
 
-        _clv_solve_upper_inplace(R, A, rcond_guard)
+        clv_solve_upper_inplace(R, A, rcond_guard)
 
-        _clv_sanitize_inplace(A)
+        clv_sanitize_inplace(A)
         if normalize_A:
-            _clv_col_normalize_inplace(A, eps_norm)
+            clv_col_normalize_inplace(A, eps_norm)
 
         u = mapping(u, parameters)
 
@@ -248,18 +178,18 @@ def compute_clvs(
 
     for t in range(total_time, -1, -1):
         if normalize_A:
-            _clv_col_normalize_inplace(A, eps_norm)
+            clv_col_normalize_inplace(A, eps_norm)
 
         V[:, :] = Q_store[t] @ A
-        _clv_sanitize_inplace(V)
-        _clv_col_normalize_inplace(V, eps_norm)
+        clv_sanitize_inplace(V)
+        clv_col_normalize_inplace(V, eps_norm)
         clvs[t] = V
 
         if t > 0:
-            _clv_solve_upper_inplace(R_store[t - 1], A, rcond_guard)
-            _clv_sanitize_inplace(A)
+            clv_solve_upper_inplace(R_store[t - 1], A, rcond_guard)
+            clv_sanitize_inplace(A)
             if normalize_A:
-                _clv_col_normalize_inplace(A, eps_norm)
+                clv_col_normalize_inplace(A, eps_norm)
 
     return clvs, traj
 
@@ -466,7 +396,7 @@ def clv_angles(
     # No windowing
     # -----------------------
     if window_time is None:
-        return _clv_angles(
+        return clv_angles(
             u=u,
             parameters=parameters,
             total_time=total_time,

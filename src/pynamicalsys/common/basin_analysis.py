@@ -1,6 +1,6 @@
 # basin_analysis.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,7 +17,7 @@
 
 import numpy as np
 from numba import njit, prange
-from typing import Optional, Tuple
+from typing import Tuple
 from numpy.typing import NDArray
 
 
