@@ -16,29 +16,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - `"QR"`: computes `GALI_k` from the diagonal of the triangular factor returned by the internal QR routine.
     - `"QR_HH"`: computes `GALI_k` from the diagonal of the triangular factor returned by `numpy.linalg.qr`.
 
+- `ContinuousDynamicalSystem` class:
+  - Added `method` option to `GALI` with the following implementations:
+    - `"DET"`: computes `GALI_k` from the Gram matrix determinant.
+    - `"QR"`: computes `GALI_k` from the diagonal of the triangular factor returned by the internal QR routine.
+    - `"QR_HH"`: computes `GALI_k` from the diagonal of the triangular factor returned by `numpy.linalg.qr`.
+
 - `discrete_time` module:
   - Added dedicated low-level modules:
+    - `trajectory.py`
+    - `bifurcation.py`
+    - `birkhoff.py`
+    - `hurst.py`
+    - `rte.py`
+    - `periodic_orbits.py`
+    - `stability.py`
+    - `manifolds.py`
+    - `rotation.py`
+    - `escape.py`
+    - `transport.py`
+    - `averages.py`
+    - `symmetry.py`
     - `sali.py`
     - `ldi.py`
     - `gali.py`
     - `clv.py`
-    - `birkhoff.py`
+
+- `continuous_time` module:
+  - Added dedicated low-level modules:
+    - `fixed_step.py`
+    - `adaptive_step.py`
+    - `step_methods.py`
+    - `variational.py`
+    - `step.py`
+    - `trajectory.py`
+    - `poincare.py`
+    - `stroboscopic.py`
+    - `maxima_map.py`
+    - `basins.py`
+    - `lyapunov.py`
+    - `sali.py`
+    - `ldi.py`
+    - `gali.py`
+    - `clv.py`
+    - `rte.py`
+    - `hurst.py`
+
+- `common.types`:
+  - Added `observable_t` type alias for weighted-Birkhoff observable functions.
+  - Added `flow_t` and `flow_jacobian_t` type aliases for continuous-time vector fields and their Jacobians.
 
 ### Changed
 
-- Refactored low-level chaos-indicator implementations by moving `SALI`, `LDI`, `GALI`, CLV-related routines, and the weighted-Birkhoff `dig` implementation out of `dynamical_indicators.py` into dedicated modules for improved project organization and maintainability.
+- Refactored low-level discrete-time analysis routines by splitting the old monolithic modules into dedicated files for improved project organization, readability, and maintainability.
+- Refactored low-level continuous-time analysis routines by splitting the old monolithic modules into dedicated files for improved project organization, readability, and maintainability.
 
 - `DiscreteDynamicalSystem` class:
-  - Updated `SALI`, `LDI`, `GALI`, `CLV`, `CLV_angles`, and `dig` wrappers with improved type annotations, return annotations, and docstrings.
-  - Standardized handling of `sample_times` in `lyapunov`, `SALI`, `LDI`, and `GALI` wrappers by explicitly validating user input and constructing an internal `sample_times_arr` only when `return_history=True`.
+  - Updated wrappers across the discrete-time analysis API with improved type annotations, return annotations, argument validation, and docstrings.
+  - Standardized handling of `sample_times` in wrappers that support sampled outputs by explicitly validating user input and constructing internal sampling arrays only when needed.
   - Updated `dig` observable validation so the observable must be callable and return a 1D NumPy array with one value per input state.
+  - Improved validation and normalization of wrapper inputs for periodic-orbit, manifold, transport, escape, Hurst, and recurrence diagnostics.
+
+- `ContinuousDynamicalSystem` class:
+  - Reorganized imports and internal plumbing to use the new continuous-time module layout.
+  - Updated constructor, integrator configuration, and wrapper methods with improved type annotations, return annotations, argument validation, and docstrings.
+  - Standardized validation of continuous-time arguments by using dedicated time validation helpers and more explicit normalization of parameters and wrapper inputs.
+  - Updated trajectory-related wrappers to reflect adaptive-step behavior more faithfully when ensemble trajectories do not all share the same stored length.
+
+- `continuous_time.validators`:
+  - Refactored `validate_times()` to return validated `np.float64` values and to enforce stricter type and range checks for continuous-time arguments.
 
 - `common.validators`:
   - Refactored `validate_clv_subspaces()` and `validate_clv_pairs()` to validate indices against `num_clvs` instead of the full system dimension.
   - Improved normalization of single subspace and single pair inputs into canonical tuple-based representations.
-
-- `common.types`:
-  - Added `observable_t` type alias for weighted-Birkhoff observable functions.
 
 - `common.utils`:
   - Refactored the internal QR routine to a simpler reduced modified Gram-Schmidt implementation with manual inner products for better Numba compatibility and lower overhead.
@@ -51,13 +101,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed `SALI`, `LDI`, and `GALI` wrappers so that scalar outputs are returned consistently when `return_history=False`, while preserving the final state when `return_last_state=True`.
   - Fixed `GALI` computation by using stable QR-based volume evaluation.
   - Fixed `CLV_angles` validation so subspace and pair indices are checked against the number of computed CLVs rather than the ambient phase-space dimension.
+  - Removed a stray debug `print(iter_time)` from `manifold()`.
+
+- `ContinuousDynamicalSystem` class:
+  - Fixed wrapper regressions introduced during the continuous-time refactor in trajectory, reduced-map, Lyapunov, CLV, SALI, LDI, GALI, RTE, and Hurst-related methods.
+  - Fixed `trajectory()` return handling for ensembles evolved with adaptive integrators, where different initial conditions may produce trajectories with different numbers of stored time steps.
+  - Fixed `lyapunov()` so `method="QR_HH"` works correctly with the refactored low-level implementation.
+  - Fixed `GALI()` wrapper so the selected low-level computation method is validated and passed through correctly.
 
 - `discrete_time` module:
   - Fixed low-level `SALI`, `LDI`, and `GALI` implementations to return both the computed result and the final state consistently.
   - Fixed history allocation and sampling logic in low-level `SALI`, `LDI`, and `GALI` implementations for `return_history=True`.
   - Fixed the weighted-Birkhoff `dig` implementation to live in its own dedicated module while preserving wrapper behavior.
+  - Fixed dtype consistency in sampled transport routines to avoid Numba typing errors from mixing `int32` and `int64` sampling arrays.
+
+- `continuous_time` module:
+  - Fixed QR-related low-level Lyapunov and GALI computations to handle Householder-based QR consistently under Numba.
+  - Fixed array contiguity issues in low-level QR-based continuous-time routines to avoid reshape/type failures after `numpy.linalg.qr`.
+
+- `common.validators`:
+  - Fixed `validate_positive()` so zero is rejected correctly.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.5.3...HEAD
+
+## [v1.5.3] - 2026-04-08
 
 ### Fixed
 
