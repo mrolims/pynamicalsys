@@ -396,7 +396,7 @@ def clv_angles(
     # No windowing
     # -----------------------
     if window_time is None:
-        return clv_angles(
+        return _clv_angles(
             u=u,
             parameters=parameters,
             total_time=total_time,
