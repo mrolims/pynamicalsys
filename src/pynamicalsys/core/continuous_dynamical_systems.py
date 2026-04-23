@@ -1222,7 +1222,7 @@ class ContinuousDynamicalSystem:
         log_base: numeric_t = np.e,
         method: str = "QR",
         endpoint: bool = True,
-    ) -> NDArray[np.float64]:
+    ) -> np.float64 | NDArray[np.float64]:
         """
         Calculate the Lyapunov exponents of the dynamical system.
 
@@ -1259,9 +1259,14 @@ class ContinuousDynamicalSystem:
 
         Returns
         -------
-        NDArray[np.float64]
-            - If `return_history=False`, returns the final Lyapunov exponents.
-            - If `return_history=True`, returns their time history.
+        np.float64 | NDArray[np.float64]
+            - If `return_history=True`, returns a 2D array whose first column
+              contains the sampled times and whose remaining columns contain
+              the Lyapunov exponents at those times.
+            - If `return_history=False` and `num_exponents == 1`, returns the
+              largest Lyapunov exponent as a scalar.
+            - If `return_history=False` and `num_exponents > 1`, returns a 1D
+              array containing the final Lyapunov exponents.
 
         Raises
         ------
@@ -1359,6 +1364,9 @@ class ContinuousDynamicalSystem:
 
         if return_history:
             return result / np.log(log_base)
+
+        if num_exponents == 1:
+            return np.float64(result[0, 0] / np.log(log_base))
 
         return result[0] / np.log(log_base)
 
