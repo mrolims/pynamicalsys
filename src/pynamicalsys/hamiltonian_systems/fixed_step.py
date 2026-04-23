@@ -20,7 +20,7 @@ import numpy as np
 from numba import njit
 
 from pynamicalsys.hamiltonian_systems.coefficients import ALPHA, BETA
-from pynamicalsys.hamiltonian_systems.types import grad_t
+from pynamicalsys.common.types import grad_t
 
 
 @njit

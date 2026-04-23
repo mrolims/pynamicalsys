@@ -188,3 +188,104 @@ def ensemble_poincare_section(
         )
 
     return section_points
+
+
+@njit
+def generate_poincare_section_from_traj(
+    q: NDArray[np.float64],
+    p: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    grad_T: grad_t,
+    time_step: np.float64,
+    section_index: int = 0,
+    section_value: np.float64 = np.float64(0.0),
+    crossing: int = 1,
+) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+    """
+    Extract Poincaré-section crossings from precomputed trajectory samples.
+
+    Parameters
+    ----------
+    q : NDArray[np.float64]
+        Sampled generalized coordinates of shape `(num_points, dof)`.
+    p : NDArray[np.float64]
+        Sampled generalized momenta of shape `(num_points, dof)`.
+    parameters : NDArray[np.float64]
+        Additional system parameters passed to `grad_T`.
+    grad_T : grad_t
+        Gradient of the kinetic energy with respect to the momenta.
+    time_step : np.float64
+        Time interval between successive stored trajectory samples.
+    section_index : int, optional
+        Index of the coordinate used to define the section.
+    section_value : np.float64, optional
+        Value of `q[:, section_index]` defining the section.
+    crossing : int, optional
+        Crossing rule:
+        - `+1` for upward crossings
+        - `-1` for downward crossings
+        - `0` for all crossings
+
+    Returns
+    -------
+    tuple[NDArray[np.float64], NDArray[np.int64]]
+        - `section_points`: array of shape `(n_hits, 1 + 2 * dof)` whose rows are
+          `[t_cross, q_cross..., p_cross...]`
+        - `section_k`: integer array of shape `(n_hits,)` containing the index `k`
+          such that each crossing lies between samples `k` and `k + 1`
+    """
+    dof = q.shape[1]
+    num_points = q.shape[0]
+
+    n_hits = 0
+    for i in range(1, num_points):
+        q_prev_i = q[i - 1, section_index]
+        q_new_i = q[i, section_index]
+
+        if (q_prev_i - section_value) * (q_new_i - section_value) < np.float64(0.0):
+            denom = q_new_i - q_prev_i
+            if denom == np.float64(0.0):
+                continue
+
+            lam = (section_value - q_prev_i) / denom
+            p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
+            vel = grad_T(p_cross, parameters)[section_index]
+
+            if crossing == 0 or np.sign(vel) == crossing:
+                n_hits += 1
+
+    section_points = np.empty((n_hits, 1 + 2 * dof), dtype=np.float64)
+    section_k = np.empty(n_hits, dtype=np.int64)
+
+    hit = 0
+    for i in range(1, num_points):
+        q_prev_i = q[i - 1, section_index]
+        q_new_i = q[i, section_index]
+
+        if (q_prev_i - section_value) * (q_new_i - section_value) < np.float64(0.0):
+            denom = q_new_i - q_prev_i
+            if denom == np.float64(0.0):
+                continue
+
+            lam = (section_value - q_prev_i) / denom
+
+            q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
+            p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
+            t_cross = np.float64(i - 1) * time_step + lam * time_step
+
+            vel = grad_T(p_cross, parameters)[section_index]
+            ok = (crossing == 0) or (np.sign(vel) == crossing)
+
+            if ok:
+                section_points[hit, 0] = t_cross
+
+                for j in range(dof):
+                    section_points[hit, 1 + j] = q_cross[j]
+
+                for j in range(dof):
+                    section_points[hit, 1 + dof + j] = p_cross[j]
+
+                section_k[hit] = i - 1
+                hit += 1
+
+    return section_points, section_k

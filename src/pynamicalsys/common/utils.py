@@ -195,12 +195,39 @@ def householder_qr(
 
 
 @njit
-def qr_truncate(Q, k, QR):
-    """QR and keep only first k columns (Q) and leading block (R)."""
+def qr_truncate(
+    Q: NDArray[np.float64],
+    k: int,
+    QR: Callable[
+        [NDArray[np.float64]],
+        tuple[NDArray[np.float64], NDArray[np.float64]],
+    ],
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Compute a QR decomposition and retain only the first `k` columns of `Q`
+    and the leading `k x k` block of `R`.
+
+    Parameters
+    ----------
+    Q : NDArray[np.float64]
+        Input matrix of shape `(m, n)`.
+    k : int
+        Number of columns and rows to retain after the QR decomposition.
+    QR : callable
+        QR decomposition routine returning `(Q_full, R_full)`.
+
+    Returns
+    -------
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        - `Q_trunc`: array of shape `(m, k)` containing the first `k` columns
+          of the orthonormal factor
+        - `R_trunc`: array of shape `(k, k)` containing the leading block of
+          the upper-triangular factor
+    """
     Q_full, R_full = QR(Q)
-    Q = np.ascontiguousarray(Q_full[:, :k])
-    R = R_full[:k, :k]
-    return Q, R
+    Q_trunc = np.ascontiguousarray(Q_full[:, :k])
+    R_trunc = R_full[:k, :k]
+    return Q_trunc, R_trunc
 
 
 @njit
