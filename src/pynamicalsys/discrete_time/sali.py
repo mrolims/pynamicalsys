@@ -21,7 +21,7 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import Optional, Tuple
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.utils import qr
+from pynamicalsys.common.linalg import qr
 
 
 @njit

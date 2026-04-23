@@ -30,7 +30,9 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     calculate_threshold,
 )
 
-from pynamicalsys.common.utils import finite_difference_jacobian, qr, householder_qr
+from pynamicalsys.common.linalg import qr, householder_qr
+
+from pynamicalsys.common.differentiation import finite_difference_jacobian
 
 from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t, observable_t
 

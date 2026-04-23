@@ -19,7 +19,7 @@
 from numpy.typing import NDArray
 import numpy as np
 
-from pynamicalsys.common.time_series_metrics import hurst_exponent
+from pynamicalsys.common.hurst import hurst_exponent
 from pynamicalsys.common.types import grad_t, symplectic_step_t
 from pynamicalsys.hamiltonian_systems.poincare import generate_poincare_section
 

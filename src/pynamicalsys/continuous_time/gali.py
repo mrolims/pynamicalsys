@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 import numpy as np
 
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
-from pynamicalsys.common.utils import qr
+from pynamicalsys.common.linalg import qr
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 from pynamicalsys.continuous_time.step import evolve_system, step
 

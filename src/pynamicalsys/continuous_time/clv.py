@@ -22,8 +22,10 @@ from numba import njit
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
-from pynamicalsys.common.utils import (
-    qr,
+
+from pynamicalsys.common.linalg import qr
+
+from pynamicalsys.common.clv import (
     clv_col_normalize_inplace,
     clv_solve_upper_inplace,
 )

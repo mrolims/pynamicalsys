@@ -21,7 +21,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.utils import householder_qr
+from pynamicalsys.common.linalg import householder_qr
 
 
 @njit

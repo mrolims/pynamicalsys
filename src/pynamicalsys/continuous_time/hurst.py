@@ -18,7 +18,7 @@
 from numpy.typing import NDArray
 import numpy as np
 
-from pynamicalsys.common.time_series_metrics import hurst_exponent
+from pynamicalsys.common.hurst import hurst_exponent
 from pynamicalsys.common.types import flow_t
 from pynamicalsys.continuous_time.maxima_map import generate_maxima_map
 from pynamicalsys.continuous_time.poincare import generate_poincare_section

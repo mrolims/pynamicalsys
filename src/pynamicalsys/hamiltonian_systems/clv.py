@@ -22,9 +22,8 @@ from numba import njit
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import grad_t, hess_t, symplectic_tangent_step_t
-from pynamicalsys.common.utils import (
-    qr,
-    qr_truncate,
+from pynamicalsys.common.linalg import qr, qr_truncate
+from pynamicalsys.common.clv import (
     clv_col_normalize_inplace,
     clv_solve_upper_inplace,
 )

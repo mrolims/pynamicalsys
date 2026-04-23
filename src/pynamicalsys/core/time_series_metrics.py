@@ -31,7 +31,7 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
 
 from pynamicalsys.common.validators import validate_positive
 
-from pynamicalsys.common.time_series_metrics import hurst_exponent
+from pynamicalsys.common.hurst import hurst_exponent
 
 
 class TimeSeriesMetrics:

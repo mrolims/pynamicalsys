@@ -20,9 +20,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 
-from pynamicalsys.common.utils import (
-    qr,
-)
+from pynamicalsys.common.linalg import qr
 
 from pynamicalsys.common.types import grad_t, hess_t, symplectic_tangent_step_t
 

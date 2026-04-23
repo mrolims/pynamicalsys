@@ -22,7 +22,7 @@ from numba import njit
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.utils import (
+from pynamicalsys.common.clv import (
     clv_col_normalize_inplace,
     clv_sanitize_inplace,
     clv_solve_upper_inplace,

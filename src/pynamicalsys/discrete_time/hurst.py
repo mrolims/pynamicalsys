@@ -20,7 +20,7 @@ from typing import Tuple, Union
 import numpy as np
 from numpy.typing import NDArray
 
-from pynamicalsys.common.time_series_metrics import hurst_exponent
+from pynamicalsys.common.hurst import hurst_exponent
 from pynamicalsys.common.types import int_t, map_t
 from pynamicalsys.discrete_time.trajectory import generate_trajectory
 
