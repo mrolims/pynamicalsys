@@ -139,15 +139,6 @@ class HamiltonianSystem:
     --------
     ContinuousDynamicalSystem : Class for general continuous-time dynamical systems.
     DiscreteDynamicalSystem : Class for discrete-time maps.
-
-    Examples
-    --------
-    >>> from pynamicalsys import HamiltonianSystem
-    >>> ds = HamiltonianSystem(model="henon heiles")
-    >>> ds.available_models()
-    ['henon heiles']
-    >>> ds.available_integrators()
-    ['svy4', 'vv2']
     """
 
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
