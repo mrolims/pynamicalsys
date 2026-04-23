@@ -116,7 +116,7 @@ def ldi_k(
             norm = np.linalg.norm(dv[:, j])
             dv[:, j] /= norm
 
-        S = np.linalg.svd(dv, full_matrices=False, compute_uv=False)
+        _, S, _ = np.linalg.svd(dv, full_matrices=False)
         ldi_val = np.exp(np.sum(np.log(S)))
 
         if return_history:

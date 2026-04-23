@@ -15,40 +15,58 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from numbers import Integral, Real
-from typing import Type, Union
+from numbers import Real
 
 import numpy as np
 from numpy.typing import NDArray
 
-
-def validate_non_negative(
-    value: Union[Integral, int, Real, float],
-    name: str,
-    type_: Type[Union[Integral, int, Real, float]] = Integral,
-) -> None:
-    if not isinstance(value, type_):
-        raise TypeError(f"{name} must be of type {type_.__name__}")
-    if value < 0:
-        raise ValueError(f"{name} must be non-negative")
+from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t
 
 
-def validate_times(transient_time, total_time) -> tuple[float, float]:
+def validate_times(
+    transient_time: numeric_t | None,
+    total_time: numeric_t,
+) -> tuple[np.float64 | None, np.float64]:
+    """
+    Validate Hamiltonian-system time parameters.
 
-    if isinstance(total_time, (Integral, Real)):
-        total_time = float(total_time)
-    else:
-        raise ValueError("total_time must be a valid number")
-    if total_time < 0:
+    Parameters
+    ----------
+    transient_time : numeric_t | None
+        Initial integration time to discard. If not `None`, it must be a
+        non-negative real number strictly smaller than `total_time`.
+    total_time : numeric_t
+        Total integration time. It must be a non-negative real number.
+
+    Returns
+    -------
+    tuple[np.float64 | None, np.float64]
+        Validated `(transient_time, total_time)`.
+
+    Raises
+    ------
+    TypeError
+        If `total_time` or `transient_time` is not a valid real number.
+    ValueError
+        If `total_time` is negative.
+        If `transient_time` is negative.
+        If `transient_time >= total_time`.
+    """
+    if isinstance(total_time, bool) or not isinstance(total_time, Real):
+        raise TypeError("total_time must be a valid real number")
+
+    total_time = np.float64(total_time)
+
+    if total_time < np.float64(0.0):
         raise ValueError("total_time must be non-negative")
 
     if transient_time is not None:
+        if isinstance(transient_time, bool) or not isinstance(transient_time, Real):
+            raise TypeError("transient_time must be a valid real number")
 
-        if isinstance(transient_time, (Integral, Real)):
-            transient_time = float(transient_time)
-        else:
-            raise ValueError("transient_time must be a valid number")
-        if transient_time < 0:
+        transient_time = np.float64(transient_time)
+
+        if transient_time < np.float64(0.0):
             raise ValueError("transient_time must be non-negative")
 
         if transient_time >= total_time:
@@ -58,57 +76,67 @@ def validate_times(transient_time, total_time) -> tuple[float, float]:
 
 
 def validate_initial_conditions(
-    u, degrees_of_freedom, allow_ensemble=True
+    u: numeric_like_t,
+    degrees_of_freedom: int_t,
+    allow_ensemble: bool = True,
 ) -> NDArray[np.float64]:
+    """
+    Validate and standardize Hamiltonian initial conditions.
+
+    Parameters
+    ----------
+    u : numeric_like_t
+        Initial condition(s). It may define either one initial condition of
+        shape `(dof,)` or an ensemble of shape `(num_ic, dof)`.
+    degrees_of_freedom : int_t
+        Expected number of degrees of freedom.
+    allow_ensemble : bool, optional
+        Whether a 2D ensemble of initial conditions is allowed.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Validated contiguous array of initial conditions.
+
+    Raises
+    ------
+    TypeError
+        If `degrees_of_freedom` is not an integer.
+    ValueError
+        If the shape of `u` is invalid.
+        If `u` does not match the expected number of degrees of freedom.
+        If an ensemble is provided when `allow_ensemble=False`.
+    """
+    if isinstance(degrees_of_freedom, bool) or not isinstance(
+        degrees_of_freedom, (int, np.integer)
+    ):
+        raise TypeError("degrees_of_freedom must be an integer")
+
     if np.isscalar(u):
         u = np.array([u], dtype=np.float64)
     else:
         u = np.asarray(u, dtype=np.float64)
+
         if u.ndim not in (1, 2):
-            raise ValueError("Initial condition must be 1D or 2D array")
+            raise ValueError("Initial condition must be a 1D or 2D array")
 
     u = np.ascontiguousarray(u).copy()
 
     if u.ndim == 1:
-        if len(u) != degrees_of_freedom:
+        if u.shape[0] != degrees_of_freedom:
             raise ValueError(
                 f"1D initial condition must have length {degrees_of_freedom}"
             )
-    elif u.ndim == 2:
+
+    else:
         if not allow_ensemble:
             raise ValueError(
                 "Ensemble of initial conditions not allowed in this context"
             )
+
         if u.shape[1] != degrees_of_freedom:
             raise ValueError(
                 f"Each initial condition must have length {degrees_of_freedom}"
             )
+
     return u
-
-
-def validate_parameters(parameters, number_of_parameters) -> NDArray[np.float64]:
-    if number_of_parameters == 0:
-        if parameters is not None:
-            raise ValueError("This system does not expect any parameters.")
-        return np.array([0], dtype=np.float64)
-
-    if parameters is None:
-        raise ValueError(
-            f"This system expects {number_of_parameters} parameter(s), but got None."
-        )
-
-    if np.isscalar(parameters):
-        parameters = np.array([parameters], dtype=np.float64)
-    else:
-        parameters = np.asarray(parameters, dtype=np.float64)
-        if parameters.ndim != 1:
-            raise ValueError(
-                f"`parameters` must be a 1D array or scalar. Got shape {parameters.shape}."
-            )
-
-    if parameters.size != number_of_parameters:
-        raise ValueError(
-            f"Expected {number_of_parameters} parameter(s), but got {parameters.size}."
-        )
-
-    return parameters
