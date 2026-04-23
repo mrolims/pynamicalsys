@@ -17,26 +17,64 @@
 
 import warnings
 from numbers import Integral, Real
-from typing import Any, Callable, Dict, List, Optional, Sequence, Union, Tuple
+from typing import Any, Callable, Dict, List, Sequence, Union
 from IPython.display import Math
 
 import numpy as np
 from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
-from pynamicalsys.common.utils import householder_qr, qr
+from pynamicalsys.common.types import int_t, numeric_t, numeric_like_t
+from pynamicalsys.common.utils import qr
 
-from pynamicalsys.continuous_time.chaotic_indicators import (
-    LDI,
-    SALI,
-    GALI,
+from pynamicalsys.continuous_time.step import evolve_system
+
+from pynamicalsys.continuous_time.step_methods import (
+    estimate_initial_step,
+    rk4_step_wrapped,
+    rk45_step_wrapped,
+)
+
+from pynamicalsys.continuous_time.trajectory import (
+    generate_trajectory,
+    ensemble_trajectories,
+)
+
+from pynamicalsys.continuous_time.poincare import (
+    generate_poincare_section,
+    ensemble_poincare_section,
+)
+
+from pynamicalsys.continuous_time.stroboscopic import (
+    generate_stroboscopic_map,
+    ensemble_stroboscopic_map,
+)
+
+from pynamicalsys.continuous_time.maxima_map import (
+    generate_maxima_map,
+    ensemble_maxima_map,
+)
+
+from pynamicalsys.continuous_time.basins import basin_of_attraction
+
+from pynamicalsys.continuous_time.lyapunov import (
     lyapunov_exponents,
     maximum_lyapunov_exponent,
-    recurrence_time_entropy,
-    hurst_exponent_wrapped,
-    compute_clvs,
-    clv_angles,
 )
+
+from pynamicalsys.continuous_time.clv import clv_angles, compute_clvs
+
+from pynamicalsys.continuous_time.sali import sali
+
+from pynamicalsys.continuous_time.ldi import ldi_k
+
+from pynamicalsys.continuous_time.gali import gali_k
+
+from pynamicalsys.continuous_time.rte import (
+    recurrence_time_entropy as recurrence_time_entropy_core,
+)
+
+from pynamicalsys.continuous_time.hurst import hurst_exponent_wrapped
 
 from pynamicalsys.continuous_time.models import (
     henon_heiles,
@@ -51,25 +89,6 @@ from pynamicalsys.continuous_time.models import (
     duffing_jacobian,
 )
 
-from pynamicalsys.continuous_time.numerical_integrators import (
-    estimate_initial_step,
-    rk4_step_wrapped,
-    rk45_step_wrapped,
-)
-
-from pynamicalsys.continuous_time.trajectory_analysis import (
-    evolve_system,
-    generate_maxima_map,
-    generate_trajectory,
-    ensemble_trajectories,
-    generate_poincare_section,
-    ensemble_poincare_section,
-    generate_stroboscopic_map,
-    ensemble_stroboscopic_map,
-    generate_maxima_map,
-    ensemble_maxima_map,
-    basin_of_attraction,
-)
 
 from pynamicalsys.continuous_time.validators import (
     validate_times,
@@ -78,6 +97,7 @@ from pynamicalsys.continuous_time.validators import (
 from pynamicalsys.common.validators import (
     validate_initial_conditions,
     validate_parameters,
+    validate_positive,
     validate_non_negative,
     validate_clv_pairs,
     validate_clv_subspaces,
@@ -237,13 +257,22 @@ class ContinuousDynamicalSystem:
 
     def __init__(
         self,
-        model: Optional[str] = None,
-        equations_of_motion: Optional[Callable] = None,
-        jacobian: Optional[Callable] = None,
-        system_dimension: Optional[int] = None,
-        parameters: Optional[Sequence] = None,
-        number_of_parameters: Optional[int] = None,
+        model: str | None = None,
+        equations_of_motion: Callable | None = None,
+        jacobian: Callable | None = None,
+        system_dimension: int | None = None,
+        parameters: numeric_like_t | None = None,
+        number_of_parameters: int | None = None,
     ) -> None:
+        self.__equations_of_motion: Callable
+        self.__jacobian: Callable | None
+        self.__system_dimension: int
+        self.__parameters: NDArray[np.float64] | None
+        self.__number_of_parameters: int
+        self.__model: str
+        self.__atol: np.float64
+        self.__rtol: np.float64
+        self.__time_step: np.float64
 
         warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
@@ -262,55 +291,85 @@ class ContinuousDynamicalSystem:
                 )
 
             model_info = self.__AVAILABLE_MODELS[model]
+
             self.__model = model
             self.__equations_of_motion = model_info["equations_of_motion"]
             self.__jacobian = model_info["jacobian"]
-            self.__system_dimension = model_info["dimension"]
+            self.__system_dimension = int(model_info["dimension"])
             self.__parameters = None
-            self.__number_of_parameters = model_info["number_of_parameters"]
+            self.__number_of_parameters = int(model_info["number_of_parameters"])
 
             if jacobian is not None:
+                if not callable(jacobian):
+                    raise TypeError("Custom Jacobian must be callable or None")
                 self.__jacobian = jacobian
 
-        elif (
-            equations_of_motion is not None
-            and system_dimension is not None
-            and (parameters is not None or number_of_parameters is not None)
-        ):
-            self.__equations_of_motion = equations_of_motion
-            self.__jacobian = jacobian
+        elif equations_of_motion is not None and system_dimension is not None:
+            if not callable(equations_of_motion):
+                raise TypeError("Custom equations_of_motion must be callable")
 
-            validate_non_negative(system_dimension, "system_dimension", Integral)
+            if jacobian is not None and not callable(jacobian):
+                raise TypeError("Custom Jacobian must be callable or None")
+
+            validate_positive(system_dimension, "system_dimension", Integral)
+
             if number_of_parameters is not None:
                 validate_non_negative(
                     number_of_parameters, "number_of_parameters", Integral
                 )
 
-            self.__system_dimension = system_dimension
-            self.__parameters = parameters
-            if self.__parameters is not None:
-                self.__number_of_parameters = len(self.__parameters)
-                self.__parameters = validate_parameters(
-                    self.__parameters, self.__number_of_parameters
+            validated_parameters: NDArray[np.float64] | None
+            validated_number_of_parameters: int
+
+            if parameters is not None:
+                parameters_input: numeric_like_t = parameters
+
+                if isinstance(parameters_input, (int, float, np.integer, np.floating)):
+                    validated_number_of_parameters = 1
+                else:
+                    parameters_arr = np.asarray(parameters_input, dtype=np.float64)
+                    if parameters_arr.ndim != 1:
+                        raise ValueError(
+                            f"`parameters` must be a 1D array or scalar. Got shape {parameters_arr.shape}."
+                        )
+                    validated_number_of_parameters = int(parameters_arr.size)
+
+                if (
+                    number_of_parameters is not None
+                    and validated_number_of_parameters != number_of_parameters
+                ):
+                    raise ValueError(
+                        f"Expected {number_of_parameters} parameter(s), but got {validated_number_of_parameters}."
+                    )
+
+                validated_parameters = validate_parameters(
+                    parameters_input, validated_number_of_parameters
                 )
             else:
-                self.__number_of_parameters = number_of_parameters
+                if number_of_parameters is None:
+                    raise ValueError(
+                        "For a custom system, you must provide either parameters or number_of_parameters."
+                    )
 
-            if not callable(self.__equations_of_motion):
-                raise TypeError("Custom mapping must be callable")
+                validated_number_of_parameters = int(number_of_parameters)
+                validated_parameters = None
+            self.__model = "custom"
+            self.__equations_of_motion = equations_of_motion
+            self.__jacobian = jacobian
+            self.__system_dimension = int(system_dimension)
+            self.__parameters = validated_parameters
+            self.__number_of_parameters = validated_number_of_parameters
 
-            if self.__jacobian is not None and not callable(self.__jacobian):
-                raise TypeError("Custom Jacobian must be callable or None")
         else:
             raise ValueError(
-                "Must specify either a model name or custom system function with its dimension and number of paramters."
+                "Must specify either a model name or a custom system with equations_of_motion, system_dimension, and parameters or number_of_parameters."
             )
 
         self.__integrator = "rk4"
         self.__integrator_func = rk4_step_wrapped
-        self.__time_step = 1e-2
-        self.__atol = 1e-6
-        self.__rtol = 1e-3
+        self.__time_step = np.float64(1e-2)
+        self.__atol = np.float64(1e-6)
+        self.__rtol = np.float64(1e-3)
 
     @classmethod
     def available_models(cls) -> List[str]:
@@ -342,18 +401,24 @@ class ContinuousDynamicalSystem:
 
         return self.__AVAILABLE_INTEGRATORS[integrator]
 
-    def integrator(self, integrator, time_step=1e-2, atol=1e-6, rtol=1e-3):
+    def integrator(
+        self,
+        integrator: str,
+        time_step: np.float64 = np.float64(1e-2),
+        atol: np.float64 = np.float64(1e-6),
+        rtol: np.float64 = np.float64(1e-3),
+    ):
         """Define the integrator.
 
         Parameters
         ----------
         integrator : str
             The integrator name. Available options are 'rk4' and 'rk45'
-        time_step : float, optional
+        time_step : np.float64, optional
             The integration time step when `integrator='rk4'`, by default 1e-2
-        atol : float, optional
+        atol : np.float64, optional
             The absolute tolerance used when `integrator='rk45'`, by default 1e-6
-        rtol : float, optional
+        rtol : np.float64, optional
             The relative tolerance used when `integrator='rk45'`, by default 1e-3
 
         Raises
@@ -422,7 +487,7 @@ class ContinuousDynamicalSystem:
         parameters = validate_parameters(parameters, self.__number_of_parameters)
         self.__parameters = parameters
 
-    def get_parameters(self) -> NDArray[np.float64]:
+    def get_parameters(self) -> NDArray[np.float64] | None:
         """
         Return the current parameter vector of the dynamical system.
 
@@ -433,10 +498,12 @@ class ContinuousDynamicalSystem:
         """
         return self.__parameters
 
-    def __get_initial_time_step(self, u, parameters):
+    def __get_initial_time_step(
+        self, u: NDArray[np.float64], parameters: NDArray[np.float64]
+    ) -> np.float64:
         if self.integrator_info["estimate_initial_step"]:
             time_step = estimate_initial_step(
-                0.0,
+                np.float64(0.0),
                 u,
                 parameters,
                 self.__equations_of_motion,
@@ -446,72 +513,73 @@ class ContinuousDynamicalSystem:
         else:
             time_step = self.__time_step
 
-        return time_step
+        return np.float64(time_step)
 
     def evolve_system(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: float,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
+        u: numeric_like_t,
+        total_time: numeric_t,
+        parameters: numeric_like_t | None = None,
     ) -> NDArray[np.float64]:
         """
-        Evolve the dynamical system from the given initial conditions over a specified time period.
+        Evolve the dynamical system from the given initial condition over a specified time interval.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        total_time : float
-            Total time over which to evolve the system.
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
+        u : numeric_like_t
+            Initial condition of the system. It must define a 1D state vector whose
+            length matches the system dimension.
+        total_time : numeric_t
+            Total integration time.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
 
         Returns
         -------
-        result : NDArray[np.float64]
-            The state of the system at time = total_time.
+        NDArray[np.float64]
+            State of the system at `time = total_time`.
 
         Raises
         ------
         ValueError
-            - If the initial condition is not valid, i.e., if the dimensions do not match.
-            - If the number of parameters does not match.
-            - If `parameters` is not a scalar, 1D list, or 1D array.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `total_time` is negative.
         TypeError
-            - If `total_time` is not a valid number.
+            - If `total_time` is not a valid real number.
 
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
         >>> ds.integrator("rk4", time_step=0.01)
-        >>> parameters = [10, 28, 8/3]
-        >>> u = [1.0, 1.0, 1.0]
-        >>> total_time = 10
-        >>> ds.evolve_system(u, total_time, parameters=parameters)
-        >>> ds.integrator("rk45", atol=1e-8, rtol=1e-6)
-        >>> ds.evolve_system(u, total_time, parameters=parameters)
-        """
+        >>> parameters = [10.0, 28.0, 8.0 / 3.0]
+        >>> u0 = [1.0, 1.0, 1.0]
+        >>> ds.evolve_system(u0, 10.0, parameters=parameters)
 
-        u = validate_initial_conditions(u, self.__system_dimension)
-        u = u.copy()
+        >>> ds.integrator("rk45", atol=1e-8, rtol=1e-6)
+        >>> ds.evolve_system(u0, 10.0, parameters=parameters)
+        """
+        u = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
 
         if parameters is None:
             parameters = self.__parameters
-        else:
-            parameters = validate_parameters(parameters, self.__number_of_parameters)
+        parameters = validate_parameters(parameters, self.__number_of_parameters)
 
-        _, total_time = validate_times(1, total_time)
+        _, total_time = validate_times(None, total_time)
 
         time_step = self.__get_initial_time_step(u, parameters)
 
         total_time += time_step
 
         return evolve_system(
-            u,
-            parameters,
-            total_time,
-            self.__equations_of_motion,
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            equations_of_motion=self.__equations_of_motion,
             time_step=time_step,
             atol=self.__atol,
             rtol=self.__rtol,
@@ -520,61 +588,65 @@ class ContinuousDynamicalSystem:
 
     def trajectory(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: float,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        total_time: numeric_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
     ) -> NDArray[np.float64]:
         """
-        Compute the trajectory of the dynamical system over a specified time period.
+        Compute the trajectory of the dynamical system over a specified time interval.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        total_time : float
-            Total time over which to evolve the system (including transient).
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
-        transient_time : float
-            Initial time to discard.
+        u : numeric_like_t
+            Initial condition or ensemble of initial conditions. It must define either
+            a 1D state vector of length equal to the system dimension or a 2D array
+            whose rows are valid initial conditions.
+        total_time : numeric_t
+            Total integration time.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before storing the trajectory.
 
         Returns
         -------
-        result : NDArray[np.float64]
-            The trajectory of the system.
+        NDArray[np.float64]
+            The computed trajectory.
 
-            - For a single initial condition (u.ndim = 1), return a 2D array of shape (number_of_steps, neq + 1), where the first column is the time samples and the remaining columns are the coordinates of the system
-            - For multiple initial conditions (u.ndim = 2), return a 3D array of shape (num_ic, number_of_steps, neq + 1).
+            - If `u` is one initial condition, returns an array of shape
+              `(num_steps, neq + 1)`, where the first column contains time and the
+              remaining columns contain the state coordinates.
+            - If `u` is an ensemble of initial conditions, returns an array of shape
+              `(num_ic, num_steps, neq + 1)`.
 
         Raises
         ------
         ValueError
-            - If the initial condition is not valid, i.e., if the dimensions do not match.
-            - If the number of parameters does not match.
-            - If `parameters` is not a scalar, 1D list, or 1D array.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `total_time` is negative.
+            - If `transient_time` is negative or not smaller than `total_time`.
         TypeError
-            - If `total_time` or `transient_time` are not valid numbers.
+            - If `total_time` or `transient_time` is not a valid real number.
 
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]  # Initial condition
-        >>> parameters = [10, 28, 8/3]
-        >>> total_time = 700
-        >>> transient_time = 500
-        >>> trajectory = ds.trajectory(u, total_time, parameters=parameters, transient_time=transient_time)
-        (11000, 4)
-        >>> u = [[0.1, 0.1, 0.1],
-        ... [0.2, 0.2, 0.2],
-        ... [0.3, 0.3, 0.3]]  # Three initial conditions
-        >>> trajectories = ds.trajectory(u, total_time, parameters=parameters, transient_time=transient_time)
-        (3, 20000, 4)
-        """
+        >>> u0 = [0.1, 0.1, 0.1]
+        >>> parameters = [10.0, 28.0, 8.0 / 3.0]
+        >>> traj = ds.trajectory(u0, 700.0, parameters=parameters, transient_time=500.0)
 
+        >>> u0s = [
+        ...     [0.1, 0.1, 0.1],
+        ...     [0.2, 0.2, 0.2],
+        ...     [0.3, 0.3, 0.3],
+        ... ]
+        >>> trajs = ds.trajectory(u0s, 700.0, parameters=parameters, transient_time=500.0)
+        """
         u = validate_initial_conditions(u, self.__system_dimension)
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -586,24 +658,11 @@ class ContinuousDynamicalSystem:
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
-            result = generate_trajectory(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                transient_time=transient_time,
-                time_step=time_step,
-                atol=self.__atol,
-                rtol=self.__rtol,
-                integrator=self.__integrator_func,
-            )
-            return np.array(result)
-        else:
-            return ensemble_trajectories(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
+            return generate_trajectory(
+                u=u,
+                parameters=parameters,
+                total_time=total_time,
+                equations_of_motion=self.__equations_of_motion,
                 transient_time=transient_time,
                 time_step=time_step,
                 atol=self.__atol,
@@ -611,83 +670,108 @@ class ContinuousDynamicalSystem:
                 integrator=self.__integrator_func,
             )
 
+        return ensemble_trajectories(
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            equations_of_motion=self.__equations_of_motion,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+        )
+
     def poincare_section(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        num_intersections: int,
-        section_index: int,
-        section_value: float,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
-        crossing: int = 1,
+        u: numeric_like_t,
+        num_intersections: int_t,
+        section_index: int_t,
+        section_value: numeric_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
+        crossing: int_t = 1,
     ) -> NDArray[np.float64]:
         """
         Compute the Poincaré section of the dynamical system for given initial conditions.
 
-        A Poincaré section records the points where a trajectory intersects a chosen hypersurface
-        in phase space (e.g. x = constant). This reduces a continuous flow to a lower-dimensional
-        map, making it easier to identify periodic orbits, quasi-periodic motion, or chaotic
-        structures.
+        A Poincaré section records the points where a trajectory intersects a chosen
+        hypersurface in phase space. This reduces a continuous flow to a lower-dimensional
+        map, making it easier to identify periodic, quasi-periodic, or chaotic motion.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        num_intersections : int
-            Number of intersections to record in the Poincaré section.
-        section_index : int
-            Index of the coordinate to define the Poincaré section (0-based).
-        section_value : float
+        u : numeric_like_t
+            Initial condition or ensemble of initial conditions. It must define either
+            a 1D state vector of length equal to the system dimension or a 2D array
+            whose rows are valid initial conditions.
+        num_intersections : int_t
+            Number of intersections to record.
+        section_index : int_t
+            Index of the coordinate defining the Poincaré section.
+        section_value : numeric_t
             Value of the coordinate at which the section is defined.
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats, or a numpy array.
-        transient_time : float, optional
-            Initial time to discard before recording the section.
-        crossing : int, default=1
-            Specifies the type of crossing to consider:
-            - 1 : positive crossing (from below to above section_value)
-            - -1 : negative crossing (from above to below section_value)
-            - 0 : all crossings
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before recording the section.
+        crossing : int_t, optional
+            Type of crossing to consider:
+            - `1`  : positive crossings
+            - `-1` : negative crossings
+            - `0`  : all crossings
 
         Returns
         -------
-        result : NDArray[np.float64]
-            The Poincaré section points.
+        NDArray[np.float64]
+            Poincaré section points.
 
-            - For a single initial condition (u.ndim = 1), returns a 2D array of shape
-              (num_intersections, neq), where each row is a system state at a crossing.
-            - For multiple initial conditions (u.ndim = 2), returns a 3D array of shape
-              (num_ic, num_intersections, neq).
+            - If `u` is one initial condition, returns an array of shape
+              `(num_intersections, neq + 1)`, where the first column is the crossing
+              time and the remaining columns are the state coordinates.
+            - If `u` is an ensemble of initial conditions, returns an array of shape
+              `(num_ic, num_intersections, neq + 1)`.
 
         Raises
         ------
         ValueError
-            - If the initial condition dimension does not match the system dimension.
-            - If the number of parameters does not match the system.
-            - If section_index is larger than the system dimension.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `num_intersections` is negative.
+            - If `section_index` is outside the valid coordinate range.
+            - If `transient_time` is negative or not smaller than the total integration time
+              when such a comparison is required elsewhere.
+            - If `crossing` is not one of `-1`, `0`, or `1`.
         TypeError
-            - If `section_value` is not a real number.
-            - If `num_intersections` or `transient_time` are not valid numbers.
+            - If `section_value` is not a valid real number.
+            - If `num_intersections`, `section_index`, or `crossing` are not integers.
+            - If `transient_time` is not a valid real number.
 
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]  # Initial condition
-        >>> parameters = [10, 28, 8/3]
-        >>> num_intersections = 500
-        >>> section_index = 2
-        >>> section_value = 25.0
-        >>> ps = ds.poincare_section(u, num_intersections, section_index, section_value, parameters=parameters)
-        (500, 3)
-        >>> u = [[0.1, 0.1, 0.1],
-        ...      [0.2, 0.2, 0.2]]  # Two initial conditions
-        >>> ps_ensemble = ds.poincare_section(u, num_intersections, section_index, section_value, parameters=parameters)
-        (2, 500, 3)
-        """
+        >>> u0 = [0.1, 0.1, 0.1]
+        >>> parameters = [10.0, 28.0, 8.0 / 3.0]
+        >>> ps = ds.poincare_section(
+        ...     u0,
+        ...     num_intersections=500,
+        ...     section_index=2,
+        ...     section_value=25.0,
+        ...     parameters=parameters,
+        ... )
 
+        >>> u0s = [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2]]
+        >>> ps_ensemble = ds.poincare_section(
+        ...     u0s,
+        ...     num_intersections=500,
+        ...     section_index=2,
+        ...     section_value=25.0,
+        ...     parameters=parameters,
+        ... )
+        """
         u = validate_initial_conditions(u, self.__system_dimension)
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -695,124 +779,133 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(num_intersections, "num_intersections", Integral)
-
         validate_non_negative(section_index, "section_index", Integral)
-        if section_index > self.__system_dimension:
-            raise ValueError("section_index must be smaller than the sustem_dimension")
 
-        if not isinstance(section_value, Real):
+        if section_index >= self.__system_dimension:
+            raise ValueError("section_index must be smaller than system_dimension")
+
+        if isinstance(section_value, bool) or not isinstance(section_value, Real):
             raise TypeError("section_value must be a valid real number")
+        section_value = np.float64(section_value)
 
-        if transient_time is not None:
-            validate_non_negative(transient_time, "transient_time", Real)
+        transient_time, _ = validate_times(transient_time, 1.0e300)
 
-        if not isinstance(crossing, Integral):
-            raise TypeError("crossing must be an integer number")
-        elif crossing not in [-1, 0, 1]:
+        if isinstance(crossing, bool) or not isinstance(crossing, Integral):
+            raise TypeError("crossing must be an integer")
+        if crossing not in (-1, 0, 1):
             raise ValueError(
-                "crossing must be -1 (downward crossings), 0 (all crossings), or 1 (upward crossing)"
+                "crossing must be -1 (downward), 0 (all crossings), or 1 (upward)"
             )
 
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
             return generate_poincare_section(
-                u,
-                parameters,
-                num_intersections,
-                self.__equations_of_motion,
-                transient_time,
-                time_step,
-                self.__atol,
-                self.__rtol,
-                self.__integrator_func,
-                section_index,
-                section_value,
-                crossing,
+                u=u,
+                parameters=parameters,
+                num_intersections=int(num_intersections),
+                equations_of_motion=self.__equations_of_motion,
+                transient_time=transient_time,
+                time_step=time_step,
+                atol=self.__atol,
+                rtol=self.__rtol,
+                integrator=self.__integrator_func,
+                section_index=int(section_index),
+                section_value=section_value,
+                crossing=int(crossing),
             )
-        else:
-            return ensemble_poincare_section(
-                u,
-                parameters,
-                num_intersections,
-                self.__equations_of_motion,
-                transient_time,
-                time_step,
-                self.__atol,
-                self.__rtol,
-                self.__integrator_func,
-                section_index,
-                section_value,
-                crossing,
-            )
+
+        return ensemble_poincare_section(
+            u=u,
+            parameters=parameters,
+            num_intersections=int(num_intersections),
+            equations_of_motion=self.__equations_of_motion,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            section_index=int(section_index),
+            section_value=section_value,
+            crossing=int(crossing),
+        )
 
     def stroboscopic_map(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        num_samples: int,
-        sampling_time: float,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        num_samples: int_t,
+        sampling_time: numeric_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
     ) -> NDArray[np.float64]:
         """
         Compute the stroboscopic map of the dynamical system for given initial conditions.
 
-        A stroboscopic map samples the state of a time-periodic or driven system at fixed time
-        intervals (typically one driving period). This converts the continuous-time dynamics
-        into a discrete-time sequence that highlights periodicity, phase locking, and
-        bifurcations.
+        A stroboscopic map samples the state of a continuous-time system at fixed time
+        intervals. This converts the flow into a discrete sequence that can reveal
+        periodicity, phase locking, and bifurcations.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        num_samples : int
-            Number of samples to record in the stroboscopic map.
-        sampling_time : float
+        u : numeric_like_t
+            Initial condition or ensemble of initial conditions. It must define either
+            a 1D state vector of length equal to the system dimension or a 2D array
+            whose rows are valid initial conditions.
+        num_samples : int_t
+            Number of samples to record.
+        sampling_time : numeric_t
             Time interval between consecutive samples.
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats, or a numpy array.
-        transient_time : float, optional
-            Initial time to discard before recording the map.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before recording the map.
 
         Returns
         -------
-        result : NDArray[np.float64]
-            The stroboscopic map points.
+        NDArray[np.float64]
+            Stroboscopic map points.
 
-            - For a single initial condition (u.ndim = 1), returns a 2D array of shape
-              (num_samples, neq + 1), where the first column is the time and the remaining
-              columns are the system coordinates at each sampled time.
-            - For multiple initial conditions (u.ndim = 2), returns a 3D array of shape
-              (num_ic, num_samples, neq + 1).
+            - If `u` is one initial condition, returns an array of shape
+              `(num_samples, neq + 1)`, where the first column is time and the
+              remaining columns are the sampled state coordinates.
+            - If `u` is an ensemble of initial conditions, returns an array of shape
+              `(num_ic, num_samples, neq + 1)`.
 
         Raises
         ------
         ValueError
-            - If the initial condition dimension does not match the system dimension.
-            - If the number of parameters does not match the system.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `num_samples` is negative.
+            - If `sampling_time` is negative.
+            - If `transient_time` is negative.
         TypeError
-            - If `num_samples` or `sampling_time` are not valid numbers.
-            - If `transient_time` is provided and is not a valid number.
+            - If `num_samples` is not an integer.
+            - If `sampling_time` or `transient_time` is not a valid real number.
 
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]  # Initial condition
-        >>> parameters = [10, 28, 8/3]
-        >>> num_samples = 500
-        >>> sampling_time = 0.1
-        >>> smap = ds.stroboscopic_map(u, num_samples, sampling_time, parameters=parameters)
-        (500, 4)
-        >>> u = [[0.1, 0.1, 0.1],
-        ...      [0.2, 0.2, 0.2]]  # Two initial conditions
-        >>> smap_ensemble = ds.stroboscopic_map(u, num_samples, sampling_time, parameters=parameters)
-        (2, 500, 4)
-        """
+        >>> u0 = [0.1, 0.1, 0.1]
+        >>> parameters = [10.0, 28.0, 8.0 / 3.0]
+        >>> smap = ds.stroboscopic_map(
+        ...     u0,
+        ...     num_samples=500,
+        ...     sampling_time=0.1,
+        ...     parameters=parameters,
+        ... )
 
+        >>> u0s = [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2]]
+        >>> smap_ensemble = ds.stroboscopic_map(
+        ...     u0s,
+        ...     num_samples=500,
+        ...     sampling_time=0.1,
+        ...     parameters=parameters,
+        ... )
+        """
         u = validate_initial_conditions(u, self.__system_dimension)
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -820,219 +913,232 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         validate_non_negative(num_samples, "num_samples", Integral)
-
+        num_samples = int(num_samples)
         validate_non_negative(sampling_time, "sampling_time", Real)
+        sampling_time = np.float64(sampling_time)
 
-        if transient_time is not None:
-            validate_non_negative(transient_time, "transient_time", Real)
+        transient_time, _ = validate_times(transient_time, 1.0e300)
 
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
             return generate_stroboscopic_map(
-                u,
-                parameters,
-                num_samples,
-                sampling_time,
-                self.__equations_of_motion,
-                transient_time,
-                time_step,
-                self.__atol,
-                self.__rtol,
-                self.__integrator_func,
+                u=u,
+                parameters=parameters,
+                num_intersections=num_samples,
+                sampling_time=sampling_time,
+                equations_of_motion=self.__equations_of_motion,
+                transient_time=transient_time,
+                time_step=time_step,
+                atol=self.__atol,
+                rtol=self.__rtol,
+                integrator=self.__integrator_func,
             )
-        else:
-            return ensemble_stroboscopic_map(
-                u,
-                parameters,
-                num_samples,
-                sampling_time,
-                self.__equations_of_motion,
-                transient_time,
-                time_step,
-                self.__atol,
-                self.__rtol,
-                self.__integrator_func,
-            )
+
+        return ensemble_stroboscopic_map(
+            u=u,
+            parameters=parameters,
+            num_intersections=num_samples,
+            sampling_time=sampling_time,
+            equations_of_motion=self.__equations_of_motion,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+        )
 
     def maxima_map(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        num_points: int,
-        maxima_index: int,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        num_points: int_t,
+        maxima_index: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
     ) -> NDArray[np.float64]:
         """
         Compute the maxima map of the dynamical system for given initial conditions.
 
-        A maxima map records the local maxima of a chosen system variable along the trajectory.
-        By plotting successive maxima, one obtains a discrete return map that reveals
-        oscillation amplitudes, period-doubling cascades, and other nonlinear behaviours.
+        A maxima map records the local maxima of a chosen system variable along the
+        trajectory. By plotting successive maxima, one obtains a discrete return map
+        that can reveal oscillation amplitudes, period-doubling cascades, and other
+        nonlinear behavior.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        num_points : int
-            Number of points to record in the maxima map.
-        maxima_index : int
-            Index of the variable whose maxima are to be recorded.
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats, or a numpy array.
-        transient_time : float, optional
-            Initial time to discard before recording the map.
+        u : numeric_like_t
+            Initial condition or ensemble of initial conditions. It must define either
+            a 1D state vector of length equal to the system dimension or a 2D array
+            whose rows are valid initial conditions.
+        num_points : int_t
+            Number of maxima points to record.
+        maxima_index : int_t
+            Index of the state variable whose maxima are recorded.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before recording the maxima map.
 
         Returns
         -------
-        result : NDArray[np.float64]
-            The maxima map points.
+        NDArray[np.float64]
+            Maxima map points.
 
-            - For a single initial condition (u.ndim = 1), returns a 2D array of shape
-              (num_points, neq + 1), where the first column is the time and the remaining
-              columns are the system coordinates at each maxima point.
-            - For multiple initial conditions (u.ndim = 2), returns a 3D array of shape
-              (num_ic, num_points, neq + 1).
+            - If `u` is one initial condition, returns an array of shape
+              `(num_points, neq + 1)`, where the first column is time and the
+              remaining columns are the state coordinates at each detected maximum.
+            - If `u` is an ensemble of initial conditions, returns an array of shape
+              `(num_ic, num_points, neq + 1)`.
 
         Raises
         ------
         ValueError
-            - If the initial condition dimension does not match the system dimension.
-            - If the number of parameters does not match the system.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `num_points` is negative.
+            - If `maxima_index` is outside the valid coordinate range.
+            - If `transient_time` is negative.
         TypeError
-            - If `num_points` or `maxima_index` are not valid numbers.
-            - If `transient_time` is provided and is not a valid number.
+            - If `num_points` or `maxima_index` is not an integer.
+            - If `transient_time` is not a valid real number.
 
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]  # Initial condition
-        >>> parameters = [10, 28, 8/3]
-        >>> num_points = 500
-        >>> maxima_index = 0
-        >>> smap = ds.maxima_map(u, num_points, maxima_index, parameters=parameters)
-        >>> smap.shape
+        >>> u0 = [0.1, 0.1, 0.1]
+        >>> parameters = [10.0, 28.0, 8.0 / 3.0]
+        >>> mmap = ds.maxima_map(u0, 500, 0, parameters=parameters)
+        >>> mmap.shape
         (500, 4)
-        >>> u = [[0.1, 0.1, 0.1],
-        ...      [0.2, 0.2, 0.2]]  # Two initial conditions
-        >>> smap_ensemble = ds.stroboscopic_map(u, num_samples, sampling_time, parameters=parameters)
-        >>> smap_ensemble.shape
+
+        >>> u0s = [[0.1, 0.1, 0.1], [0.2, 0.2, 0.2]]
+        >>> mmap_ensemble = ds.maxima_map(u0s, 500, 0, parameters=parameters)
+        >>> mmap_ensemble.shape
         (2, 500, 4)
         """
-
         u = validate_initial_conditions(u, self.__system_dimension)
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
         else:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
-        validate_non_negative(num_points, "num_samples", Integral)
-
+        validate_non_negative(num_points, "num_points", Integral)
         validate_non_negative(maxima_index, "maxima_index", Integral)
 
-        if transient_time is not None:
-            validate_non_negative(transient_time, "transient_time", Real)
+        if maxima_index >= self.__system_dimension:
+            raise ValueError("maxima_index must be smaller than system_dimension")
+
+        transient_time, _ = validate_times(transient_time, 1.0e300)
 
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
             return generate_maxima_map(
-                u,
-                parameters,
-                num_points,
-                maxima_index,
-                self.__equations_of_motion,
-                transient_time,
-                time_step,
-                self.__atol,
-                self.__rtol,
-                self.__integrator_func,
+                u=u,
+                parameters=parameters,
+                num_peaks=int(num_points),
+                maxima_index=int(maxima_index),
+                equations_of_motion=self.__equations_of_motion,
+                transient_time=transient_time,
+                time_step=time_step,
+                atol=self.__atol,
+                rtol=self.__rtol,
+                integrator=self.__integrator_func,
             )
-        else:
-            return ensemble_maxima_map(
-                u,
-                parameters,
-                num_points,
-                maxima_index,
-                self.__equations_of_motion,
-                transient_time,
-                time_step,
-                self.__atol,
-                self.__rtol,
-                self.__integrator_func,
-            )
+
+        return ensemble_maxima_map(
+            u=u,
+            parameters=parameters,
+            num_peaks=int(num_points),
+            maxima_index=int(maxima_index),
+            equations_of_motion=self.__equations_of_motion,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+        )
 
     def basin_of_attraction(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        num_intersections: int,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        num_intersections: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
         map_type: str = "SM",
-        section_index: Optional[int] = None,
-        section_value: Optional[float] = None,
-        crossing: Optional[int] = None,
-        sampling_time: Optional[float] = None,
-        eps: float = 0.05,
-        min_samples: int = 1,
+        section_index: int_t | None = None,
+        section_value: numeric_t | None = None,
+        crossing: int_t | None = None,
+        sampling_time: numeric_t | None = None,
+        eps: numeric_t = 0.05,
+        min_samples: int_t = 1,
     ) -> NDArray[np.int32]:
         """
-        Compute the basin of attraction for a dynamical system for a set of initial conditions.
+        Compute the basin of attraction for a set of initial conditions.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions for the dynamical system.
-        num_intersections : int
-            Number of intersections (or samples) to use in constructing the map (stroboscopic or Poincaré).
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            System parameters. If None, defaults will be used. Default is None.
-        transient_time : float, optional
-            Transient time to discard before analyzing the trajectories. Default is None.
-        map_type : str, default "SM"
-            Type of map to compute:
-            - "SM" : stroboscopic map
-            - "PS" : Poincaré section
-        section_index : int, optional
-            Index of the coordinate used for the Poincaré section (required if map_type="PS").
-        section_value : float, optional
-            Value of the section plane (required if map_type="PS").
-        crossing : int, optional
-            Crossing direction for Poincaré section:
-            - -1 : downward crossings
-            - 0  : all crossings
-            - 1  : upward crossings
-            Required if map_type="PS".
-        sampling_time : float, optional
-            Sampling time for stroboscopic map (required if map_type="SM").
-        eps : float, default 0.05
-            The maximum distance between points to be considered in the same cluster (DBSCAN parameter).
-        min_samples : int, default 1
-            The minimum number of points to form a cluster (DBSCAN parameter).
+        u : numeric_like_t
+            Ensemble of initial conditions for the dynamical system. It must define
+            either a valid 2D array whose rows are initial conditions, or a single
+            initial condition if single-trajectory analysis is intended.
+        num_intersections : int_t
+            Number of intersections or samples used to construct the reduced map.
+        parameters : numeric_like_t | None, optional
+            System parameters. If `None`, the parameters stored in the instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before analyzing the trajectories.
+        map_type : str, optional
+            Type of reduced map to construct:
+            - `"SM"` for stroboscopic map
+            - `"PS"` for Poincaré section
+        section_index : int_t | None, optional
+            Index of the section coordinate when `map_type="PS"`.
+        section_value : numeric_t | None, optional
+            Value of the Poincaré section when `map_type="PS"`.
+        crossing : int_t | None, optional
+            Crossing orientation when `map_type="PS"`:
+            - `-1` for downward crossings
+            - `0` for all crossings
+            - `1` for upward crossings
+        sampling_time : numeric_t | None, optional
+            Sampling time when `map_type="SM"`.
+        eps : numeric_t, optional
+            Maximum neighborhood radius used by DBSCAN.
+        min_samples : int_t, optional
+            Minimum number of points required to form a DBSCAN cluster.
 
         Returns
         -------
         NDArray[np.int32]
-            Array of integer labels indicating which attractor each initial condition belongs to.
-            Label `-1` indicates points classified as noise (not part of any attractor).
+            Integer labels indicating which attractor each initial condition belongs to.
+            The label `-1` indicates noise.
+
+        Raises
+        ------
+        ValueError
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `num_intersections`, `eps`, or `min_samples` is negative.
+            - If `map_type` is not `"SM"` or `"PS"`.
+            - If `section_index` is outside the valid coordinate range.
+            - If `crossing` is not one of `-1`, `0`, or `1`.
+        TypeError
+            - If `map_type` is not a string.
+            - If `section_value`, `sampling_time`, or `transient_time` is not a valid real number.
+            - If `num_intersections`, `section_index`, `crossing`, or `min_samples` is not an integer.
 
         Notes
         -----
-        The basin of attraction is determined by first constructing either a stroboscopic map
-        or a Poincaré section from the trajectories. Then, the attractors are identified by
-        clustering the trajectory centroids using the DBSCAN algorithm from scikit-learn.
-
-        DBSCAN groups points that are close to each other in phase space, with `eps` defining
-        the neighborhood radius and `min_samples` specifying the minimum number of points to
-        form a cluster. Each cluster corresponds to a distinct attractor, and initial conditions
-        whose trajectories end up in the same cluster are considered to belong to the same basin
-        of attraction.
+        The basin of attraction is estimated by first constructing either a
+        stroboscopic map or a Poincaré section, then clustering trajectory centroids
+        with DBSCAN. Trajectories whose centroids belong to the same cluster are
+        assigned to the same attractor basin.
         """
         u = validate_initial_conditions(u, self.__system_dimension)
-        u = u.copy()
 
         validate_non_negative(num_intersections, "num_intersections", Integral)
 
@@ -1041,143 +1147,139 @@ class ContinuousDynamicalSystem:
         else:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
-        if transient_time is not None:
-            validate_non_negative(transient_time, "transient_time", Real)
+        transient_time, _ = validate_times(transient_time, 1.0e300)
 
         if not isinstance(map_type, str):
-            raise TypeError("map_type must a valid string")
-        if map_type not in ["SM", "PS"]:
-            raise ValueError(
-                "map_type must be either SM (stroboscopic map) or PS (Poicaré section)"
-            )
+            raise TypeError("map_type must be a string")
+        if map_type not in ("SM", "PS"):
+            raise ValueError("map_type must be either 'SM' or 'PS'")
 
         if section_index is not None:
             validate_non_negative(section_index, "section_index", Integral)
-            if section_index > self.__system_dimension:
-                raise ValueError("section_index must be <= system_dimension")
+            if section_index >= self.__system_dimension:
+                raise ValueError("section_index must be smaller than system_dimension")
 
         if section_value is not None:
-            if not isinstance(section_value, Real):
+            if isinstance(section_value, bool) or not isinstance(section_value, Real):
                 raise TypeError("section_value must be a valid real number")
 
         if crossing is not None:
-            if not isinstance(crossing, Integral):
-                raise TypeError("crossing must be an integer number")
-            elif crossing not in [-1, 0, 1]:
+            if isinstance(crossing, bool) or not isinstance(crossing, Integral):
+                raise TypeError("crossing must be an integer")
+            if crossing not in (-1, 0, 1):
                 raise ValueError(
-                    "crossing must be -1 (downward crossings), 0 (all crossings), or 1 (upward crossing)"
+                    "crossing must be -1 (downward), 0 (all crossings), or 1 (upward)"
                 )
 
         if sampling_time is not None:
             validate_non_negative(sampling_time, "sampling_time", Real)
 
         validate_non_negative(eps, "eps", Real)
-
         validate_non_negative(min_samples, "min_samples", Integral)
+
+        if map_type == "PS":
+            if section_index is None or section_value is None or crossing is None:
+                raise ValueError(
+                    "section_index, section_value, and crossing must be provided when map_type='PS'"
+                )
+        else:
+            if sampling_time is None:
+                raise ValueError("sampling_time must be provided when map_type='SM'")
 
         time_step = self.__get_initial_time_step(u, parameters)
 
         return basin_of_attraction(
-            u,
-            parameters,
-            num_intersections,
-            self.__equations_of_motion,
-            transient_time,
-            time_step,
-            self.__atol,
-            self.__rtol,
-            self.__integrator_func,
-            map_type,
-            section_index,
-            section_value,
-            crossing,
-            sampling_time,
-            eps,
-            min_samples,
+            u=u,
+            parameters=parameters,
+            num_intersections=int(num_intersections),
+            equations_of_motion=self.__equations_of_motion,
+            transient_time=transient_time,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            select_map=map_type,
+            section_index=None if section_index is None else int(section_index),
+            section_value=None if section_value is None else np.float64(section_value),
+            crossing=None if crossing is None else int(crossing),
+            sampling_time=None if sampling_time is None else np.float64(sampling_time),
+            eps=np.float64(eps),
+            min_samples=int(min_samples),
         )
 
     def lyapunov(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: float,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
-        num_exponents: Optional[int] = None,
+        u: numeric_like_t,
+        total_time: numeric_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
+        num_exponents: int_t | None = None,
         return_history: bool = False,
-        seed: int = 13,
-        log_base: float = np.e,
+        seed: int_t = 13,
+        log_base: numeric_t = np.e,
         method: str = "QR",
         endpoint: bool = True,
     ) -> NDArray[np.float64]:
-        """Calculate the Lyapunov exponents of a given dynamical system.
+        """
+        Calculate the Lyapunov exponents of the dynamical system.
 
-        The Lyapunov exponent is a key concept in the study of dynamical systems. It measures the average rate at which nearby trajectories in the system diverge (or converge) over time. In simple terms, it quantifies how sensitive a system is to initial conditions.
+        The Lyapunov exponents measure the average exponential rates of divergence
+        or convergence of nearby trajectories.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        total_time : float
-            Total time over which to evolve the system (including transient).
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
-        transient_time : Optional[float], optional
-            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
-        num_exponents : Optional[int], optional
-            The number of Lyapunov exponents to be calculated, by default None. If None, the method calculates the whole spectrum.
+        u : numeric_like_t
+            Initial condition of the system. It must define a 1D state vector whose
+            length matches the system dimension.
+        total_time : numeric_t
+            Total integration time.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before computing the exponents.
+        num_exponents : int_t | None, optional
+            Number of Lyapunov exponents to compute. If `None`, the full spectrum
+            is computed.
         return_history : bool, optional
-            Whether to return or not the Lyapunov exponents history in time, by default False.
-        seed : int, optional
-            The seed to randomly generate the deviation vectors, by default 13.
-        log_base : int, optional
-            The base of the logarithm function, by default np.e, i.e., natural log.
+            If `True`, return the time evolution of the exponents.
+        seed : int_t, optional
+            Seed used to initialize the deviation vectors.
+        log_base : numeric_t, optional
+            Base of the logarithm used to rescale the exponents.
         method : str, optional
-            The method used to calculate the QR decomposition, by default "QR". Set to "QR_HH" to use Householder reflections.
+            QR decomposition method:
+            - `"QR"`: custom modified Gram-Schmidt QR
+            - `"QR_HH"`: `numpy.linalg.qr` based on Householder reflections
         endpoint : bool, optional
-            Whether to include the endpoint time = total_time in the calculation, by default True.
+            Whether to include the endpoint `time = total_time`.
 
         Returns
         -------
         NDArray[np.float64]
-            The Lyapunov exponents.
-
-            - If `return_history = False`, return the Lyapunov exponents' final value.
-            - If `return_history = True`, return the time series of each exponent together with the time samples.
-            - If `sample_times` is provided, return the Lyapunov exponents at the specified times.
+            - If `return_history=False`, returns the final Lyapunov exponents.
+            - If `return_history=True`, returns their time history.
 
         Raises
         ------
         ValueError
-            - If the Jacobian function is not provided.
-            - If the initial condition is not valid, i.e., if the dimensions do not match.
-            - If the number of parameters does not match.
-            - If `parameters` is not a scalar, 1D list, or 1D array.
+            - If the Jacobian is not available.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `num_exponents` exceeds the system dimension.
+            - If `method` is not `"QR"` or `"QR_HH"`.
+            - If `log_base == 1`.
         TypeError
             - If `method` is not a string.
-            - If `total_time`, `transient_time`, or `log_base` are not valid numbers.
-            - If `num_exponents` is not an positive integer.
-            - If `seed` is not an integer.
+            - If `total_time`, `transient_time`, or `log_base` is not a valid real number.
+            - If `num_exponents` or `seed` is not an integer.
 
         Notes
         -----
-        - By default, the method uses the modified Gram-Schimdt algorithm to perform the QR decomposition. If your problem requires a higher numerical stability (e.g. large-scale problem), you can set `method=QR_HH` to use Householder reflections instead.
-
-        Examples
-        --------
-        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
-        >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]
-        >>> total_time = 10000
-        >>> transient_time = 5000
-        >>> parameters = [16.0, 45.92, 4.0]
-        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time)
-        array([ 1.49885208e+00, -1.65186396e-04, -2.24977688e+01])
-        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, num_exponents=2)
-        array([1.49873694e+00, 1.31950729e-04])
-        >>> ds.lyapunov(u, total_time, parameters=parameters, transient_time=transient_time, log_base=2, method="QR_HH")
-        array([ 2.16664847e+00, -6.80920729e-04, -3.24625604e+01])
+        By default, the computation uses the custom QR routine based on modified
+        Gram-Schmidt. If `method="QR_HH"`, the wrapper passes `numpy.linalg.qr`
+        to the low-level routine.
         """
-
         if self.__jacobian is None:
             raise ValueError(
                 "Jacobian function is required to compute Lyapunov exponents"
@@ -1186,7 +1288,6 @@ class ContinuousDynamicalSystem:
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -1199,10 +1300,10 @@ class ContinuousDynamicalSystem:
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
-        elif num_exponents > self.__system_dimension:
-            raise ValueError("num_exponents must be <= system_dimension")
         else:
-            validate_non_negative(num_exponents, "num_exponents", Integral)
+            validate_positive(num_exponents, "num_exponents", Integral)
+            if num_exponents > self.__system_dimension:
+                raise ValueError("num_exponents must be <= system_dimension")
 
         if endpoint:
             total_time += time_step
@@ -1214,187 +1315,126 @@ class ContinuousDynamicalSystem:
         if method == "QR":
             qr_func = qr
         elif method == "QR_HH":
-            qr_func = householder_qr
+            qr_func = np.linalg.qr
         else:
-            raise ValueError("method must be QR or QR_HH")
+            raise ValueError("method must be 'QR' or 'QR_HH'")
 
         validate_non_negative(log_base, "log_base", Real)
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1")
 
+        validate_non_negative(seed, "seed", Integral)
+
         if num_exponents == 1:
             result = maximum_lyapunov_exponent(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                transient_time,
-                time_step,
-                self.__atol,
-                self.__rtol,
-                self.__integrator_func,
-                return_history,
-                seed,
-            )
-        else:
-            result = lyapunov_exponents(
-                u,
-                parameters,
-                total_time,
-                self.__equations_of_motion,
-                self.__jacobian,
-                num_exponents,
+                u=u,
+                parameters=parameters,
+                total_time=total_time,
+                equations_of_motion=self.__equations_of_motion,
+                jacobian=self.__jacobian,
                 transient_time=transient_time,
                 time_step=time_step,
                 atol=self.__atol,
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
                 return_history=return_history,
-                seed=seed,
+                seed=int(seed),
+            )
+        else:
+            result = lyapunov_exponents(
+                u=u,
+                parameters=parameters,
+                total_time=total_time,
+                equations_of_motion=self.__equations_of_motion,
+                jacobian=self.__jacobian,
+                num_exponents=int(num_exponents),
+                transient_time=transient_time,
+                time_step=time_step,
+                atol=self.__atol,
+                rtol=self.__rtol,
+                integrator=self.__integrator_func,
+                return_history=return_history,
+                seed=int(seed),
                 QR=qr_func,
             )
+
         if return_history:
-            return np.array(result) / np.log(log_base)
-        else:
-            return np.array(result[0]) / np.log(log_base)
+            return result / np.log(log_base)
+
+        return result[0] / np.log(log_base)
 
     def CLV(
         self,
-        u: Union[Sequence[float], NDArray[np.float64]],
-        total_time: float,
-        parameters: Union[
-            None, float, Sequence[np.float64], NDArray[np.float64]
-        ] = None,
-        num_clvs: Optional[int] = None,
-        transient_time: float = 0.0,
-        warmup_time: float = 0.0,
-        tail_time: float = 0.0,
-        qr_time_step: Optional[None] = None,
-        seed: int = 13,
-    ):
+        u: numeric_like_t,
+        total_time: numeric_t,
+        parameters: numeric_like_t | None = None,
+        num_clvs: int_t | None = None,
+        transient_time: numeric_t | None = None,
+        warmup_time: numeric_t = 0.0,
+        tail_time: numeric_t = 0.0,
+        qr_time_step: numeric_t | None = None,
+        seed: int_t = 13,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
-        Compute Covariant Lyapunov Vectors (CLVs) along a trajectory of this continuous-time dynamical system.
+        Compute covariant Lyapunov vectors (CLVs) along a trajectory of this
+        continuous-time dynamical system.
 
-        The CLVs form a covariant (time-dependent) basis of the tangent space that transforms
-        under the linearized flow exactly as the dynamics does. The i-th CLV is associated with
-        the i-th Lyapunov exponent (ordered from largest to smallest) and provides the local
-        expanding/contracting directions.
-
-        This routine implements a Ginelli-style algorithm for flows:
-        (i) a forward QR iteration (with periodic re-orthonormalization every ``qr_time_step``)
-        to obtain the orthonormal backward Lyapunov vectors (BLVs), followed by
-        (ii) a backward recursion in the triangular coefficient space to recover covariant vectors.
+        The CLVs form a covariant time-dependent basis of the tangent space. The
+        i-th CLV is associated with the i-th Lyapunov exponent and gives the local
+        expanding or contracting direction.
 
         Parameters
         ----------
-        u : array_like, shape (system_dimension,)
-            Initial condition.
-        total_time : float
-            Total integration time over which CLVs are returned. The output contains
-            ``N + 1`` sampled time points, where ``N`` is the number of QR sampling blocks
-            (roughly ``total_time / qr_time_step``), including the initial state after any transient.
-        parameters : None or array_like
-            Model parameters. If ``None``, this method uses the system's stored parameters.
-        num_clvs : int, optional
-            Number of CLVs to compute/return. Defaults to ``system_dimension``.
-            Must satisfy ``1 <= num_clvs <= system_dimension``.
-        transient_time : float, default=0
+        u : numeric_like_t
+            Initial condition. It must define a 1D state vector whose length matches
+            the system dimension.
+        total_time : numeric_t
+            Total integration time over which the CLVs are returned.
+        parameters : numeric_like_t | None, optional
+            System parameters. If `None`, the parameters stored in the instance are used.
+        num_clvs : int_t | None, optional
+            Number of CLVs to compute. If `None`, the full set of
+            `system_dimension` CLVs is computed.
+        transient_time : numeric_t, optional
             Initial integration time discarded before starting the CLV computation.
-            Useful to remove transient behavior and approach the attractor/typical set.
-        warmup_time : int, default=0
-            Number of forward QR iterations necessary to the tangent basis to converge to the
-            tangent basis of the system. Increasing ``warmup_time`` improves convergence of the
-            stored orthonormal frames to the backward Lyapunov vectors (BLVs).
-        tail_time : int, default=0
-            Number of additional forward QR steps performed *after* the main storage window
-            to initialize the backward recursion robustly. Increasing ``tail_time`` improves
-            convergence of the backward coefficient recursion that produces covariant vectors,
-            especially in weakly hyperbolic / nearly tangent regimes. Analogously to the warmup-time,
-            but backward instead of forward.
-        qr_time_step : float, optional
-            Time between successive QR re-orthonormalizations and storage of ``(Q, R)`` factors.
-            If ``None``, defaults to the integrator's initial step size returned by
-            the system's internal step-size initializer.
-        seed : int, default=13
-            Seed used to initialize the random upper-triangular matrix in the backward stage.
-            The final CLVs should be insensitive to the seed if ``tail_time`` (and the window)
-            are large enough.
+        warmup_time : numeric_t, optional
+            Forward warmup time used to drive the tangent basis toward the backward
+            Lyapunov vectors.
+        tail_time : numeric_t, optional
+            Additional forward integration time after the main storage window, used
+            to initialize the backward recursion.
+        qr_time_step : numeric_t | None, optional
+            Time between successive QR factorizations. If `None`, the initial
+            integration step size is used.
+        seed : int_t, optional
+            Seed used to initialize the backward recursion.
 
         Returns
         -------
-        clvs : ndarray, shape (N + 1, system_dimension, num_clvs)
-            Covariant Lyapunov vectors sampled along the trajectory. At each sampled index ``k``,
-            ``clvs[k, :, i]`` is the i-th CLV (column vector). Columns are normalized to unit
-            Euclidean norm.
-        traj : ndarray, shape (N + 1, system_dimension + 1)
-            The corresponding sampled trajectory (after the transient and warm-up), with time in
-            the first column and state variables in the remaining columns.
+        tuple[NDArray[np.float64], NDArray[np.float64]]
+            - `clvs`: array of shape `(N + 1, system_dimension, num_clvs)`
+            - `traj`: array of shape `(N + 1, system_dimension + 1)` with time in
+              the first column and state variables in the remaining columns
 
         Raises
         ------
         ValueError
-            If ``total_time`` is negative.
-            If ``transient_time`` is negative or not compatible with ``total_time``.
-            If ``warmup_time`` is negative.
-            If ``tail_time`` is negative.
-            If ``num_clvs`` is not in ``[1, system_dimension]``.
+            - If the Jacobian is not available.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `total_time`, `transient_time`, `warmup_time`, or `tail_time` is negative.
+            - If `num_clvs` is not in `[1, system_dimension]`.
+            - If `qr_time_step` is not positive when provided.
         TypeError
-            If ``u`` cannot be interpreted as a valid initial condition.
-            If ``parameters`` cannot be interpreted as valid system parameters.
-
-        Notes
-        -----
-        Step-by-step algorithm (Ginelli-style)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        Let ``d = system_dimension`` and ``p = num_clvs``. Let ``t_k`` be the sampling times
-        separated by ``qr_time_step``. Over each sampling block, the system integrates both the
-        trajectory and a ``d × p`` tangent basis, re-orthonormalizing the basis with a QR factorization.
-
-        1. Transient (optional)
-        Integrate from the initial condition for ``transient_time`` and discard the result.
-
-        2. Forward QR warm-up (optional)
-        Initialize an orthonormal tangent basis ``Q`` (random, orthonormalized). Then for a duration
-        ``warmup_time``, repeatedly integrate the trajectory + tangent basis forward, and at each
-        sampling time apply a QR factorization to ``Q``. This drives ``Q`` toward the BLVs.
-
-        3. Forward storage window
-        Over the main window of duration ``total_time``, integrate forward and at each sampling time
-        compute a QR factorization of the evolved tangent basis. Store the orthonormal factors ``Q_k``
-        and upper-triangular factors ``R_k`` that encode the local tangent dynamics.
-
-        4. Tail / backward initialization
-        Perform additional forward sampling blocks over duration ``tail_time`` (beyond the storage window).
-        Use the resulting triangular factors to evolve an arbitrary upper-triangular matrix ``A`` toward
-        its asymptotic limit for the backward recursion.
-
-        5. Backward recursion and CLV reconstruction
-        Move backward through the stored ``R_k`` factors, updating the coefficient matrix via triangular
-        solves and reconstructing covariant vectors at each stored time as ``V_k = Q_k @ A_k``. Columns are
-        normalized after reconstruction.
-
-        Choosing ``warmup_time`` and ``tail_time``
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        - ``warmup_time`` controls convergence of the forward orthonormal frame to the BLVs.
-        - ``tail_time`` controls convergence of the backward coefficient recursion. If too small,
-        CLVs near the end of the window may retain dependence on the random initialization.
-
-        In strongly chaotic regimes, modest values can be sufficient; in weakly chaotic or nearly
-        degenerate regimes, larger values may be necessary. A practical check is to repeat the
-        computation with larger ``warmup_time``/``tail_time`` and verify stability of CLV-based
-        diagnostics.
-
-        References
-        ----------
-        F. Ginelli et al., Characterizing dynamics with covariant Lyapunov vectors.
-        Phys. Rev. Lett. 99, 130601 (2007).
+            - If `seed` is not an integer.
+            - If any time-like argument is not a valid real number.
         """
+        if self.__jacobian is None:
+            raise ValueError("Jacobian function is required to compute CLVs")
 
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -1402,150 +1442,119 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time, Real)
+        validate_non_negative(warmup_time, "warmup_time", Real)
+        validate_non_negative(tail_time, "tail_time", Real)
+        validate_non_negative(seed, "seed", Integral)
+
+        warmup_time = np.float64(warmup_time)
+        tail_time = np.float64(tail_time)
+
         time_step = self.__get_initial_time_step(u, parameters)
 
         if num_clvs is None:
             num_clvs = self.__system_dimension
+        else:
+            validate_positive(num_clvs, "num_clvs", Integral)
+            if num_clvs > self.__system_dimension:
+                raise ValueError("num_clvs must be <= system_dimension")
 
         if qr_time_step is None:
             qr_time_step = time_step
+        else:
+            validate_positive(qr_time_step, "qr_time_step", Real)
+            qr_time_step = np.float64(qr_time_step)
 
         return compute_clvs(
-            u,
-            parameters,
-            total_time,
-            self.__equations_of_motion,
-            self.__jacobian,
-            num_clvs,
-            transient_time,
-            warmup_time,
-            tail_time,
-            time_step,
-            qr_time_step,
-            self.__atol,
-            self.__rtol,
-            self.__integrator_func,
-            seed,
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            equations_of_motion=self.__equations_of_motion,
+            jacobian=self.__jacobian,
+            num_clvs=int(num_clvs),
+            transient_time=transient_time,
+            warmup_time=warmup_time,
+            tail_time=tail_time,
+            time_step=time_step,
+            qr_time_step=qr_time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            seed=int(seed),
         )
 
     def CLV_angles(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: float,
-        parameters: Union[None, NDArray[np.float64], Sequence[float], float] = None,
-        subspaces: Optional[Sequence[Tuple[Sequence[int], Sequence[int]]]] = None,
-        pairs: Optional[Sequence[Tuple[int, int]]] = None,
-        transient_time: float = 0,
-        warmup_time: float = 0,
-        tail_time: float = 0,
-        qr_time_step: int = None,
-        seed: int = 13,
-    ):
+        u: numeric_like_t,
+        total_time: numeric_t,
+        parameters: numeric_like_t | None = None,
+        subspaces: tuple[tuple[tuple[int, ...], tuple[int, ...]], ...] | None = None,
+        pairs: tuple[tuple[int, int], ...] | None = None,
+        transient_time: numeric_t | None = None,
+        warmup_time: numeric_t = 0,
+        tail_time: numeric_t = 0,
+        qr_time_step: numeric_t | None = None,
+        seed: int_t = 13,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Compute CLV-based angle diagnostics for this continuous-time dynamical system.
 
-        This method computes CLVs along a trajectory (see :meth:`CLV`) and returns time series of angles between
-        user-specified CLV subspaces and/or CLV direction pairs. For details on how CLVs are
-        computed (forward QR warm-up, storage, backward recursion, and the roles of
-        ``warmup_time`` and ``tail_time``), see :meth:`covariant_lyapunov_vectors`.
-
-        At least one of ``subspaces`` or ``pairs`` must be provided.
+        This method computes CLVs along a trajectory and returns time series of
+        angles between user-specified CLV subspaces and/or CLV direction pairs.
 
         Parameters
         ----------
-        u : array_like, shape (system_dimension,)
-            Initial condition.
-        total_time : float
-            Total integration time used for the angle diagnostics. Angles are evaluated at the
-            same sampled times used by the internal CLV computation (spaced by ``qr_time_step``).
-        parameters : None or array_like, optional
-            Model parameters. If ``None``, stored system parameters are used.
-        subspaces : sequence of (A, B) or None, optional
-            Requested subspace-angle diagnostics. Each entry is a pair ``(A, B)``, where
-            ``A`` and ``B`` are sequences of CLV indices defining two subspaces:
-            ``E_A(t) = span{ v_i(t) : i in A }`` and ``E_B(t) = span{ v_j(t) : j in B }``.
-            For each ``(A, B)``, the returned value is the **minimum principal angle**
-            between ``E_A(t)`` and ``E_B(t)`` at each sampled time.
-        pairs : sequence of (int, int) or None, optional
-            Requested pairwise CLV angles. Each entry ``(i, j)`` returns the angle
-            ``angle(v_i(t), v_j(t))`` at each sampled time. Indices refer to CLV ordering
-            (0 = most expanding, last = most contracting).
-        transient_time : float, default=0
+        u : numeric_like_t
+            Initial condition. It must define a 1D state vector whose length matches
+            the system dimension.
+        total_time : numeric_t
+            Total integration time used for the angle diagnostics.
+        parameters : numeric_like_t | None, optional
+            System parameters. If `None`, the parameters stored in the instance are used.
+        subspaces : tuple[tuple[tuple[int, ...], tuple[int, ...]], ...] | None, optional
+            Requested subspace-angle diagnostics. Each entry is a pair `(A, B)`, where
+            `A` and `B` are tuples of CLV indices defining two subspaces.
+        pairs : tuple[tuple[int, int], ...] | None, optional
+            Requested pairwise CLV angles. Each entry `(i, j)` returns the angle
+            between CLV `i` and CLV `j` at each sampled time.
+        transient_time : numeric_t, optional
             Initial integration time discarded before starting the diagnostic.
-        warmup_time : float, default=0
-            Forward QR warm-up duration passed to the CLV computation. See
-            :meth:`CLV`.
-        tail_time : float, default=0
-            Backward-recursion convergence duration passed to the CLV computation. See
-            :meth:`CLV`.
-        qr_time_step : float, optional
-            Time spacing between successive QR re-orthonormalizations / CLV samples. If ``None``,
-            defaults to the integrator's initial step size.
-        seed : int, default=13
+        warmup_time : numeric_t, optional
+            Forward QR warm-up duration passed to the CLV computation.
+        tail_time : numeric_t, optional
+            Backward-recursion convergence duration passed to the CLV computation.
+        qr_time_step : numeric_t | None, optional
+            Time spacing between successive QR re-orthonormalizations and CLV samples.
+            If `None`, the initial integration step size is used.
+        seed : int_t, optional
             Seed forwarded to the CLV computation.
 
         Returns
         -------
-        angles : ndarray, shape (N + 1, M)
-            Angle time series in radians, evaluated at the ``N + 1`` sampled times used by the CLV
-            computation (roughly ``N ≈ total_time / qr_time_step``).
-
-            The columns are ordered as:
-            1) angles for all requested CLV pairs in ``pairs`` (in the given order).
-            2) followed by angles for all requested subspace diagnostics in ``subspaces`` (in the given order),
-
-        traj : ndarray, shape (N + 1, system_dimension + 1)
-            The sampled trajectory used for the angle computation, with time in the first column.
+        tuple[NDArray[np.float64], NDArray[np.float64]]
+            - `angles`: array of shape `(N + 1, M)` containing the requested angle time series
+            - `traj`: sampled trajectory array with time in the first column
 
         Raises
         ------
         ValueError
-            If ``total_time`` is negative.\\
-            If ``transient_time`` is negative or not compatible with ``total_time``.\\
-            If ``warmup_time`` is negative.\\
-            If ``tail_time`` is negative.\\
-            If both ``subspaces`` and ``pairs`` are ``None`` (or empty).\\
-            If any subspace specification is invalid (empty sets, overlaps, or out-of-range indices).\\
-            If any pair ``(i, j)`` is invalid (identical indices or out-of-range indices).\\
+            - If the Jacobian is not available.
+            - If `total_time` is negative.
+            - If `transient_time` is negative or not smaller than `total_time`.
+            - If `warmup_time` or `tail_time` is negative.
+            - If both `subspaces` and `pairs` are missing or empty.
+            - If any CLV subspace or pair specification is invalid.
+            - If `qr_time_step` is not positive when provided.
         TypeError
-            If ``u`` cannot be interpreted as a valid initial condition.\\
-            If ``parameters`` cannot be interpreted as valid system parameters.\\
-            If ``subspaces`` or ``pairs`` are not in an acceptable format.
-
-        Notes
-        -----
-        Interpretation of the angle diagnostics
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        **Subspace angles (minimum principal angle)**
-            For each requested ``(A, B)``, the diagnostic computes the smallest principal angle
-            between the two CLV subspaces. Near-zero values indicate near-tangencies between the
-            subspaces (weak separation / weak hyperbolicity).
-
-        **Pairwise CLV angles**
-            Pairwise angles provide a direct measure of alignment between two specific covariant
-            directions. They are useful for targeted checks (e.g., alignment of a neutral direction
-            with an unstable one), but they do not capture the closest approach between higher-dimensional
-            subspaces unless the correct pair is chosen.
-
-        What to look for in practice
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-        - **Near-zero events** in subspace angles are typically the most informative: they indicate
-        near-tangencies between the chosen subspaces.
-        - In systems with near-degenerate Lyapunov exponents, angles may fluctuate more because the
-        associated directions/subspaces can be ill-conditioned at finite time.
-        - The sampling cadence ``qr_time_step`` controls time resolution of the diagnostics. Smaller
-        values resolve faster geometric changes but increase cost.
-
-        See Also
-        --------
-        covariant_lyapunov_vectors : Computes CLVs and documents the Ginelli-style algorithm, including
-            the roles of ``warmup_time`` and ``tail_time``.
+            - If `u` cannot be interpreted as a valid initial condition.
+            - If `parameters` cannot be interpreted as valid system parameters.
+            - If `seed` is not an integer.
         """
+        if self.__jacobian is None:
+            raise ValueError("Jacobian function is required to compute CLV angles")
 
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -1553,112 +1562,121 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time, Real)
+        transient_time = np.float64(transient_time)
+
+        validate_non_negative(warmup_time, "warmup_time", Real)
+        validate_non_negative(tail_time, "tail_time", Real)
+        validate_non_negative(seed, "seed", Integral)
+
+        warmup_time = np.float64(warmup_time)
+        tail_time = np.float64(tail_time)
 
         time_step = self.__get_initial_time_step(u, parameters)
+
         if qr_time_step is None:
             qr_time_step = time_step
+        else:
+            validate_positive(qr_time_step, "qr_time_step", Real)
+            qr_time_step = np.float64(qr_time_step)
 
         pairs = validate_clv_pairs(pairs, self.__system_dimension)
-
         subspaces = validate_clv_subspaces(subspaces, self.__system_dimension)
 
         return clv_angles(
-            u,
-            parameters,
-            total_time,
-            self.__equations_of_motion,
-            self.__jacobian,
-            transient_time,
-            warmup_time,
-            tail_time,
-            time_step,
-            qr_time_step,
-            self.__atol,
-            self.__rtol,
-            self.__integrator_func,
-            seed,
-            subspaces,
-            pairs,
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            equations_of_motion=self.__equations_of_motion,
+            jacobian=self.__jacobian,
+            transient_time=transient_time,
+            warmup_time=warmup_time,
+            tail_time=tail_time,
+            time_step=time_step,
+            qr_time_step=qr_time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            seed=int(seed),
+            subspaces=subspaces,
+            pairs=pairs,
         )
 
     def SALI(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: float,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        total_time: numeric_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
         return_history: bool = False,
-        seed: int = 13,
-        threshold: float = 1e-16,
+        seed: int_t = 13,
+        threshold: numeric_t = 1e-16,
         endpoint: bool = True,
     ) -> NDArray[np.float64]:
-        """Calculate the smallest aligment index (SALI) for a given dynamical system.
+        """
+        Calculate the Smaller Alignment Index (SALI) for a continuous-time dynamical system.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        total_time : float
-            Total time over which to evolve the system (including transient).
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
-        transient_time : Optional[float], optional
-            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        u : numeric_like_t
+            Initial condition of the system. It must define a 1D state vector whose
+            length matches the system dimension.
+        total_time : numeric_t
+            Total integration time.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before computing SALI.
         return_history : bool, optional
-            Whether to return or not the Lyapunov exponents history in time, by default False.
-        seed : int, optional
-            The seed to randomly generate the deviation vectors, by default 13.
-        threshold : float, optional
-            The threhshold for early termination, by default 1e-16. When SALI becomes less than `threshold`, stops the execution.
+            If `True`, return the time evolution of SALI.
+        seed : int_t, optional
+            Seed used to initialize the deviation vectors.
+        threshold : numeric_t, optional
+            Early stopping threshold. If SALI becomes smaller than `threshold`,
+            the computation is terminated.
         endpoint : bool, optional
-            Whether to include the endpoint time = total_time in the calculation, by default True.
+            Whether to include the endpoint `time = total_time`.
 
         Returns
         -------
         NDArray[np.float64]
-            The SALI value
-
-            - If `return_history = False`, return time and SALI, where time is the time at the end of the execution. time < total_time if SALI becomes less than `threshold` before `total_time`.
-            - If `return_history = True`, return the sampled times and the SALI values.
-            - If `sample_times` is provided, return the SALI at the specified times.
+            - If `return_history=False`, returns an array containing the final time
+              and the final SALI value.
+            - If `return_history=True`, returns the time history of SALI.
 
         Raises
         ------
         ValueError
-            - If the Jacobian function is not provided.
-            - If the initial condition is not valid, i.e., if the dimensions do not match.
-            - If the number of parameters does not match.
-            - If `parameters` is not a scalar, 1D list, or 1D array.
-            - If `total_time`, `transient_time`, or `threshold` are negative.
+            - If the Jacobian is not available.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `total_time`, `transient_time`, or `threshold` is negative.
         TypeError
-            - If `total_time`, `transient_time`, or `threshold` are not valid numbers.
+            - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `seed` is not an integer.
 
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
         >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]
-        >>> total_time = 1000
-        >>> transient_time = 500
+        >>> u0 = [0.1, 0.1, 0.1]
         >>> parameters = [16.0, 45.92, 4.0]
-        >>> ds.SALI(u, total_time, parameters=parameters, transient_time=transient_time)
-        (521.8899999999801, 7.850462293418876e-17)
-        >>> # Returning the history
-        >>> sali = ds.SALI(u, total_time, parameters=parameters, transient_time=transient_time, return_history=True)
-        >>> sali.shape
-        (2189, 2)
-        """
+        >>> ds.SALI(u0, 1000.0, parameters=parameters, transient_time=500.0)
 
+        >>> sali_hist = ds.SALI(
+        ...     u0,
+        ...     1000.0,
+        ...     parameters=parameters,
+        ...     transient_time=500.0,
+        ...     return_history=True,
+        ... )
+        """
         if self.__jacobian is None:
-            raise ValueError(
-                "Jacobian function is required to compute Lyapunov exponents"
-            )
+            raise ValueError("Jacobian function is required to compute SALI")
 
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -1667,115 +1685,102 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
-        time_step = self.__get_initial_time_step(u, parameters)
+        validate_non_negative(threshold, "threshold", Real)
+        validate_non_negative(seed, "seed", Integral)
 
-        validate_non_negative(threshold, "threshold", type_=Real)
+        threshold = np.float64(threshold)
+
+        time_step = self.__get_initial_time_step(u, parameters)
 
         if endpoint:
             total_time += time_step
 
-        result = SALI(
-            u,
-            parameters,
-            total_time,
-            self.__equations_of_motion,
-            self.__jacobian,
+        result = sali(
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            equations_of_motion=self.__equations_of_motion,
+            jacobian=self.__jacobian,
             transient_time=transient_time,
             time_step=time_step,
             atol=self.__atol,
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
-            seed=seed,
+            seed=int(seed),
             threshold=threshold,
         )
 
         if return_history:
-            return np.array(result)
-        else:
-            return np.array(result[0])
+            return result
+
+        return result[0]
 
     def LDI(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: float,
-        k: int,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        total_time: numeric_t,
+        k: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
         return_history: bool = False,
-        seed: int = 13,
-        threshold: float = 1e-16,
+        seed: int_t = 13,
+        threshold: numeric_t = 1e-16,
         endpoint: bool = True,
     ) -> NDArray[np.float64]:
-        """Calculate the linear dependence index (LDI) for a given dynamical system.
+        """
+        Calculate the Linear Dependence Index (LDI_k) for a continuous-time dynamical system.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        total_time : float
-            Total time over which to evolve the system (including transient).
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
-        transient_time : Optional[float], optional
-            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        u : numeric_like_t
+            Initial condition of the system. It must define a 1D state vector whose
+            length matches the system dimension.
+        total_time : numeric_t
+            Total integration time.
+        k : int_t
+            Number of deviation vectors used in the computation.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before computing LDI.
         return_history : bool, optional
-            Whether to return or not the Lyapunov exponents history in time, by default False.
-        seed : int, optional
-            The seed to randomly generate the deviation vectors, by default 13.
-        threshold : float, optional
-            The threhshold for early termination, by default 1e-16. When SALI becomes less than `threshold`, stops the execution.
+            If `True`, return the time evolution of LDI.
+        seed : int_t, optional
+            Seed used to initialize the deviation vectors.
+        threshold : numeric_t, optional
+            Early stopping threshold. If LDI becomes smaller than `threshold`,
+            the computation is terminated.
         endpoint : bool, optional
-            Whether to include the endpoint time = total_time in the calculation, by default True.
+            Whether to include the endpoint `time = total_time`.
 
         Returns
         -------
         NDArray[np.float64]
-            The LDI value
-
-            - If `return_history = False`, return time and LDI, where time is the time at the end of the execution. time < total_time if LDI becomes less than `threshold` before `total_time`.
-            - If `return_history = True`, return the sampled times and the LDI values.
+            - If `return_history=False`, returns an array containing the final time
+              and the final LDI value.
+            - If `return_history=True`, returns the time history of LDI.
 
         Raises
         ------
         ValueError
-            - If the Jacobian function is not provided.
-            - If the initial condition is not valid, i.e., if the dimensions do not match.
-            - If the number of parameters does not match.
-            - If `parameters` is not a scalar, 1D list, or 1D array.
-            - If `total_time`, `transient_time`, or `threshold` are negative.
-            - If `k` < 2.
+            - If the Jacobian is not available.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `total_time`, `transient_time`, or `threshold` is negative.
+            - If `k < 2`.
+            - If `k > system_dimension`.
         TypeError
-            - If `total_time`, `transient_time`, or `threshold` are not valid numbers.
-            - If `seed` is not an integer.
-
-        Examples
-        --------
-        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
-        >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]
-        >>> total_time = 1000
-        >>> transient_time = 500
-        >>> parameters = [16.0, 45.92, 4.0]
-        >>> ds.LDI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
-        array([5.23170000e+02, 6.93495605e-17])
-        >>> ds.LDI(u, total_time, 3, parameters=parameters, transient_time=transient_time)
-        (501.26999999999884, 9.984145370766051e-17)
-        >>> # Returning the history
-        >>> ldi = ds.LDI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
-        >>> ldi.shape
-        (2181, 2)
+            - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
+            - If `k` or `seed` is not an integer.
         """
-
         if self.__jacobian is None:
-            raise ValueError(
-                "Jacobian function is required to compute Lyapunov exponents"
-            )
+            raise ValueError("Jacobian function is required to compute LDI")
 
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -1784,116 +1789,110 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
-        time_step = self.__get_initial_time_step(u, parameters)
+        validate_positive(k, "k", Integral)
+        if k < 2:
+            raise ValueError("k must be >= 2")
+        if k > self.__system_dimension:
+            raise ValueError("k must be <= system_dimension")
 
-        validate_non_negative(threshold, "threshold", type_=Real)
+        validate_non_negative(threshold, "threshold", Real)
+        validate_non_negative(seed, "seed", Integral)
+
+        threshold = np.float64(threshold)
+
+        time_step = self.__get_initial_time_step(u, parameters)
 
         if endpoint:
             total_time += time_step
 
-        result = LDI(
-            u,
-            parameters,
-            total_time,
-            self.__equations_of_motion,
-            self.__jacobian,
-            k,
+        result = ldi_k(
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            equations_of_motion=self.__equations_of_motion,
+            jacobian=self.__jacobian,
+            number_deviation_vectors=int(k),
             transient_time=transient_time,
             time_step=time_step,
             atol=self.__atol,
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
-            seed=seed,
+            seed=int(seed),
             threshold=threshold,
         )
 
         if return_history:
-            return np.array(result)
-        else:
-            return np.array(result[0])
+            return result
+
+        return result[0]
 
     def GALI(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        total_time: float,
-        k: int,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        total_time: numeric_t,
+        k: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
         return_history: bool = False,
-        seed: int = 13,
-        threshold: float = 1e-16,
+        seed: int_t = 13,
+        threshold: numeric_t = 1e-16,
         endpoint: bool = True,
     ) -> NDArray[np.float64]:
-        """Calculate the Generalized Aligment Index (GALI) for a given dynamical system.
+        """
+        Calculate the Generalized Alignment Index (GALI_k) for a continuous-time
+        dynamical system.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial conditions of the system. Must match the system's dimension.
-        total_time : float
-            Total time over which to evolve the system (including transient).
-        parameters : Union[None, Sequence[float], NDArray[np.float64]], optional
-            Parameters of the system, by default None. Can be a scalar, a sequence of floats or a numpy array.
-        transient_time : Optional[float], optional
-            Transient time, i.e., the time to discard before calculating the Lyapunov exponents, by default None.
+        u : numeric_like_t
+            Initial condition of the system. It must define a 1D state vector whose
+            length matches the system dimension.
+        total_time : numeric_t
+            Total integration time.
+        k : int_t
+            Number of deviation vectors used in the computation.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before computing GALI.
         return_history : bool, optional
-            Whether to return or not the Lyapunov exponents history in time, by default False.
-        seed : int, optional
-            The seed to randomly generate the deviation vectors, by default 13.
-        threshold : float, optional
-            The threhshold for early termination, by default 1e-16. When SALI becomes less than `threshold`, stops the execution.
+            If `True`, return the time evolution of GALI.
+        seed : int_t, optional
+            Seed used to initialize the deviation vectors.
+        threshold : numeric_t, optional
+            Early stopping threshold. If GALI becomes smaller than `threshold`,
+            the computation is terminated.
         endpoint : bool, optional
-            Whether to include the endpoint time = total_time in the calculation, by default True.
+            Whether to include the endpoint `time = total_time`.
 
         Returns
         -------
         NDArray[np.float64]
-            The GALI value
-
-            - If `return_history = False`, return time and GALI, where time is the time at the end of the execution. time < total_time if GALI becomes less than `threshold` before `total_time`.
-            - If `return_history = True`, return the sampled times and the GALI values.
+            - If `return_history=False`, returns an array containing the final time
+              and the final GALI value.
+            - If `return_history=True`, returns the time history of GALI.
 
         Raises
         ------
         ValueError
-            - If the Jacobian function is not provided.
-            - If the initial condition is not valid, i.e., if the dimensions do not match.
-            - If the number of parameters does not match.
-            - If `parameters` is not a scalar, 1D list, or 1D array.
-            - If `total_time`, `transient_time`, or `threshold` are negative.
-            - If `k` < 2.
+            - If the Jacobian is not available.
+            - If `u` does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `total_time`, `transient_time`, or `threshold` is negative.
+            - If `k < 2`.
+            - If `k > system_dimension`.
         TypeError
-            - If `total_time`, `transient_time`, or `threshold` are not valid numbers.
-            - If `seed` is not an integer.
-
-        Examples
-        --------
-        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
-        >>> ds = cds(model="lorenz system")
-        >>> u = [0.1, 0.1, 0.1]
-        >>> total_time = 1000
-        >>> transient_time = 500
-        >>> parameters = [16.0, 45.92, 4.0]
-        >>> ds.GALI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
-        (521.8099999999802, 7.328757804386809e-17)
-        >>> ds.GALI(u, total_time, 3, parameters=parameters, transient_time=transient_time)
-        (501.26999999999884, 9.984145370766051e-17)
-        >>> # Returning the history
-        >>> gali = ds.GALI(u, total_time, 2, parameters=parameters, transient_time=transient_time)
-        >>> gali.shape
-        (2181, 2)
+            - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
+            - If `k` or `seed` is not an integer.
         """
-
         if self.__jacobian is None:
-            raise ValueError(
-                "Jacobian function is required to compute Lyapunov exponents"
-            )
+            raise ValueError("Jacobian function is required to compute GALI")
 
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
@@ -1902,376 +1901,345 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
-        time_step = self.__get_initial_time_step(u, parameters)
+        validate_positive(k, "k", Integral)
+        if k < 2:
+            raise ValueError("k must be >= 2")
+        if k > self.__system_dimension:
+            raise ValueError("k must be <= system_dimension")
 
-        validate_non_negative(threshold, "threshold", type_=Real)
+        validate_non_negative(threshold, "threshold", Real)
+        validate_non_negative(seed, "seed", Integral)
+
+        threshold = np.float64(threshold)
+
+        time_step = self.__get_initial_time_step(u, parameters)
 
         if endpoint:
             total_time += time_step
 
-        result = GALI(
-            u,
-            parameters,
-            total_time,
-            self.__equations_of_motion,
-            self.__jacobian,
-            k,
+        result = gali_k(
+            u=u,
+            parameters=parameters,
+            total_time=total_time,
+            equations_of_motion=self.__equations_of_motion,
+            jacobian=self.__jacobian,
+            number_deviation_vectors=int(k),
             transient_time=transient_time,
             time_step=time_step,
             atol=self.__atol,
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
-            seed=seed,
+            seed=int(seed),
             threshold=threshold,
         )
 
         if return_history:
-            return np.array(result)
-        else:
-            return np.array(result[0])
+            return result
+
+        return result[0]
 
     def recurrence_time_entropy(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        num_intersections: int,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
+        u: numeric_like_t,
+        num_intersections: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
         map_type: str = "SM",
-        section_index: Optional[int] = None,
-        section_value: Optional[float] = None,
-        crossing: Optional[int] = None,
-        sampling_time: Optional[float] = None,
-        maxima_index: Optional[float] = None,
-        **kwargs,
-    ) -> Union[float, Tuple[float, NDArray[np.float64]]]:
-        """Compute the Recurrence Time Entropy (RTE) for a dynamical system.
+        section_index: int_t | None = None,
+        section_value: numeric_t | None = None,
+        crossing: int_t | None = None,
+        sampling_time: numeric_t | None = None,
+        maxima_index: int_t | None = None,
+        **kwargs: Any,
+    ) -> (
+        float
+        | tuple[float, NDArray[np.float64]]
+        | tuple[float, NDArray[np.uint8]]
+        | tuple[float, NDArray[np.float64], NDArray[np.uint8]]
+        | tuple[float, NDArray[np.float64], NDArray[np.float64]]
+        | tuple[float, NDArray[np.uint8], NDArray[np.float64]]
+        | tuple[float, NDArray[np.float64], NDArray[np.uint8], NDArray[np.float64]]
+    ):
+        """
+        Compute the recurrence time entropy (RTE) for a continuous-time dynamical system.
 
         Parameters
         ----------
-        u: Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape(d,) where d is system dimension
-        num_intersections: int
-            Number of intersections to record in the Poincaré section or stroboscopic map.
-        parameters: Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape(p,) passed to mapping function
-        transient_time : float, optional
-            Initial time to discard before recording the section.
-        map_type : str
-            Which map to use: stroboscopic map or Poincaré section, by default "SM"
-        section_index : Optional[int]
-            Index of the coordinate to define the Poincaré section (0-based). Only used when map_type="PS".
-        section_value : Optional[float]
-            Value of the coordinate at which the section is defined. Only used when map_type="PS".
-        crossing : Optional[int]
-            Specifies the type of crossing to consider:
-            - 1 : positive crossing (from below to above section_value)
-            - -1 : negative crossing (from above to below section_value)
-            - 0 : all crossings
-
-            Only used when map_type="PS".
-        sampling_time : float
-            Time interval between consecutive samples in the stroboscopic map. Only used when map_type="SM".
-        maxima_index : Optional[int]
-            Index of the coordinate whose maxima will be recorded. Only used when map_type="MM".
-        metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
-            Distance metric used for phase space reconstruction.
-        std_metric: {"supremum", "euclidean", "manhattan"}, default = "supremum"
-            Distance metric used for standard deviation calculation.
-        lmin: int, default = 1
-            Minimum line length to consider in recurrence quantification.
-        threshold: float, default = 0.1
-            Recurrence threshold(relative to data range).
-        threshold_std: bool, default = True
-            Whether to scale threshold by data standard deviation.
-        return_final_state: bool, default = False
-            Whether to return the final system state in results.
-        return_recmat: bool, default = False
-            Whether to return the recurrence matrix.
-        return_p: bool, default = False
-            Whether to return white vertical line length distribution.
+        u : numeric_like_t
+            Initial condition. It must define a 1D state vector whose length matches
+            the system dimension.
+        num_intersections : int_t
+            Number of reduced-map points used in the recurrence analysis.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before generating the reduced map.
+        map_type : str, optional
+            Reduced map used to generate the data:
+            - `"PS"` for Poincaré section
+            - `"SM"` for stroboscopic map
+            - `"MM"` for maxima map
+        section_index : int_t | None, optional
+            Coordinate index defining the Poincaré section when `map_type="PS"`.
+        section_value : numeric_t | None, optional
+            Section value for the Poincaré section when `map_type="PS"`.
+        crossing : int_t | None, optional
+            Crossing orientation for the Poincaré section when `map_type="PS"`.
+        sampling_time : numeric_t | None, optional
+            Sampling interval for the stroboscopic map when `map_type="SM"`.
+        maxima_index : int_t | None, optional
+            Index of the state variable whose maxima are used when `map_type="MM"`.
+        **kwargs : Any
+            Additional keyword arguments passed to `RTEConfig`, including:
+            - `metric`
+            - `std_metric`
+            - `threshold`
+            - `threshold_mode`
+            - `threshold_std`
+            - `lmin`
+            - `return_final_state`
+            - `return_recmat`
+            - `return_p`
 
         Returns
         -------
-        Union[float, Tuple[float, NDArray[np.float64]]]
-            - float: RTE value(base case)
-            - Tuple: (RTE, white_line_distribution) if return_distribution = True
+        float or tuple
+            The RTE value, optionally followed by:
+            - the final reduced-map point
+            - the recurrence matrix
+            - the white-vertical-line distribution
 
         Raises
         ------
         ValueError
-            - If `u` is not a 1D array matching the system dimension.
-            - If `parameters` is not `None` and does not match the expected number of parameters.
-            - If `parameters` is `None` but the system expects parameters.
-            - If `parameters` is a scalar or array-like but not 1D.
-            - If `transient_time` is negative.
-            - If `map_type` is not one of {"SM", "PS"}.
-            - If `map_type="PS"` but any of `section_index`, `section_value`, or `crossing` is `None`.
-            - If `section_index` is negative or ≥ system dimension.
-            - If `crossing` is not one of {-1, 0, 1}.
-            - If `map_type="SM"` but `sampling_time` is `None` or negative.
+            - If the initial condition does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `num_intersections` is negative.
+            - If `map_type` is not one of `"PS"`, `"SM"`, or `"MM"`.
+            - If required arguments for the selected map type are missing.
+            - If `section_index` or `maxima_index` is outside the valid coordinate range.
+            - If `crossing` is not one of `-1`, `0`, or `1`.
         TypeError
-            - If `u` is not a scalar or array-like type.
-            - If `parameters` is not a scalar or array-like type.
             - If `map_type` is not a string.
-            - If `section_value` is not a real number when `map_type="PS"`.
-            - If `crossing` is not an integer when `map_type="PS"`.
-            - If `sampling_time` is not a real number when `map_type="SM"`.
-
-        Notes
-        -----
-        - Higher RTE indicates more complex dynamics
-        - Set min_recurrence_time = 2 to ignore single-point recurrences
-        - Implementation follows [1]
-
-        References
-        ----------
-        [1] Sales et al., Chaos 33, 033140 (2023)
-
-        Examples
-        --------
-        >>>  # Basic usage
-        >>> rte = system.recurrence_time_entropy(u0, params, 5000)
-
-        >>>  # With distribution output
-        >>> rte, dist = system.recurrence_time_entropy(
-        ...     u0, params, 5000,
-        ...     return_distribution=True,
-        ...     recurrence_threshold=0.1
-        ...)
+            - If `section_value`, `sampling_time`, or `transient_time` is not a valid real number.
+            - If `section_index`, `crossing`, `maxima_index`, or `num_intersections` is not an integer.
         """
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
         else:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
-        validate_non_negative(transient_time, "transient_time", Real)
+        validate_non_negative(num_intersections, "num_intersections", Integral)
+        transient_time, _ = validate_times(transient_time, np.float64(1.0e300))
 
         if not isinstance(map_type, str):
             raise TypeError("map_type must be a string")
 
+        map_type = map_type.upper()
+
         if map_type == "PS":
             if section_index is None or section_value is None or crossing is None:
                 raise ValueError(
-                    'When using map_type="PS", you must inform section_index, section_value, and crossing'
+                    "When map_type='PS', section_index, section_value, and crossing must be provided"
                 )
 
             validate_non_negative(section_index, "section_index", Integral)
             if section_index >= self.__system_dimension:
                 raise ValueError("section_index must be in [0, system_dimension)")
 
-            if not isinstance(section_value, Real):
+            if isinstance(section_value, bool) or not isinstance(section_value, Real):
                 raise TypeError("section_value must be a valid real number")
 
-            if not isinstance(crossing, Integral):
-                raise TypeError("crossing must be a valid integer number")
-            elif crossing not in [-1, 0, 1]:
+            if isinstance(crossing, bool) or not isinstance(crossing, Integral):
+                raise TypeError("crossing must be an integer")
+            if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
 
         elif map_type == "SM":
+            if sampling_time is None:
+                raise ValueError("When map_type='SM', sampling_time must be provided")
+            validate_positive(sampling_time, "sampling_time", Real)
 
-            if sampling_time is not None:
-                validate_non_negative(sampling_time, "sampling_time", Real)
-            else:
-                raise ValueError(
-                    'When using map_type="SM" you must inform sampling_time'
-                )
         elif map_type == "MM":
-            if maxima_index is not None:
-                validate_non_negative(maxima_index, "maxima_index", Integral)
-            else:
-                raise ValueError(
-                    'When using map_type="MM" you must inform maxima_index'
-                )
+            if maxima_index is None:
+                raise ValueError("When map_type='MM', maxima_index must be provided")
+            validate_non_negative(maxima_index, "maxima_index", Integral)
+            if maxima_index >= self.__system_dimension:
+                raise ValueError("maxima_index must be in [0, system_dimension)")
+
         else:
-            raise ValueError(
-                "map_type must be SM (stroboscopic map), PS (Poincaré section), or MM (Maxima map)"
-            )
+            raise ValueError("map_type must be 'PS', 'SM', or 'MM'")
 
         time_step = self.__get_initial_time_step(u, parameters)
 
-        return recurrence_time_entropy(
-            u,
-            parameters,
-            num_intersections,
-            transient_time,
-            self.__equations_of_motion,
-            time_step,
-            self.__atol,
-            self.__rtol,
-            self.__integrator_func,
-            map_type,
-            section_index,
-            section_value,
-            crossing,
-            sampling_time,
-            maxima_index,
+        return recurrence_time_entropy_core(
+            u=u,
+            parameters=parameters,
+            num_points=int(num_intersections),
+            transient_time=transient_time,
+            equations_of_motion=self.__equations_of_motion,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            map_type=map_type,
+            section_index=None if section_index is None else int(section_index),
+            section_value=None if section_value is None else np.float64(section_value),
+            crossing=None if crossing is None else int(crossing),
+            sampling_time=None if sampling_time is None else np.float64(sampling_time),
+            maxima_index=None if maxima_index is None else int(maxima_index),
             **kwargs,
         )
 
     def hurst_exponent(
         self,
-        u: Union[NDArray[np.float64], Sequence[float]],
-        num_intersections: int,
-        parameters: Union[None, Sequence[float], NDArray[np.float64]] = None,
-        transient_time: Optional[float] = None,
-        wmin: int = 2,
+        u: numeric_like_t,
+        num_intersections: int_t,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
+        wmin: int_t = 2,
         map_type: str = "SM",
-        section_index: Optional[int] = None,
-        section_value: Optional[float] = None,
-        crossing: Optional[int] = None,
-        sampling_time: Optional[float] = None,
-        maxima_index: Optional[float] = None,
-    ) -> Union[float, Tuple[float, NDArray[np.float64]]]:
+        section_index: int_t | None = None,
+        section_value: numeric_t | None = None,
+        crossing: int_t | None = None,
+        sampling_time: numeric_t | None = None,
+        maxima_index: int_t | None = None,
+    ) -> NDArray[np.float64]:
         """
-        Estimate the Hurst exponent for a system trajectory using the rescaled range (R/S) method.
+        Estimate the Hurst exponent from a reduced map generated by the continuous-time system.
 
         Parameters
         ----------
-        u : NDArray[np.float64]
-            Initial condition vector of shape (n,).
-        parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            Parameters passed to the mapping function.
-        total_time : int
-            Total number of iterations used to generate the trajectory.
-        transient_time : Optional[int], optional
-            Number of initial iterations to discard as transient. If `None`, no transient is removed. Default is `None`.
-        wmin : int, optional
-            Minimum window size for the rescaled range calculation. Default is 2.
-        map_type : str
-            Which map to use: stroboscopic map or Poincaré section, by default "SM"
-        section_index : Optional[int]
-            Index of the coordinate to define the Poincaré section (0-based). Only used when map_type="PS".
-        section_value : Optional[float]
-            Value of the coordinate at which the section is defined. Only used when map_type="PS".
-        crossing : Optional[int]
-            Specifies the type of crossing to consider:
-            - 1 : positive crossing (from below to above section_value)
-            - -1 : negative crossing (from above to below section_value)
-            - 0 : all crossings
-
-            Only used when map_type="PS".
-        sampling_time : float
-            Time interval between consecutive samples in the stroboscopic map. Only used when map_type="SM".
-        maxima_index : Optional[int]
-            Index of the coordinate whose maxima will be recorded. Only used when map_type="MM".
+        u : numeric_like_t
+            Initial condition. It must define a 1D state vector whose length matches
+            the system dimension.
+        num_intersections : int_t
+            Number of reduced-map points used in the Hurst analysis.
+        parameters : numeric_like_t | None, optional
+            Parameters of the system. If `None`, the parameters stored in the
+            instance are used.
+        transient_time : numeric_t | None, optional
+            Initial integration time discarded before generating the reduced map.
+        wmin : int_t, optional
+            Minimum window size used in the rescaled-range calculation.
+        map_type : str, optional
+            Reduced map used to generate the data:
+            - `"PS"` for Poincaré section
+            - `"SM"` for stroboscopic map
+            - `"MM"` for maxima map
+        section_index : int_t | None, optional
+            Coordinate index defining the Poincaré section when `map_type="PS"`.
+        section_value : numeric_t | None, optional
+            Section value for the Poincaré section when `map_type="PS"`.
+        crossing : int_t | None, optional
+            Crossing orientation for the Poincaré section when `map_type="PS"`.
+        sampling_time : numeric_t | None, optional
+            Sampling interval for the stroboscopic map when `map_type="SM"`.
+        maxima_index : int_t | None, optional
+            Index of the state variable whose maxima are used when `map_type="MM"`.
 
         Returns
         -------
         NDArray[np.float64]
-            Estimated Hurst exponents for each dimension of the input vector `u`, of shape (n,).
+            Estimated Hurst exponent values for the reduced-map coordinates.
 
         Raises
         ------
+        ValueError
+            - If the initial condition does not match the system dimension.
+            - If the number of parameters does not match the expected number.
+            - If `num_intersections` is negative.
+            - If `map_type` is not one of `"PS"`, `"SM"`, or `"MM"`.
+            - If required arguments for the selected map type are missing.
+            - If `section_index` or `maxima_index` is outside the valid coordinate range.
+            - If `crossing` is not one of `-1`, `0`, or `1`.
+            - If `sampling_time` is not positive.
+            - If `wmin < 2` or `wmin >= num_intersections // 2`.
         TypeError
             - If `map_type` is not a string.
-            - If `section_value` is not a real number when `map_type="PS"`.
-            - If `crossing` is not an integer when `map_type="PS"`.
-            - If `sampling_time` is not a real number when `map_type="SM"`.
-            - If `maxima_index` is not an integer when `map_type="MM"`.
-        ValueError
-            - If `map_type` is not one of {"SM", "PS", "MM"}.
-            - If `map_type="PS"` and any of `section_index`, `section_value`, or `crossing` is `None`.
-            - If `section_index` is negative or ≥ system dimension when `map_type="PS"`.
-            - If `crossing` is not in {-1, 0, 1} when `map_type="PS"`.
-            - If `map_type="SM"` and `sampling_time` is `None` or negative.
-            - If `map_type="MM"` and `maxima_index` is `None` or negative.
-            - If `transient_time` is negative.
-            - If `wmin` is less than 2 or greater than or equal to `num_intersections // 2`.
-
-        Notes
-        -----
-        The Hurst exponent is a measure of the long-term memory of a time series:
-
-        - H = 0.5 indicates a random walk (no memory).
-        - H > 0.5 indicates persistent behavior (positive autocorrelation).
-        - H < 0.5 indicates anti-persistent behavior (negative autocorrelation).
-
-        This implementation computes the rescaled range (R/S) for various window sizes and
-        performs a linear regression in log-log space to estimate the exponent.
-
-        The function supports multivariate time series, estimating one Hurst exponent per dimension.
+            - If `section_value`, `sampling_time`, or `transient_time` is not a valid real number.
+            - If `section_index`, `crossing`, `maxima_index`, `wmin`, or `num_intersections`
+              is not an integer.
         """
         u = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
-        u = u.copy()
 
         if parameters is None and self.__parameters is not None:
             parameters = self.__parameters
         else:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
-        validate_non_negative(transient_time, "transient_time", Real)
+        validate_non_negative(num_intersections, "num_intersections", Integral)
+        validate_positive(wmin, "wmin", Integral)
+        transient_time, _ = validate_times(transient_time, np.float64(1.0e300))
 
         if not isinstance(map_type, str):
             raise TypeError("map_type must be a string")
 
+        map_type = map_type.upper()
+
         if map_type == "PS":
             if section_index is None or section_value is None or crossing is None:
                 raise ValueError(
-                    'When using map_type="PS", you must inform section_index, section_value, and crossing'
+                    "When map_type='PS', section_index, section_value, and crossing must be provided"
                 )
 
             validate_non_negative(section_index, "section_index", Integral)
             if section_index >= self.__system_dimension:
                 raise ValueError("section_index must be in [0, system_dimension)")
 
-            if not isinstance(section_value, Real):
+            if isinstance(section_value, bool) or not isinstance(section_value, Real):
                 raise TypeError("section_value must be a valid real number")
 
-            if not isinstance(crossing, Integral):
-                raise TypeError("crossing must be a valid integer number")
-            elif crossing not in [-1, 0, 1]:
+            if isinstance(crossing, bool) or not isinstance(crossing, Integral):
+                raise TypeError("crossing must be an integer")
+            if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
 
         elif map_type == "SM":
+            if sampling_time is None:
+                raise ValueError("When map_type='SM', sampling_time must be provided")
+            validate_positive(sampling_time, "sampling_time", Real)
 
-            if sampling_time is not None:
-                validate_non_negative(sampling_time, "sampling_time", Real)
-            else:
-                raise ValueError(
-                    'When using map_type="SM" you must inform sampling_time'
-                )
         elif map_type == "MM":
-            if maxima_index is not None:
-                validate_non_negative(maxima_index, "maxima_index", Integral)
-            else:
-                raise ValueError(
-                    'When using map_type="MM" you must inform maxima_index'
-                )
+            if maxima_index is None:
+                raise ValueError("When map_type='MM', maxima_index must be provided")
+            validate_non_negative(maxima_index, "maxima_index", Integral)
+            if maxima_index >= self.__system_dimension:
+                raise ValueError("maxima_index must be in [0, system_dimension)")
+
         else:
-            raise ValueError(
-                "map_type must be SM (stroboscopic map), PS (Poincaré section), or MM (Maxima map)"
-            )
+            raise ValueError("map_type must be 'PS', 'SM', or 'MM'")
 
         if wmin < 2 or wmin >= num_intersections // 2:
             raise ValueError(
-                f"`wmin` must be an integer >= 2 and <= total_time / 2. Got {wmin}."
+                f"`wmin` must be an integer >= 2 and < num_intersections // 2. Got {wmin}."
             )
 
         time_step = self.__get_initial_time_step(u, parameters)
 
         return hurst_exponent_wrapped(
-            u,
-            parameters,
-            num_intersections,
-            self.__equations_of_motion,
-            time_step,
-            self.__atol,
-            self.__rtol,
-            self.__integrator_func,
-            map_type,
-            section_index,
-            section_value,
-            crossing,
-            sampling_time,
-            maxima_index,
-            wmin,
-            transient_time,
+            u=u,
+            parameters=parameters,
+            num_points=int(num_intersections),
+            equations_of_motion=self.__equations_of_motion,
+            time_step=time_step,
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            map_type=map_type,
+            section_index=None if section_index is None else int(section_index),
+            section_value=None if section_value is None else np.float64(section_value),
+            crossing=None if crossing is None else int(crossing),
+            sampling_time=None if sampling_time is None else np.float64(sampling_time),
+            maxima_index=None if maxima_index is None else int(maxima_index),
+            wmin=int(wmin),
+            transient_time=transient_time,
         )
