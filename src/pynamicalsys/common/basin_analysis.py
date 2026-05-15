@@ -19,6 +19,7 @@ import numpy as np
 from numba import njit, prange
 from typing import Tuple
 from numpy.typing import NDArray
+from joblib import delayed, Parallel
 
 
 def uncertainty_fraction(x, y, basin, epsilon_max, n_eps=100, epsilon_min=0):
@@ -168,3 +169,107 @@ def basin_entropy(
     Sbb = np.mean(S[boundary_mask]) if boundary_mask.any() else 0.0
 
     return float(Sb), float(Sbb)
+
+def uncertainty_fraction_mapping(
+    X: NDArray[np.float64],
+    Y: NDArray[np.float64],
+    basin: NDArray[np.float64],
+    mapping: object,
+    parameters: object,
+    exits: object,
+    escape: str = "exiting",
+    n_samples: int = 120_000,
+    p_samples: int = 7,
+    threshold: float = 0.1,
+    n_eps: int = 100,
+    max_time: int = 1000,
+    seed: int = 13,
+    n_jobs: int = -1,
+) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """
+    Wrapper to compute the uncertainty fraction f(epsilon) for a given basin of attraction with mapping.
+    """
+ 
+    rng = np.random.default_rng(seed)
+ 
+    flat_x = X.flatten()
+    flat_y = Y.flatten()
+    flat_basin = basin.flatten()
+ 
+    epsilons = np.logspace(np.log10(0.1), np.log10(1 / X.size), n_eps)
+ 
+    idx = rng.choice(len(flat_x), size=n_samples, replace=False)
+    xs = flat_x[idx]
+    ys = flat_y[idx]
+    labels = flat_basin[idx]
+ 
+    angles = np.linspace(0, 2 * np.pi, p_samples, endpoint=False)
+    dcos = np.cos(angles)
+    dsin = np.sin(angles)
+ 
+    needed = max(1, int(np.ceil(threshold * p_samples)))
+ 
+    ss = np.random.SeedSequence(seed)
+    child_seeds = ss.spawn(n_eps)
+ 
+    f_eps = Parallel(n_jobs=n_jobs)(
+        delayed(_process_single_epsilon)(
+            eps, xs, ys, labels, p_samples, dcos, dsin, needed,
+            mapping, max_time, parameters, exits, escape, n_samples,
+            child_seeds[i],
+        )
+        for i, eps in enumerate(epsilons)
+    )
+ 
+    return epsilons, f_eps
+ 
+ 
+def _process_single_epsilon(
+    eps: float,
+    xs: NDArray[np.float64],
+    ys: NDArray[np.float64],
+    labels: NDArray[np.float64],
+    p_samples: int,
+    dcos: NDArray[np.float64],
+    dsin: NDArray[np.float64],
+    needed: int,
+    mapping: object,
+    max_time: int,
+    parameters: object,
+    exits: object,
+    escape: str,
+    n_samples: int,
+    child_seed: np.random.SeedSequence,
+) -> float:
+    """Worker function that computes the uncertainty fraction for a single
+    epsilon value.
+    """
+ 
+    rng = np.random.default_rng(child_seed)
+    uncertain = 0
+ 
+    for x, y, side_center in zip(xs, ys, labels):
+        u_rand = rng.random(p_samples)
+        r = eps * np.sqrt(u_rand)
+        x_eps = x + r * dcos
+        y_eps = y + r * dsin
+ 
+        different = 0
+        for xp, yp in zip(x_eps, y_eps):
+            side_p, _ = mapping.escape_analysis(
+                u=(xp, yp),
+                max_time=max_time,
+                parameters=parameters,
+                exits=exits,
+                escape=escape,
+            )
+            if side_p != side_center:
+                different += 1
+                if different >= needed:
+                    break
+ 
+        if different >= needed:
+            uncertain += 1
+ 
+    return uncertain / n_samples
+ 
