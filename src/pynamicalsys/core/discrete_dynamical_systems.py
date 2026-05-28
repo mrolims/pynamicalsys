@@ -30,7 +30,6 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     calculate_threshold,
 )
 
-from pynamicalsys.common.linalg import qr, householder_qr
 
 from pynamicalsys.common.differentiation import finite_difference_jacobian
 
@@ -2285,8 +2284,9 @@ class DiscreteDynamicalSystem:
             System parameters of shape (p,) passed to mapping function
         method : str, optional
             Computation method:
-            - "QR": QR decomposition
-            - "QR_HH": Householder QR (more stable)
+            - "ER": Analytical QR decomposition, after Eckmann and Ruelle [1]. Only for 2d systems
+            - "QR": QR decomposition (modifed Gram-Schmidt)
+            - "QR_HH": Householder QR (more stable, uses np.linalg.qr)
         return_history : bool, optional
             If True, returns convergence history (default False)
         sample_times : Optional[Union[NDArray[np.float64], Sequence[int]]], optional
@@ -2374,12 +2374,12 @@ class DiscreteDynamicalSystem:
         if not isinstance(method, str):
             raise TypeError("method must be a string")
         method = method.upper()
-        if method not in ("QR", "QR_HH"):
-            raise ValueError("method must be 'QR' or 'QR_HH'")
+        if method not in ("ER", "QR", "QR_HH"):
+            raise ValueError("method must be 'ER', 'QR', or 'QR_HH'")
 
         # Validate method for system dimension
-        if method == "QR" and self.__system_dimension == 2:
-            method = "ER"  # Fallback to QR for higher dimensions
+        if method == "ER" and self.__system_dimension > 2:
+            raise ValueError("method ER is only valid for 2 dimensional systems.")
 
         sample_times_arr: NDArray[np.int64] | None = None
         if return_history:
@@ -2442,7 +2442,6 @@ class DiscreteDynamicalSystem:
                         log_base,
                     )
             else:
-                qr_func = qr if method == "QR" else householder_qr
                 result, u = lyapunov_qr(
                     u,
                     parameters,
@@ -2451,7 +2450,7 @@ class DiscreteDynamicalSystem:
                     self.__jacobian,
                     num_exponents,
                     sample_times_arr,
-                    qr_func,
+                    method,
                     return_history,
                     transient_time,
                     log_base,

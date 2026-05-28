@@ -100,6 +100,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Standardized handling of `sample_times` in wrappers that support sampled outputs by explicitly validating user input and constructing internal sampling arrays only when needed.
   - Updated `dig` observable validation so the observable must be callable and return a 1D NumPy array with one value per input state.
   - Improved validation and normalization of wrapper inputs for periodic-orbit, manifold, transport, escape, Hurst, and recurrence diagnostics.
+  - The Lyapunov exponent API now exposes the analytical QR procedure (after Eckmann-Ruelle) explicitly through the `method` argument:
+    - `method="ER"` now selects the analytical QR-based approach (available only for 2D systems).
+    - `method="QR"` now consistently uses the modifed Gram-Schmidt QR decomposition, independent of system dimension.
+    - `method=QR_HH` uses Householder QR decomposition via `np.linalg.qr`.
+  - The previous implicit behavior where method="QR" automatically switched to the Eckmann–Ruelle algorithm for 2D systems has been removed. Existing code relying on this optimization should now explicitly set `ds.lyapunov(..., method="ER")`.
 
 - `ContinuousDynamicalSystem` class:
   - Reorganized imports and internal plumbing to use the new continuous-time module layout.
@@ -137,6 +142,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed `GALI` computation by using stable QR-based volume evaluation.
   - Fixed `CLV_angles` validation so subspace and pair indices are checked against the number of computed CLVs rather than the ambient phase-space dimension.
   - Removed a stray debug `print(iter_time)` from `manifold()`.
+  - Added validation to prevent the use of `method="ER"` for systems with dimension greater than 2, raising a clear error instead of silently falling back to another implementation.
 
 - `ContinuousDynamicalSystem` class:
   - Fixed wrapper regressions introduced during the continuous-time refactor in trajectory, reduced-map, Lyapunov, CLV, SALI, LDI, GALI, RTE, and Hurst-related methods.

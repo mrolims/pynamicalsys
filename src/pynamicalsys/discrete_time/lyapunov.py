@@ -21,7 +21,7 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.linalg import householder_qr
+from pynamicalsys.common.linalg import qr
 
 
 @njit
@@ -350,9 +350,7 @@ def lyapunov_qr(
     jacobian: jacobian_t,
     num_exponents: int,
     sample_times: Optional[NDArray[np.integer]] = None,
-    QR: Callable[
-        [NDArray[np.float64]], Tuple[NDArray[np.float64], NDArray[np.float64]]
-    ] = np.linalg.qr,
+    method: str = "QR",
     return_history: bool = False,
     transient_time: Optional[int_t] = None,
     log_base: numeric_t = np.e,
@@ -383,9 +381,11 @@ def lyapunov_qr(
     sample_times : Optional[NDArray[np.integer]], optional
         Array of iteration times at which the finite-time Lyapunov exponents
         are recorded when `return_history=True`.
-    QR : Callable[[NDArray[np.float64]], Tuple[NDArray[np.float64], NDArray[np.float64]]], optional
-        QR decomposition routine used to orthonormalize the perturbation
-        vectors. Default is `qr`.
+    method : str, optional
+        Computation method:
+        - "ER": Analytical QR decomposition, after Eckmann and Ruelle [2]. Only for 2d systems
+        - "QR": QR decomposition (modified Gram-Schmidt)
+        - "QR_HH": Householder QR (more stable)
     return_history : bool, optional
         If True, return the finite-time Lyapunov exponents evaluated at
         `sample_times`. Otherwise, return only the final exponent estimates.
@@ -426,14 +426,16 @@ def lyapunov_qr(
     ----------
     [1] A. Wolf et al., "Determining Lyapunov exponents from a time series",
         Physica D 16, 285-317 (1985).
+    [2] Eckmann & Ruelle, Rev. Mod. Phys 57, 617 (1985)
     """
+
     np.random.seed(seed)
     neq = len(u)
     num_samples = len(sample_times) if sample_times is not None else 0
     log_den = np.log(log_base)
 
     v = np.ascontiguousarray(np.random.rand(neq, num_exponents))
-    v, _ = QR(v)
+    v, _ = qr(v)
     exponents = np.zeros(num_exponents, dtype=np.float64)
     u = np.ascontiguousarray(u.copy())
 
@@ -454,7 +456,10 @@ def lyapunov_qr(
         for i in range(num_exponents):
             v[:, i] = J @ np.ascontiguousarray(v[:, i])
 
-        v, R = QR(v)
+        if method == "QR":
+            v, R = qr(v)
+        else:
+            v, R = np.linalg.qr(v)
         exponents += np.log(np.abs(np.diag(R)))
 
         if (
@@ -620,7 +625,7 @@ def finite_time_lyapunov(
                 mapping,
                 jacobian,
                 num_exponents,
-                QR=householder_qr,
+                method=method,
                 log_base=log_base,
             )
 

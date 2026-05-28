@@ -1,5 +1,6 @@
 __pycache__
 .vscode/
+.venv/
 .DS_Store
 *.egg-info/
 tests/*.png
