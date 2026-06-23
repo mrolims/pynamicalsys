@@ -59,6 +59,21 @@ hess_t: TypeAlias = Callable[
     NDArray[np.float64],
 ]
 
+# Equations of motion: f(q, p, parameters) -> (dq/dt, dp/dt)
+# i.e. (dH/dp, -dH/dq), supplied directly by the user (not assembled
+# from grad_T/grad_V, since H need not split that way)
+eom_t: TypeAlias = Callable[
+    [NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]],
+    tuple[NDArray[np.float64], NDArray[np.float64]],
+]
+
+# Full Hessian of H w.r.t. the combined state z = (q, p), shape (2n, 2n).
+# Block layout: [[H_qq, H_qp], [H_pq, H_pp]]
+hess_H_t: TypeAlias = Callable[
+    [NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]],
+    NDArray[np.float64],
+]
+
 symplectic_step_t: TypeAlias = Callable[
     [
         NDArray[np.float64],
