@@ -19,7 +19,7 @@ import numpy as np
 from numbers import Integral, Real
 from typing import Optional, Tuple
 from numpy.typing import NDArray
-from pynamicalsys.common.basin_analysis import basin_entropy, uncertainty_fraction
+from pynamicalsys.common.basin_analysis import basin_entropy, uncertainty_fraction, uncertainty_fraction_mapping
 
 
 class BasinMetrics:
@@ -204,3 +204,207 @@ class BasinMetrics:
             n_eps=n_eps,
             epsilon_min=epsilon_min,
         )
+    
+    def uncertainty_fraction_mapping(
+            self,
+            X,
+            Y,
+            mapping,
+            parameters,
+            exits,
+            escape='exiting',
+            n_samples=120_000,
+            p_samples=7,
+            threshold=0.1,
+            n_eps = 100,
+            max_time=1000,
+            seed=13,
+            n_jobs=-1):
+        """
+        Estimate the uncertainty fraction of a dynamical mapping using Monte Carlo sampling.
+
+        The computation is performed through random sampling of initial conditions and
+        perturbations of size ε, allowing the estimation of the scaling law:
+
+        f(ε) ~ ε^{⍺},
+
+        where ⍺ is the uncertainty exponent. For a D-dimensional phase space, the
+        dimension d of the basin boundary is related to ⍺ by:
+
+        d = D - ⍺.
+
+        Parameters
+        ----------
+        X : NDArray[np.float64]
+            2D array containing the x-coordinates of grid.
+        Y : NDArray[np.float64]
+            2D array containing the y-coordinates of grid.
+        mapping : callable
+            Dynamical mapping function describing the discrete-time system evolution.
+            The function must accept the current state and the system parameters as input.
+        parameters : list
+            Parameters passed to the mapping function.
+        exits : list
+            List containing the exit regions or exit conditions of the system.
+        escape : str, optional
+            Escape criterion type (default: ``"exiting"``).
+
+            Currently, only:
+            - ``"exiting"`` : trajectories are classified according to the exit reached.
+            is implemented.
+        n_samples : int, optional
+            Number of random initial conditions sampled for the Monte Carlo estimation
+            (default: 120000).
+        p_samples : int, optional
+            Number of perturbed neighbors generated for each sampled point
+            (default: 7).
+        threshold : float, optional
+            Fraction threshold used to classify a point as uncertain
+            (default: 0.1).
+
+            Must satisfy:
+
+            0 <= threshold <= 1
+        n_eps : int, optional
+            Number of epsilon values used in the uncertainty scaling analysis
+            (default: 100).
+        max_time : int, optional
+            Maximum number of iterations allowed for trajectory evolution
+            (default: 1000).
+        seed : int, optional
+            Seed for the random number generator used during sampling
+            (default: 13).
+        n_jobs : int, optional
+            Number of parallel jobs used during computation
+            (default: -1).
+
+            Common values:
+            - ``-1`` : use all available CPU cores
+
+        Returns
+        -------
+        Tuple[NDArray[np.float64], NDArray[np.float64]]
+            A tuple containing:
+
+            - epsilons : Array of epsilon values.
+            - uncertainty_fraction : Array containing the estimated uncertainty
+            fraction corresponding to each epsilon value.
+
+        Raises
+        ------
+        ValueError
+            If:
+
+            - ``X`` or ``Y`` are not 2-dimensional arrays.
+            - ``X``, ``Y``, and ``basin`` do not have the same shape.
+            - ``parameters`` is ``None``.
+            - ``escape`` is not ``"exiting"``.
+            - ``n_samples`` is not a positive integer.
+            - ``p_samples`` is not a positive integer.
+            - ``n_eps`` is not a positive integer.
+            - ``max_time`` is not a positive integer.
+            - ``seed`` is negative.
+            - ``threshold`` is not between 0 and 1.
+            - ``n_jobs`` is zero.
+
+        Notes
+        -----
+        - This implementation uses Monte Carlo sampling to reduce computational cost
+        when dealing with large phase spaces.
+        - Parallel execution is supported through the ``n_jobs`` parameter.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from numba import njit
+        >>> from joblib import Parallel, delayed
+        >>> from pynamicalsys import BasinMetrics, DiscreteDynamicalSystem as dds
+        >>>
+        >>> @njit
+        ... def henon_map(state, parameters):
+        ...     x, y = state
+        ...     a, b = parameters
+        ...     return np.array([1 - a*x**2 + y, b*x])
+        >>>
+        >>> henon = dds(
+        ...     mapping=henon_map,
+        ...     number_of_parameters=2,
+        ...     system_dimension=2,
+        ... )
+        >>>
+        >>> grid_size = 1000
+        >>> x = np.linspace(-2, 2, grid_size)
+        >>> y = np.linspace(-2, 2, grid_size)
+        >>> X, Y = np.meshgrid(x, y, indexing='ij')
+        >>> grid_points = np.column_stack((X.ravel(), Y.ravel()))
+        >>>
+        >>> exits = np.array([[-10, 10], [-10, 10]], dtype=np.float64)
+        >>> N = 2000
+        >>>
+        >>> escape = np.array(Parallel(n_jobs=-1)(
+        ...     delayed(henon.escape_analysis)(
+        ...         u, N, exits, parameters=[1.45, 0.3], escape="exiting"
+        ...     )
+        ...     for u in grid_points
+        ... ))
+        >>>
+        >>> basin = escape[:, 0].reshape(grid_size, grid_size)
+        >>>
+        >>> metrics = BasinMetrics(basin)
+        >>>
+        >>> epsilons, f = metrics.uncertainty_fraction_mapping(
+        ...     X,
+        ...     Y,
+        ...     mapping=henon,
+        ...     parameters=[1.40, 0.3],
+        ...     exits=exits,
+        ...     n_samples=10_000,
+        ...     p_samples=7,
+        ...     max_time=1000,
+        ... )
+        """
+        
+        X = np.asarray(X, dtype=np.float64)
+        Y = np.asarray(Y, dtype=np.float64)
+
+        if X.ndim != 2 or Y.ndim != 2:
+            raise ValueError("X, Y, and basin must be 2-dimensional arrays")
+        if X.shape != Y.shape or X.shape != self.basin.shape:
+            raise ValueError("X, Y, and basin must have the same shape")
+        if parameters is None:
+            raise ValueError("parameters cannot be None")
+        if escape != "exiting":
+            raise ValueError("escape must be 'exiting'. Option 'entering' is not implemented yet")
+        if not isinstance(n_samples, int) or n_samples <= 0:
+            raise ValueError("n_samples must be a positive integer")
+        if not isinstance(p_samples, int) or p_samples <= 0:
+            raise ValueError("p_samples must be a positive integer")
+        if not isinstance(n_eps, int) or n_eps <= 0:
+            raise ValueError("n_eps must be a positive integer")
+        if not isinstance(max_time, int) or max_time <= 0:
+            raise ValueError("max_time must be a positive integer")
+        if not isinstance(seed, int) or seed < 0:
+            raise ValueError("seed must be a non-negative integer")
+        if not isinstance(threshold, (int, float)) or not (0 <= threshold <= 1):
+            raise ValueError("threshold must be a float between 0 and 1")
+        if n_jobs == 0:
+            raise ValueError("n_jobs cannot be zero")
+
+
+        return uncertainty_fraction_mapping(
+            X,
+            Y,
+            self.basin,
+            mapping,
+            parameters,
+            exits,
+            escape,
+            n_samples,
+            p_samples,
+            threshold,
+            n_eps,
+            max_time,
+            seed,
+            n_jobs
+        )
+        
