@@ -21,11 +21,11 @@ These contributors are also co-authors of the scientific publication associated 
 Matheus Rolim Sales et al., "pynamicalsys: A Python toolkit for the analysis of dynamical systems," `Chaos, Solitons & Fractals 201, 117269 (2025) <https://doi.org/10.1016/j.chaos.2025.117269>`_.
 
 
-.. Additional Contributors
-.. ------------------------
+Additional Contributors
+------------------------
 
-.. The following individuals have made contributions to the project after the initial release:
+The following individuals have made contributions to the project after the initial release:
 
-.. - _To be added..._
+**Conrado Ferreira Bittencourt** [`GitHub <https://github.com/ConradBitt>`__]
 
-.. We thank everyone who contributes their time and effort to improve this package. If you've made a contribution and are not listed here, feel free to submit a pull request or contact the maintainers. Before contributing, please take a look at our :doc:`contributing` and :doc:`code_of_conduct`.
+We thank everyone who contributes their time and effort to improve this package. If you've made a contribution and are not listed here, feel free to contact the maintainers. Before contributing, please take a look at our :doc:`contributing` and :doc:`code_of_conduct`.
