@@ -138,7 +138,7 @@ def generate_poincare_section_sep(
 
 
 @njit
-def generate_poincare_section(
+def _generate_poincare_section(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
     num_intersections: np.int64,
