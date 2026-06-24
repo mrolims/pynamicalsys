@@ -26,8 +26,7 @@ from pynamicalsys.common.types import (
     int_t,
     numeric_t,
     numeric_like_t,
-    grad_t,
-    hess_t,
+    system_func_t,
     symplectic_step_t,
     symplectic_tangent_step_t,
 )
@@ -37,9 +36,12 @@ from pynamicalsys.hamiltonian_systems.models import (
     henon_heiles_grad_V,
     henon_heiles_hess_T,
     henon_heiles_hess_V,
+    henon_heiles_eom,
+    henon_heiles_hess_H,
 )
 
 from pynamicalsys.hamiltonian_systems.fixed_step import (
+    implicit_midpoint_step,
     velocity_verlet_2nd_step,
     yoshida_4th_step,
 )
@@ -55,9 +57,12 @@ from pynamicalsys.hamiltonian_systems.trajectory import (
 )
 
 from pynamicalsys.hamiltonian_systems.poincare import (
-    generate_poincare_section,
-    ensemble_poincare_section,
+    ensemble_poincare_section_midpoint,
+    ensemble_poincare_section_sep,
+    generate_poincare_section_sep,
+    generate_poincare_section_midpoint,
 )
+
 
 from pynamicalsys.hamiltonian_systems.lyapunov import (
     lyapunov_spectrum,
@@ -144,11 +149,12 @@ class HamiltonianSystem:
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
         "henon heiles": {
             "description": "two d.o.f. Hénon-Heiles Hamiltonian system",
-            "has hessian": True,
             "grad_T": henon_heiles_grad_T,
             "grad_V": henon_heiles_grad_V,
             "hess_T": henon_heiles_hess_T,
             "hess_V": henon_heiles_hess_V,
+            "eom": henon_heiles_eom,
+            "hess_H": henon_heiles_hess_H,
             "degrees of freedom": 2,
             "number of parameters": 0,
             "parameters": [],
@@ -166,24 +172,35 @@ class HamiltonianSystem:
             "integrator": velocity_verlet_2nd_step,
             "tangent integrator": velocity_verlet_2nd_step_traj_tan,
         },
+        "imp": {
+            "description": "Implicit midpoint method",
+            "integrator": implicit_midpoint_step,
+            "tangent integrator": None,
+        },
     }
 
     def __init__(
         self,
         model: str | None = None,
-        grad_T: grad_t | None = None,
-        grad_V: grad_t | None = None,
-        hess_T: hess_t | None = None,
-        hess_V: hess_t | None = None,
+        grad_T: system_func_t | None = None,
+        grad_V: system_func_t | None = None,
+        hess_T: system_func_t | None = None,
+        hess_V: system_func_t | None = None,
+        eom: system_func_t | None = None,
+        hess_H: system_func_t | None = None,
         degrees_of_freedom: int | None = None,
         parameters: numeric_like_t | None = None,
         number_of_parameters: int | None = None,
     ) -> None:
         self.__model: str
-        self.__grad_T: grad_t
-        self.__grad_V: grad_t
-        self.__hess_T: hess_t | None
-        self.__hess_V: hess_t | None
+        self.__grad_T: system_func_t | None
+        self.__grad_V: system_func_t | None
+        self.__hess_T: system_func_t | None
+        self.__hess_V: system_func_t | None
+        self.__eom: system_func_t | None
+        self.__hess_H: system_func_t | None
+        self.__system_func_1: system_func_t  # Either grad_T or eom
+        self.__system_func_2: system_func_2  # Either grad_V or hess_H
         self.__degrees_of_freedom: int
         self.__parameters: NDArray[np.float64] | None
         self.__number_of_parameters: int
@@ -191,8 +208,13 @@ class HamiltonianSystem:
         self.__integrator_func: symplectic_step_t
         self.__traj_tan_integrator_func: symplectic_tangent_step_t
         self.__time_step: np.float64
+        self.__tol: np.float64
+        self.__max_iter: int
 
-        if model is not None and (grad_T is not None or grad_V is not None):
+        if model is not None and (
+            (grad_T is not None or grad_V is not None)
+            or (eom is not None or hess_H is not None)
+        ):
             raise ValueError("Cannot specify both model and custom system")
 
         if model is not None:
@@ -211,23 +233,41 @@ class HamiltonianSystem:
             self.__model = model
             self.__grad_T = model_info["grad_T"]
             self.__grad_V = model_info["grad_V"]
+            self.__system_func_1 = model_info["grad_T"]
+            self.__system_func_2 = model_info["grad_V"]
             self.__hess_T = model_info["hess_T"]
             self.__hess_V = model_info["hess_V"]
+            self.__eom = model_info["eom"]
+            self.__hess_H = model_info["hess_H"]
+            self.__integrator = "svy4"
+            self.__integrator_func = yoshida_4th_step
+            self.__traj_tan_integrator_func = yoshida_4th_step_traj_tan
             self.__degrees_of_freedom = int(model_info["degrees of freedom"])
             self.__parameters = None
             self.__number_of_parameters = int(model_info["number of parameters"])
 
-        elif (
-            grad_T is not None and grad_V is not None and degrees_of_freedom is not None
-        ):
-            if not callable(grad_T) or not callable(grad_V):
+        elif degrees_of_freedom is not None:
+            if (grad_T is not None and not callable(grad_T)) or (
+                grad_V is not None and not callable(grad_V)
+            ):
                 raise TypeError("Custom grad_T and grad_V must be callable")
+            self.__grad_T = grad_T
+            self.__grad_V = grad_V
 
             if hess_T is not None and not callable(hess_T):
                 raise TypeError("Custom hess_T must be callable or None")
+            self.__hess_T = hess_T
 
             if hess_V is not None and not callable(hess_V):
                 raise TypeError("Custom hess_V must be callable or None")
+            self.__hess_V = hess_V
+
+            if (eom is not None and not callable(eom)) or (
+                hess_H is not None and not callable(hess_H)
+            ):
+                raise TypeError("Custom eom and hess_H must be callable")
+            self.__eom = eom
+            self.__hess_H = hess_H
 
             validate_positive(degrees_of_freedom, "degrees_of_freedom", Integral)
 
@@ -271,23 +311,30 @@ class HamiltonianSystem:
                 validated_parameters = None
 
             self.__model = "custom"
-            self.__grad_T = grad_T
-            self.__grad_V = grad_V
-            self.__hess_T = hess_T
-            self.__hess_V = hess_V
             self.__degrees_of_freedom = int(degrees_of_freedom)
             self.__parameters = validated_parameters
             self.__number_of_parameters = validated_number_of_parameters
 
         else:
             raise ValueError(
-                "Must specify either a model name or a custom Hamiltonian system with grad_T, grad_V, degrees_of_freedom, and parameters or number_of_parameters."
+                "Must specify either a model name or a custom Hamiltonian system with grad_T and grad_V or eom and hess_H, degrees_of_freedom, and parameters or number_of_parameters."
             )
 
-        self.__integrator = "svy4"
-        self.__integrator_func = yoshida_4th_step
-        self.__traj_tan_integrator_func = yoshida_4th_step_traj_tan
+        if grad_T is not None and grad_V is not None:
+            self.__system_func_1 = grad_T
+            self.__system_func_2 = grad_V
+            self.__integrator = "svy4"
+            self.__integrator_func = yoshida_4th_step
+            self.__traj_tan_integrator_func = yoshida_4th_step_traj_tan
+        elif eom is not None and hess_H is not None:
+            self.__system_func_1 = eom
+            self.__system_func_2 = hess_H
+            self.__integrator = "imp"
+            self.__integrator_func = implicit_midpoint_step
+            self.__traj_tan_integrator_func = None
         self.__time_step = np.float64(1e-2)
+        self.__tol = np.float64(1e-12)
+        self.__max_iter = 50
 
     @classmethod
     def available_models(cls) -> List[str]:
@@ -358,6 +405,8 @@ class HamiltonianSystem:
         self,
         integrator: str,
         time_step: numeric_t = np.float64(1e-2),
+        tol: numeric_t = np.float64(1e-12),
+        max_iter: int = 50,
     ) -> None:
         """
         Set the symplectic integrator and integration time step.
@@ -370,29 +419,36 @@ class HamiltonianSystem:
             - `'vv2'`: 2nd-order velocity-Verlet method
         time_step : numeric_t, optional
             Integration time step. Must be a positive real number.
+        tol : numeric_t, optional
+            Newton convergence tolerance on the residual norm.
+        max_iter : int, optional
+            Maximum Newton iterations per step.
 
         Raises
         ------
         TypeError
             If `integrator` is not a string.
-            If `time_step` is not a real number.
+            If `time_step`, `tol`, or `max_iter` are not real numbers.
         ValueError
-            If `time_step` is not positive.
+            If `time_step`, `tol`, or `max_iter` are not positive.
             If `integrator` is not implemented.
 
         Examples
         --------
         >>> from pynamicalsys import HamiltonianSystem
         >>> HamiltonianSystem.available_integrators()
-        ['svy4', 'vv2']
+        ['svy4', 'vv2', 'imp']
         >>> ds = HamiltonianSystem(model="henon heiles")
         >>> ds.integrator("svy4", time_step=0.001)
         >>> ds.integrator("vv2", time_step=0.001)
+        >>> ds.integrator("imp", time_step=0.01, tol=1e-14, max_iter=100)
         """
         if not isinstance(integrator, str):
             raise TypeError("integrator must be a string")
 
         validate_positive(time_step, "time_step", Real)
+        validate_positive(tol, "tol", Real)
+        validate_positive(max_iter, "max_iter", Integral)
 
         integrator = integrator.lower()
 
@@ -407,10 +463,30 @@ class HamiltonianSystem:
 
         integrator_info = self.__AVAILABLE_INTEGRATORS[integrator]
 
+        if integrator in {"svy4", "vv2"}:
+            if self.__grad_T is None or self.__grad_V is None:
+                raise ValueError(
+                    "Cannot set integrator to `vv2` or `svy4` without providing grad_T and grad_V"
+                )
+            self.__system_func_1 = self.__grad_T
+            self.__system_func_2 = self.__grad_V
+
+        elif integrator == "imp":
+            if self.__eom is None or self.__hess_H is None:
+                raise ValueError(
+                    "Cannot set integrator to `imp` without providing eom and hess_H"
+                )
+            self.__system_func_1 = self.__eom
+            self.__system_func_2 = self.__hess_H
+        else:
+            raise ValueError(f"Unknown integrator: {integrator}")
+
         self.__integrator = integrator
         self.__integrator_func = integrator_info["integrator"]
         self.__traj_tan_integrator_func = integrator_info["tangent integrator"]
         self.__time_step = np.float64(time_step)
+        self.__tol = np.float64(tol)
+        self.__max_iter = max_iter
 
     def set_parameters(
         self, parameters: Union[NDArray[np.float64], Sequence[float], float]
@@ -498,9 +574,11 @@ class HamiltonianSystem:
                 q,
                 p,
                 self.__time_step,
-                self.__grad_T,
-                self.__grad_V,
+                self.__system_func_1,
+                self.__system_func_2,
                 parameters,
+                self.__tol,
+                self.__max_iter,
             )
             return q_new, p_new
 
@@ -512,9 +590,11 @@ class HamiltonianSystem:
                 q[i],
                 p[i],
                 self.__time_step,
-                self.__grad_T,
-                self.__grad_V,
+                self.__system_func_1,
+                self.__system_func_2,
                 parameters,
+                self.__tol,
+                self.__max_iter,
             )
 
         return q_new, p_new
@@ -584,10 +664,12 @@ class HamiltonianSystem:
                 p=p,
                 total_time=total_time,
                 parameters=parameters,
-                grad_T=self.__grad_T,
-                grad_V=self.__grad_V,
+                system_func_1=self.__system_func_1,
+                system_func_2=self.__system_func_2,
                 time_step=self.__time_step,
                 integrator=self.__integrator_func,
+                tol=self.__tol,
+                max_iter=self.__max_iter,
             )
 
         return ensemble_trajectories(
@@ -595,10 +677,12 @@ class HamiltonianSystem:
             p=p,
             total_time=total_time,
             parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
+            system_func_1=self.__system_func_1,
+            system_func_2=self.__system_func_2,
             time_step=self.__time_step,
             integrator=self.__integrator_func,
+            tol=self.__tol,
+            max_iter=self.__max_iter,
         )
 
     def poincare_section(
@@ -688,14 +772,21 @@ class HamiltonianSystem:
         if crossing not in (-1, 0, 1):
             raise ValueError("crossing must be -1, 0, or 1")
 
+        if self.__integrator in ["svy4", "vv2"]:
+            generate_poincare_section = generate_poincare_section_sep
+            ensemble_poincare_section = ensemble_poincare_section_sep
+        else:
+            generate_poincare_section = generate_poincare_section_midpoint
+            ensemble_poincare_section = ensemble_poincare_section_midpoint
+
         if q.ndim == 1:
             return generate_poincare_section(
                 q=q,
                 p=p,
                 num_intersections=np.int64(num_intersections),
                 parameters=parameters,
-                grad_T=self.__grad_T,
-                grad_V=self.__grad_V,
+                system_func_1=self.__system_func_1,
+                system_func_2=self.__system_func_2,
                 time_step=self.__time_step,
                 integrator=self.__integrator_func,
                 section_index=int(section_index),
@@ -708,13 +799,15 @@ class HamiltonianSystem:
             p=p,
             num_intersections=np.int64(num_intersections),
             parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
+            system_func_1=self.__system_func_1,
+            system_func_2=self.__system_func_2,
             time_step=self.__time_step,
             integrator=self.__integrator_func,
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
+            tol=self.__tol,
+            max_iter=self.__max_iter,
         )
 
     def lyapunov(
