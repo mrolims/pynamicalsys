@@ -328,7 +328,7 @@ def ensemble_poincare_section_midpoint(
     crossing: int = 1,
     tol: np.float64 = np.float64(1e-12),
     max_iter: int = 50,
-    n_workers=-1,
+    n_workers=10,
 ) -> NDArray[np.float64]:
     """
     Generate Poincaré sections for an ensemble of initial conditions using the midpoint implicit method.
