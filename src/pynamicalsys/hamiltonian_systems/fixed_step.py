@@ -1,6 +1,6 @@
 # fixed_step.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@ import numpy as np
 from numba import njit
 
 from pynamicalsys.hamiltonian_systems.coefficients import ALPHA, BETA
-from pynamicalsys.common.types import grad_t, eom_t, hess_H_t
+from pynamicalsys.common.types import system_func_t
 
 
 @njit
@@ -28,9 +28,12 @@ def velocity_verlet_2nd_step(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
     time_step: np.float64,
-    grad_T: grad_t,
-    grad_V: grad_t,
+    grad_T: system_func_t,
+    grad_V: system_func_t,
     parameters: NDArray[np.float64],
+    tol: np.float64
+    | None = None,  # Added just to match the midpoint methods's signature
+    max_iter: int | None = None,  # Added just to match the midpoint method's signature
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Perform one step of the second-order velocity Verlet symplectic integrator.
@@ -43,9 +46,9 @@ def velocity_verlet_2nd_step(
         Current generalized momenta.
     time_step : np.float64
         Integration time step.
-    grad_T : grad_t
+    grad_T : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
-    grad_V : grad_t
+    grad_V : system_func_t
         Gradient of the potential energy with respect to the coordinates.
     parameters : NDArray[np.float64]
         Additional parameters passed to `grad_T` and `grad_V`.
@@ -75,9 +78,12 @@ def yoshida_4th_step(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
     time_step: np.float64,
-    grad_T: grad_t,
-    grad_V: grad_t,
+    grad_T: system_func_t,
+    grad_V: system_func_t,
     parameters: NDArray[np.float64],
+    tol: np.float64
+    | None = None,  # Added just to match the midpoint methods's signature
+    max_iter: int | None = None,  # Added just to match the midpoint method's signature
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Perform one step of the fourth-order Yoshida symplectic integrator.
@@ -93,9 +99,9 @@ def yoshida_4th_step(
         Current generalized momenta.
     time_step : np.float64
         Integration time step.
-    grad_T : grad_t
+    grad_T : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
-    grad_V : grad_t
+    grad_V : system_func_t
         Gradient of the potential energy with respect to the coordinates.
     parameters : NDArray[np.float64]
         Additional parameters passed to `grad_T` and `grad_V`.
@@ -142,8 +148,8 @@ def implicit_midpoint_step(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
     time_step: np.float64,
-    eom: eom_t,
-    hess_H: hess_H_t,
+    eom: system_func_t,
+    hess_H: system_func_t,
     parameters: NDArray[np.float64],
     tol: np.float64 = np.float64(1e-12),
     max_iter: int = 50,
