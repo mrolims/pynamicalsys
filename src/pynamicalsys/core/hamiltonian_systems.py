@@ -98,16 +98,24 @@ from pynamicalsys.hamiltonian_systems.validators import (
 
 class HamiltonianSystem:
     """
-    Class for defining, integrating, and analyzing separable Hamiltonian systems.
+    Class for defining, integrating, and analyzing Hamiltonian systems.
 
-    This class represents Hamiltonian systems of the form
+    This class represents Hamiltonian systems H(q, p), where `q` denotes
+    the generalized coordinates and `p` the conjugate momenta. Two ways
+    of specifying the system are supported:
 
-        H(q, p) = T(p) + V(q),
+    - **Separable** systems, H(q, p) = T(p) + V(q), specified via gradient
+      functions for the kinetic and potential energies (`grad_T`, `grad_V`),
+      with optional Hessians (`hess_T`, `hess_V`) for tangent-space
+      computations. These are integrated with explicit symplectic methods
+      (velocity Verlet, fourth-order Yoshida).
+    - **General (possibly non-separable)** systems H(q, p), specified via
+      the full equations of motion (`eom`) and the Hessian of H with
+      respect to the combined state (`hess_H`). These are integrated with
+      the implicit midpoint method.
 
-    where `q` denotes the generalized coordinates and `p` the conjugate
-    momenta. A system can be created either from one of the built-in models
-    or from user-supplied gradient functions for the kinetic and potential
-    energies, with optional Hessians for tangent-space computations.
+    A system can be created either from one of the built-in models or from
+    user-supplied functions of either kind above.
 
     The class provides symplectic fixed-step integration routines together with
     tools for trajectory generation and nonlinear-dynamics analysis, including
@@ -120,12 +128,27 @@ class HamiltonianSystem:
         Name of a built-in Hamiltonian model.
     grad_T : callable or None, optional
         Gradient of the kinetic energy with respect to the momenta.
+        Required (with `grad_V`) for separable systems.
     grad_V : callable or None, optional
         Gradient of the potential energy with respect to the coordinates.
+        Required (with `grad_T`) for separable systems.
     hess_T : callable or None, optional
         Hessian of the kinetic energy with respect to the momenta.
     hess_V : callable or None, optional
         Hessian of the potential energy with respect to the coordinates.
+    eom : callable or None, optional
+        Equations of motion of the system, with signature
+        ``eom(q, p, parameters) -> (qdot, pdot)``, where
+        ``qdot = dH/dp`` and ``pdot = -dH/dq``. The return value must be a
+        tuple in this exact order, `(qdot, pdot)`, not `(pdot, qdot)`.
+        Required (with `hess_H`) for general, possibly non-separable
+        systems integrated with the implicit midpoint method.
+    hess_H : callable or None, optional
+        Full Hessian of the Hamiltonian H with respect to the combined
+        state z = (q, p), with signature ``hess_H(q, p, parameters)``
+        returning an array of shape `(2 * degrees_of_freedom, 2 *
+        degrees_of_freedom)`. Required (with `eom`) for general, possibly
+        non-separable systems integrated with the implicit midpoint method.
     degrees_of_freedom : int or None, optional
         Number of degrees of freedom of the custom system.
     parameters : array_like or None, optional
@@ -135,8 +158,11 @@ class HamiltonianSystem:
 
     Notes
     -----
-    - The class is designed for separable Hamiltonians only.
-    - Lyapunov exponents, CLVs, SALI, LDI, and GALI require Hessian functions.
+    - Custom systems must be specified either as a separable system via
+      `grad_T`/`grad_V` (with optional `hess_T`/`hess_V`), or as a general
+      system via `eom`/`hess_H`, together with `degrees_of_freedom`.
+    - Lyapunov exponents, CLVs, SALI, LDI, and GALI require Hessian
+      functions (`hess_T`/`hess_V` for separable systems).
     - Ensemble trajectory and reduced-map methods accept multiple initial
       conditions when supported by the corresponding wrapper.
 
@@ -400,6 +426,12 @@ class HamiltonianSystem:
         integrator = self.__integrator.lower()
 
         return self.__AVAILABLE_INTEGRATORS[integrator]
+
+    def __get_pss_func(self):
+
+        if self.__integrator in ["vv2", "svy4"]:
+            return generate_poincare_section_sep
+        return generate_poincare_section_midpoint
 
     def integrator(
         self,
@@ -1812,18 +1844,23 @@ class HamiltonianSystem:
         if crossing not in (-1, 0, 1):
             raise ValueError("crossing must be -1, 0, or 1")
 
+        pss_func = self.__get_pss_func()
+
         return recurrence_time_entropy_core(
             q=q,
             p=p,
             num_points=np.int64(num_intersections),
             parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
+            system_func_1=self.__system_func_1,
+            system_func_2=self.__system_func_2,
             time_step=self.__time_step,
             integrator=self.__integrator_func,
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
+            tol=self.__tol,
+            max_iter=self.__max_iter,
+            pss_func=pss_func,
             **kwargs,
         )
 
@@ -1924,17 +1961,22 @@ class HamiltonianSystem:
                 f"`wmin` must be an integer >= 2 and < num_intersections // 2. Got {wmin}."
             )
 
+        pss_func = self.__get_pss_func()
+
         return hurst_exponent_wrapped(
             q=q,
             p=p,
             num_points=np.int64(num_intersections),
             parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
+            system_func_1=self.__system_func_1,
+            system_func_2=self.__system_func_2,
             time_step=self.__time_step,
             integrator=self.__integrator_func,
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
             wmin=int(wmin),
+            tol=self.__tol,
+            max_iter=self.__max_iter,
+            pss_func=pss_func,
         )
