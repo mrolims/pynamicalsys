@@ -37,8 +37,8 @@ def generate_poincare_section_sep(
     p: NDArray[np.float64],
     num_intersections: np.int64,
     parameters: NDArray[np.float64],
-    grad_T: system_func_t,
-    grad_V: system_func_t,
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
     section_index: int = 0,
@@ -59,10 +59,10 @@ def generate_poincare_section_sep(
     num_intersections : np.int32
         Number of section crossings to record.
     parameters : NDArray[np.float64]
-        Additional system parameters passed to `grad_T` and `grad_V`.
-    grad_T : system_func_t
+        Additional system parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
-    grad_V : system_func_t
+    system_func_2 : system_func_t
         Gradient of the potential energy with respect to the coordinates.
     time_step : np.float64
         Integration time step.
@@ -101,7 +101,14 @@ def generate_poincare_section_sep(
 
     while count < num_intersections:
         q_new, p_new = integrator(
-            q_prev, p_prev, time_step, grad_T, grad_V, parameters, tol, max_iter
+            q_prev,
+            p_prev,
+            time_step,
+            system_func_1,
+            system_func_2,
+            parameters,
+            tol,
+            max_iter,
         )
 
         if (q_prev[section_index] - section_value) * (
@@ -115,7 +122,113 @@ def generate_poincare_section_sep(
             p_cross = (np.float64(1.0) - lam) * p_prev + lam * p_new
             t_cross = np.float64(n_steps) * time_step + lam * time_step
 
-            velocity = grad_T(p_cross, parameters)[section_index]
+            velocity = system_func_1(p_cross, parameters)[section_index]
+
+            if crossing == 0 or np.sign(velocity) == crossing:
+                section_points[count, 0] = t_cross
+                section_points[count, 1 : dof + 1] = q_cross
+                section_points[count, dof + 1 :] = p_cross
+                count += 1
+
+        q_prev = q_new
+        p_prev = p_new
+        n_steps += 1
+
+    return section_points
+
+
+@njit
+def generate_poincare_section(
+    q: NDArray[np.float64],
+    p: NDArray[np.float64],
+    num_intersections: np.int64,
+    parameters: NDArray[np.float64],
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
+    time_step: np.float64,
+    integrator: symplectic_step_t,
+    section_index: int = 0,
+    section_value: np.float64 = np.float64(0.0),
+    crossing: int = 1,
+    tol: np.float64 = np.float64(1e-12),
+    max_iter: int = 50,
+) -> NDArray[np.float64]:
+    """
+    Generate a Poincaré section for a Hamiltonian system using separable integrators (velocity_verlet_2nd_step or yoshida_4th_step).
+
+    Parameters
+    ----------
+    q : NDArray[np.float64]
+        Initial generalized coordinates of shape `(dof,)`.
+    p : NDArray[np.float64]
+        Initial generalized momenta of shape `(dof,)`.
+    num_intersections : np.int32
+        Number of section crossings to record.
+    parameters : NDArray[np.float64]
+        Additional system parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
+        Gradient of the kinetic energy with respect to the momenta.
+    system_func_2 : system_func_t
+        Gradient of the potential energy with respect to the coordinates.
+    time_step : np.float64
+        Integration time step.
+    integrator : symplectic_step_t
+        Symplectic integration step.
+    section_index : int, optional
+        Index of the coordinate used to define the section.
+    section_value : np.float64, optional
+        Value of `q[section_index]` defining the section.
+    crossing : int, optional
+        Crossing rule:
+        - `+1` for upward crossings
+        - `-1` for downward crossings
+        - `0` for all crossings
+    tol : np.float64
+        Newton convergence tolerance on the residual norm.
+    max_iter : int
+        Maximum Newton iterations per step.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Array of shape `(num_intersections, 2 * dof + 1)` containing:
+        - column 0: crossing times
+        - columns `1:dof+1`: coordinates at the crossing
+        - columns `dof+1:2*dof+1`: momenta at the crossing
+    """
+    dof = len(q)
+    section_points = np.zeros((num_intersections, 2 * dof + 1), dtype=np.float64)
+
+    count = 0
+    n_steps = 0
+
+    q_prev = q.copy()
+    p_prev = p.copy()
+
+    while count < num_intersections:
+        q_new, p_new = integrator(
+            q_prev,
+            p_prev,
+            time_step,
+            system_func_1,
+            system_func_2,
+            parameters,
+            tol,
+            max_iter,
+        )
+
+        if (q_prev[section_index] - section_value) * (
+            q_new[section_index] - section_value
+        ) < np.float64(0.0):
+            lam = (section_value - q_prev[section_index]) / (
+                q_new[section_index] - q_prev[section_index]
+            )
+
+            q_cross = (np.float64(1.0) - lam) * q_prev + lam * q_new
+            p_cross = (np.float64(1.0) - lam) * p_prev + lam * p_new
+            t_cross = np.float64(n_steps) * time_step + lam * time_step
+
+            velocity = system_func_1(p_cross, parameters)[section_index]
 
             if crossing == 0 or np.sign(velocity) == crossing:
                 section_points[count, 0] = t_cross
@@ -136,8 +249,8 @@ def generate_poincare_section_midpoint(
     p: NDArray[np.float64],
     num_intersections: np.int64,
     parameters: NDArray[np.float64],
-    eom: system_func_t,
-    hess_H: system_func_t,
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
     section_index: int = 0,
@@ -158,10 +271,10 @@ def generate_poincare_section_midpoint(
     num_intersections : np.int32
         Number of section crossings to record.
     parameters : NDArray[np.float64]
-        Additional system parameters passed to `grad_T` and `grad_V`.
-    eom : system_func_t
+        Additional system parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
         Equations of motion of the system.
-    hess_H : system_func_t
+    system_func_2 : system_func_t
         Hessian of the Hamiltonian w.r.t. z = (q, p).
     time_step : np.float64
         Integration time step.
@@ -200,7 +313,14 @@ def generate_poincare_section_midpoint(
 
     while count < num_intersections:
         q_new, p_new = integrator(
-            q_prev, p_prev, time_step, eom, hess_H, parameters, tol, max_iter
+            q_prev,
+            p_prev,
+            time_step,
+            system_func_1,
+            system_func_2,
+            parameters,
+            tol,
+            max_iter,
         )
 
         if (q_prev[section_index] - section_value) * (
@@ -214,9 +334,10 @@ def generate_poincare_section_midpoint(
             p_cross = (np.float64(1.0) - lam) * p_prev + lam * p_new
             t_cross = np.float64(n_steps) * time_step + lam * time_step
 
-            qdot, _ = eom(q_cross, p_cross, parameters)[section_index]
+            qdot, _ = system_func_1(q_cross, p_cross, parameters)
+            velocity = qdot[section_index]
 
-            if crossing == 0 or np.sign(qdot) == crossing:
+            if crossing == 0 or np.sign(velocity) == crossing:
                 section_points[count, 0] = t_cross
                 section_points[count, 1 : dof + 1] = q_cross
                 section_points[count, dof + 1 :] = p_cross
@@ -234,8 +355,8 @@ def ensemble_poincare_section_sep(
     p: NDArray[np.float64],
     num_intersections: np.int64,
     parameters: NDArray[np.float64],
-    grad_T: system_func_t,
-    grad_V: system_func_t,
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
     section_index: int = 0,
@@ -257,10 +378,10 @@ def ensemble_poincare_section_sep(
     num_intersections : int
         Number of section crossings to record for each trajectory.
     parameters : NDArray[np.float64]
-        Additional system parameters passed to `grad_T` and `grad_V`.
-    grad_T : system_func_t
+        Additional system parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
-    grad_V : system_func_t
+    system_func_2 : system_func_t
         Gradient of the potential energy with respect to the coordinates.
     time_step : np.float64
         Integration time step.
@@ -297,8 +418,8 @@ def ensemble_poincare_section_sep(
                 p[i],
                 num_intersections,
                 parameters,
-                grad_T,
-                grad_V,
+                system_func_1,
+                system_func_2,
                 time_step,
                 integrator,
                 section_index,
@@ -319,8 +440,8 @@ def ensemble_poincare_section_midpoint(
     p: NDArray[np.float64],
     num_intersections: np.int64,
     parameters: NDArray[np.float64],
-    eom: system_func_t,
-    hess_H: system_func_t,
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
     section_index: int = 0,
@@ -342,10 +463,10 @@ def ensemble_poincare_section_midpoint(
     num_intersections : int
         Number of section crossings to record for each trajectory.
     parameters : NDArray[np.float64]
-        Additional system parameters passed to `grad_T` and `grad_V`.
-    eom : system_func_t
+        Additional system parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
         Equations of motion of the system.
-    hess_H : system_func_t
+    system_func_2 : system_func_t
         Hessian of the Hamiltonian w.r.t. z = (q, p)
     time_step : np.float64
         Integration time step.
@@ -382,8 +503,8 @@ def ensemble_poincare_section_midpoint(
                 p[i],
                 num_intersections,
                 parameters,
-                eom,
-                hess_H,
+                system_func_1,
+                system_func_2,
                 time_step,
                 integrator,
                 section_index,
@@ -404,7 +525,7 @@ def generate_poincare_section_from_traj(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
     parameters: NDArray[np.float64],
-    grad_T: system_func_t,
+    system_func_1: system_func_t,
     time_step: np.float64,
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
@@ -420,8 +541,8 @@ def generate_poincare_section_from_traj(
     p : NDArray[np.float64]
         Sampled generalized momenta of shape `(num_points, dof)`.
     parameters : NDArray[np.float64]
-        Additional system parameters passed to `grad_T`.
-    grad_T : system_func_t
+        Additional system parameters passed to `system_func_1`.
+    system_func_1 : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
     time_step : np.float64
         Time interval between successive stored trajectory samples.
@@ -458,7 +579,7 @@ def generate_poincare_section_from_traj(
 
             lam = (section_value - q_prev_i) / denom
             p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
-            vel = grad_T(p_cross, parameters)[section_index]
+            vel = system_func_1(p_cross, parameters)[section_index]
 
             if crossing == 0 or np.sign(vel) == crossing:
                 n_hits += 1
@@ -482,7 +603,7 @@ def generate_poincare_section_from_traj(
             p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
             t_cross = np.float64(i - 1) * time_step + lam * time_step
 
-            vel = grad_T(p_cross, parameters)[section_index]
+            vel = system_func_1(p_cross, parameters)[section_index]
             ok = (crossing == 0) or (np.sign(vel) == crossing)
 
             if ok:
