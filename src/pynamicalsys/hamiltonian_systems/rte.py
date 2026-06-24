@@ -1,6 +1,6 @@
 # rte.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -27,8 +27,8 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     calculate_threshold,
     white_vertline_distr,
 )
-from pynamicalsys.common.types import grad_t, symplectic_step_t
-from pynamicalsys.hamiltonian_systems.poincare import generate_poincare_section
+from pynamicalsys.common.types import system_func_t, symplectic_step_t
+from pynamicalsys.hamiltonian_systems.poincare import generate_poincare_section_sep
 
 
 def recurrence_time_entropy(
@@ -36,13 +36,16 @@ def recurrence_time_entropy(
     p: NDArray[np.float64],
     num_points: np.int64,
     parameters: NDArray[np.float64],
-    grad_T: grad_t,
-    grad_V: grad_t,
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
     section_index: int,
     section_value: np.float64,
     crossing: int,
+    tol: np.float64 = np.float64(1e-12),
+    max_iter: int = 50,
+    pss_func=generate_poincare_section_sep,
     **kwargs: Any,
 ) -> (
     float
@@ -65,10 +68,10 @@ def recurrence_time_entropy(
     num_points : np.int64
         Number of Poincaré-section crossings used in the recurrence analysis.
     parameters : NDArray[np.float64]
-        Additional system parameters passed to `grad_T` and `grad_V`.
-    grad_T : grad_t
+        Additional system parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
-    grad_V : grad_t
+    system_func_2 : system_func_t
         Gradient of the potential energy with respect to the coordinates.
     time_step : np.float64
         Integration time step.
@@ -83,6 +86,10 @@ def recurrence_time_entropy(
         - `+1` for upward crossings
         - `-1` for downward crossings
         - `0` for all crossings
+    tol : np.float64
+        Newton convergence tolerance on the residual norm. Only used by the implicit midpoint integrator (imp).
+    max_iter : int
+        Maximum Newton iterations per step. Only used by the implicit midpoint integrator (imp).
     **kwargs : Any
         Additional keyword arguments passed to `RTEConfig`, including:
         - `metric`
@@ -105,18 +112,20 @@ def recurrence_time_entropy(
     """
     config = RTEConfig(**kwargs)
 
-    points = generate_poincare_section(
+    points = pss_func(
         q=q,
         p=p,
         num_intersections=num_points,
         parameters=parameters,
-        grad_T=grad_T,
-        grad_V=grad_V,
+        system_func_1=system_func_1,
+        system_func_2=system_func_2,
         time_step=time_step,
         integrator=integrator,
         section_index=section_index,
         section_value=section_value,
         crossing=crossing,
+        tol=tol,
+        max_iter=max_iter,
     )
 
     data = points[:, 1:]
