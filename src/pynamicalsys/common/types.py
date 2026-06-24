@@ -59,6 +59,8 @@ hess_t: TypeAlias = Callable[
     NDArray[np.float64],
 ]
 
+system_func_t: TypeAlias = Callable[..., NDArray[np.float64]]
+
 # Equations of motion: f(q, p, parameters) -> (dq/dt, dp/dt)
 # i.e. (dH/dp, -dH/dq), supplied directly by the user (not assembled
 # from grad_T/grad_V, since H need not split that way)
@@ -82,6 +84,8 @@ symplectic_step_t: TypeAlias = Callable[
         grad_t,
         grad_t,
         NDArray[np.float64],
+        np.float64,
+        int,
     ],
     tuple[NDArray[np.float64], NDArray[np.float64]],
 ]
