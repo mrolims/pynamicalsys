@@ -27,8 +27,8 @@ def generate_trajectory(
     p: NDArray[np.float64],
     total_time: np.float64,
     parameters: NDArray[np.float64],
-    grad_T: system_func_t,
-    grad_V: system_func_t,
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
     tol: np.float64 = np.float64(1e-12),
@@ -46,11 +46,11 @@ def generate_trajectory(
     total_time : np.float64
         Total integration time.
     parameters : NDArray[np.float64]
-        Additional parameters passed to `grad_T` and `grad_V`.
-    grad_T : system_func_t
-        Gradient of the kinetic energy with respect to the momenta.
-    grad_V : system_func_t
-        Gradient of the potential energy with respect to the coordinates.
+        Additional parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
+        Gradient of the kinetic energy w.r.t. the momenta OR equations of motion of the system.
+    system_func_2 : system_func_t
+        Gradient of the potential energy w.r.t. the coordinates OR Hessian of the Hamiltonian w.r.t. z = (q, p)
     time_step : np.float64
         Integration time step.
     integrator : symplectic_step_t
@@ -76,7 +76,9 @@ def generate_trajectory(
     result[0, dof + 1 :] = p
 
     for i in range(1, num_steps + 1):
-        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters, tol, max_iter)
+        q, p = integrator(
+            q, p, time_step, system_func_1, system_func_2, parameters, tol, max_iter
+        )
         result[i, 0] = np.float64(i) * time_step
         result[i, 1 : dof + 1] = q
         result[i, dof + 1 :] = p
@@ -90,8 +92,8 @@ def ensemble_trajectories(
     p: NDArray[np.float64],
     total_time: np.float64,
     parameters: NDArray[np.float64],
-    grad_T: system_func_t,
-    grad_V: system_func_t,
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
     tol: np.float64 = np.float64(1e-12),
@@ -109,11 +111,11 @@ def ensemble_trajectories(
     total_time : np.float64
         Total integration time.
     parameters : NDArray[np.float64]
-        Additional parameters passed to `grad_T` and `grad_V`.
-    grad_T : system_func_t
-        Gradient of the kinetic energy with respect to the momenta.
-    grad_V : system_func_t
-        Gradient of the potential energy with respect to the coordinates.
+        Additional parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
+        Gradient of the kinetic energy w.r.t. the momenta OR equations of motion of the system.
+    system_func_2 : system_func_t
+        Gradient of the potential energy w.r.t. the coordinates OR Hessian of the Hamiltonian w.r.t. z = (q, p)
     time_step : np.float64
         Integration time step.
     integrator : symplectic_step_t
@@ -143,8 +145,8 @@ def ensemble_trajectories(
             p[i],
             total_time,
             parameters,
-            grad_T,
-            grad_V,
+            system_func_1,
+            system_func_2,
             time_step,
             integrator,
             tol=tol,
