@@ -1,6 +1,6 @@
-# trajectory_analysis.py
+# trajectory.py
 
-# Copyright (C) 2025 Matheus Rolim Sales
+# Copyright (C) 2025-2026 Matheus Rolim Sales
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -18,8 +18,7 @@
 from numpy.typing import NDArray
 import numpy as np
 from numba import njit, prange
-
-from pynamicalsys.common.types import grad_t, symplectic_step_t
+from pynamicalsys.common.types import system_func_t, symplectic_step_t
 
 
 @njit
@@ -28,10 +27,12 @@ def generate_trajectory(
     p: NDArray[np.float64],
     total_time: np.float64,
     parameters: NDArray[np.float64],
-    grad_T: grad_t,
-    grad_V: grad_t,
+    grad_T: system_func_t,
+    grad_V: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
+    tol: np.float64 = np.float64(1e-12),
+    max_iter: int = 50,
 ) -> NDArray[np.float64]:
     """
     Generate a single Hamiltonian trajectory using a symplectic integrator.
@@ -46,14 +47,18 @@ def generate_trajectory(
         Total integration time.
     parameters : NDArray[np.float64]
         Additional parameters passed to `grad_T` and `grad_V`.
-    grad_T : grad_t
+    grad_T : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
-    grad_V : grad_t
+    grad_V : system_func_t
         Gradient of the potential energy with respect to the coordinates.
     time_step : np.float64
         Integration time step.
     integrator : symplectic_step_t
         Symplectic integration step.
+    tol : np.float64
+        Newton convergence tolerance on the residual norm.
+    max_iter : int
+        Maximum Newton iterations per step.
 
     Returns
     -------
@@ -71,7 +76,7 @@ def generate_trajectory(
     result[0, dof + 1 :] = p
 
     for i in range(1, num_steps + 1):
-        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters)
+        q, p = integrator(q, p, time_step, grad_T, grad_V, parameters, tol, max_iter)
         result[i, 0] = np.float64(i) * time_step
         result[i, 1 : dof + 1] = q
         result[i, dof + 1 :] = p
@@ -85,10 +90,12 @@ def ensemble_trajectories(
     p: NDArray[np.float64],
     total_time: np.float64,
     parameters: NDArray[np.float64],
-    grad_T: grad_t,
-    grad_V: grad_t,
+    grad_T: system_func_t,
+    grad_V: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
+    tol: np.float64 = np.float64(1e-12),
+    max_iter: int = 50,
 ) -> NDArray[np.float64]:
     """
     Generate an ensemble of Hamiltonian trajectories using a symplectic integrator.
@@ -103,14 +110,18 @@ def ensemble_trajectories(
         Total integration time.
     parameters : NDArray[np.float64]
         Additional parameters passed to `grad_T` and `grad_V`.
-    grad_T : grad_t
+    grad_T : system_func_t
         Gradient of the kinetic energy with respect to the momenta.
-    grad_V : grad_t
+    grad_V : system_func_t
         Gradient of the potential energy with respect to the coordinates.
     time_step : np.float64
         Integration time step.
     integrator : symplectic_step_t
         Symplectic integration step.
+    tol : np.float64
+        Newton convergence tolerance on the residual norm.
+    max_iter : int
+        Maximum Newton iterations per step.
 
     Returns
     -------
@@ -136,6 +147,8 @@ def ensemble_trajectories(
             grad_V,
             time_step,
             integrator,
+            tol=tol,
+            max_iter=max_iter,
         )
 
     return trajectories
