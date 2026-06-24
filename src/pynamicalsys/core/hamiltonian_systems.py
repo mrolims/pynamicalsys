@@ -200,7 +200,7 @@ class HamiltonianSystem:
         self.__eom: system_func_t | None
         self.__hess_H: system_func_t | None
         self.__system_func_1: system_func_t  # Either grad_T or eom
-        self.__system_func_2: system_func_2  # Either grad_V or hess_H
+        self.__system_func_2: system_func_t  # Either grad_V or hess_H
         self.__degrees_of_freedom: int
         self.__parameters: NDArray[np.float64] | None
         self.__number_of_parameters: int
