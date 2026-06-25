@@ -91,16 +91,6 @@ symplectic_step_t: TypeAlias = Callable[
 ]
 
 symplectic_tangent_step_t: TypeAlias = Callable[
-    [
-        NDArray[np.float64],
-        NDArray[np.float64],
-        NDArray[np.float64],
-        np.float64,
-        grad_t,
-        grad_t,
-        hess_t,
-        hess_t,
-        NDArray[np.float64],
-    ],
+    ...,
     tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]],
 ]
