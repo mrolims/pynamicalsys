@@ -47,6 +47,7 @@ from pynamicalsys.hamiltonian_systems.fixed_step import (
 )
 
 from pynamicalsys.hamiltonian_systems.tangent import (
+    implicit_midpoint_step_traj_tan,
     velocity_verlet_2nd_step_traj_tan,
     yoshida_4th_step_traj_tan,
 )
@@ -65,17 +66,24 @@ from pynamicalsys.hamiltonian_systems.poincare import (
 
 
 from pynamicalsys.hamiltonian_systems.lyapunov import (
-    lyapunov_spectrum,
-    largest_lyapunov_exponent,
+    lyapunov_spectrum_sep,
+    lyapunov_spectrum_imp,
+    largest_lyapunov_exponent_sep,
+    largest_lyapunov_exponent_imp,
 )
 
-from pynamicalsys.hamiltonian_systems.clv import compute_clvs, clv_angles
+from pynamicalsys.hamiltonian_systems.clv import (
+    clv_angles_imp,
+    clv_angles_sep,
+    compute_clvs_imp,
+    compute_clvs_sep,
+)
 
-from pynamicalsys.hamiltonian_systems.sali import sali
+from pynamicalsys.hamiltonian_systems.sali import sali_imp, sali_sep
 
-from pynamicalsys.hamiltonian_systems.ldi import ldi_k
+from pynamicalsys.hamiltonian_systems.ldi import ldi_k_imp, ldi_k_sep
 
-from pynamicalsys.hamiltonian_systems.gali import gali_k
+from pynamicalsys.hamiltonian_systems.gali import gali_k_imp, gali_k_sep
 
 from pynamicalsys.hamiltonian_systems.rte import (
     recurrence_time_entropy as recurrence_time_entropy_core,
@@ -110,9 +118,9 @@ class HamiltonianSystem:
       computations. These are integrated with explicit symplectic methods
       (velocity Verlet, fourth-order Yoshida).
     - **General (possibly non-separable)** systems H(q, p), specified via
-      the full equations of motion (`eom`) and the Hessian of H with
-      respect to the combined state (`hess_H`). These are integrated with
-      the implicit midpoint method.
+      the full equations of motion (`eom`) zdot = f(z), with z = (q, p) and
+      the Hessian of H with respect to the combined state z (`hess_H`).
+      These are integrated with the implicit midpoint method.
 
     A system can be created either from one of the built-in models or from
     user-supplied functions of either kind above.
@@ -201,7 +209,7 @@ class HamiltonianSystem:
         "imp": {
             "description": "Implicit midpoint method",
             "integrator": implicit_midpoint_step,
-            "tangent integrator": None,
+            "tangent integrator": implicit_midpoint_step_traj_tan,
         },
     }
 
@@ -227,6 +235,8 @@ class HamiltonianSystem:
         self.__hess_H: system_func_t | None
         self.__system_func_1: system_func_t  # Either grad_T or eom
         self.__system_func_2: system_func_t  # Either grad_V or hess_H
+        self.__system_func_3: system_func_t  # Only hess_T
+        self.__system_func_4: system_func_t  # Only hess_V
         self.__degrees_of_freedom: int
         self.__parameters: NDArray[np.float64] | None
         self.__number_of_parameters: int
@@ -263,6 +273,8 @@ class HamiltonianSystem:
             self.__system_func_2 = model_info["grad_V"]
             self.__hess_T = model_info["hess_T"]
             self.__hess_V = model_info["hess_V"]
+            self.__system_func_3 = model_info["hess_T"]
+            self.__system_func_4 = model_info["hess_V"]
             self.__eom = model_info["eom"]
             self.__hess_H = model_info["hess_H"]
             self.__integrator = "svy4"
@@ -349,6 +361,9 @@ class HamiltonianSystem:
         if grad_T is not None and grad_V is not None:
             self.__system_func_1 = grad_T
             self.__system_func_2 = grad_V
+            if hess_T is not None and hess_V is not None:
+                self.__system_func_3 = hess_T
+                self.__system_func_4 = hess_V
             self.__integrator = "svy4"
             self.__integrator_func = yoshida_4th_step
             self.__traj_tan_integrator_func = yoshida_4th_step_traj_tan
@@ -357,7 +372,7 @@ class HamiltonianSystem:
             self.__system_func_2 = hess_H
             self.__integrator = "imp"
             self.__integrator_func = implicit_midpoint_step
-            self.__traj_tan_integrator_func = None
+            self.__traj_tan_integrator_func = implicit_midpoint_step_traj_tan
         self.__time_step = np.float64(1e-2)
         self.__tol = np.float64(1e-12)
         self.__max_iter = 50
@@ -502,6 +517,9 @@ class HamiltonianSystem:
                 )
             self.__system_func_1 = self.__grad_T
             self.__system_func_2 = self.__grad_V
+            if self.__hess_T is not None and self.__hess_V is not None:
+                self.__system_func_3 = self.__hess_T
+                self.__system_func_4 = self.__hess_V
 
         elif integrator == "imp":
             if self.__eom is None or self.__hess_H is None:
@@ -914,9 +932,11 @@ class HamiltonianSystem:
             If `seed`, `qr_interval`, or `num_exponents` are not integers.
             If `total_time` or `log_base` is not a valid real number.
         """
-        if self.__hess_T is None or self.__hess_V is None:
+        if self.__integrator in ["vv2", "svy4"] and (
+            self.__hess_T is None or self.__hess_V is None
+        ):
             raise ValueError(
-                "Hessian functions are required to compute the Lyapunov exponents"
+                "Hessian functions are required to compute the Lyapunov exponents when using either the velocity-Verlet or the Yoshida integrators"
             )
 
         q = validate_initial_conditions(
@@ -962,41 +982,79 @@ class HamiltonianSystem:
         if method not in ("QR", "QR_HH"):
             raise ValueError("method must be 'QR' or 'QR_HH'")
 
-        if num_exponents > 1:
-            result = lyapunov_spectrum(
-                q=q,
-                p=p,
-                total_time=total_time,
-                time_step=self.__time_step,
-                parameters=parameters,
-                grad_T=self.__grad_T,
-                grad_V=self.__grad_V,
-                hess_T=self.__hess_T,
-                hess_V=self.__hess_V,
-                num_exponents=int(num_exponents),
-                qr_interval=int(qr_interval),
-                return_history=return_history,
-                seed=int(seed),
-                log_base=log_base,
-                method=method,
-                integrator_traj_tan=self.__traj_tan_integrator_func,
-            )
+        if self.__integrator in ["vv2", "svy4"]:
+            if num_exponents > 1:
+                result = lyapunov_spectrum_sep(
+                    q=q,
+                    p=p,
+                    total_time=total_time,
+                    time_step=self.__time_step,
+                    parameters=parameters,
+                    grad_T=self.__system_func_1,
+                    grad_V=self.__system_func_2,
+                    hess_T=self.__system_func_3,
+                    hess_V=self.__system_func_4,
+                    num_exponents=int(num_exponents),
+                    qr_interval=int(qr_interval),
+                    return_history=return_history,
+                    seed=int(seed),
+                    log_base=log_base,
+                    method=method,
+                    integrator_traj_tan=self.__traj_tan_integrator_func,
+                )
+            else:
+                result = largest_lyapunov_exponent_sep(
+                    q=q,
+                    p=p,
+                    total_time=total_time,
+                    time_step=self.__time_step,
+                    parameters=parameters,
+                    grad_T=self.__system_func_1,
+                    grad_V=self.__system_func_2,
+                    hess_T=self.__system_func_3,
+                    hess_V=self.__system_func_4,
+                    return_history=return_history,
+                    seed=int(seed),
+                    log_base=log_base,
+                    integrator_traj_tan=self.__traj_tan_integrator_func,
+                )
+
         else:
-            result = largest_lyapunov_exponent(
-                q=q,
-                p=p,
-                total_time=total_time,
-                time_step=self.__time_step,
-                parameters=parameters,
-                grad_T=self.__grad_T,
-                grad_V=self.__grad_V,
-                hess_T=self.__hess_T,
-                hess_V=self.__hess_V,
-                return_history=return_history,
-                seed=int(seed),
-                log_base=log_base,
-                integrator_traj_tan=self.__traj_tan_integrator_func,
-            )
+            if num_exponents > 1:
+                result = lyapunov_spectrum_imp(
+                    q=q,
+                    p=p,
+                    total_time=total_time,
+                    time_step=self.__time_step,
+                    parameters=parameters,
+                    eom=self.__system_func_1,
+                    hess_H=self.__system_func_2,
+                    num_exponents=int(num_exponents),
+                    qr_interval=int(qr_interval),
+                    return_history=return_history,
+                    seed=int(seed),
+                    log_base=log_base,
+                    method=method,
+                    tol=self.__tol,
+                    max_iter=self.__max_iter,
+                    integrator_traj_tan=self.__traj_tan_integrator_func,
+                )
+            else:
+                result = largest_lyapunov_exponent_imp(
+                    q=q,
+                    p=p,
+                    total_time=total_time,
+                    time_step=self.__time_step,
+                    parameters=parameters,
+                    eom=self.__system_func_1,
+                    hess_H=self.__system_func_2,
+                    return_history=return_history,
+                    seed=int(seed),
+                    log_base=log_base,
+                    tol=self.__tol,
+                    max_iter=self.__max_iter,
+                    integrator_traj_tan=self.__traj_tan_integrator_func,
+                )
 
         if return_history:
             return result
@@ -1173,28 +1231,52 @@ class HamiltonianSystem:
             section_value = np.float64(0.0)
             crossing = 1
 
-        return compute_clvs(
-            q=q,
-            p=p,
-            total_time=total_time,
-            time_step=self.__time_step,
-            parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
-            hess_T=self.__hess_T,
-            hess_V=self.__hess_V,
-            num_clvs=int(num_clvs),
-            warmup_time=warmup_time,
-            tail_time=tail_time,
-            qr_time_step=qr_time_step,
-            seed=int(seed),
-            method=method,
-            integrator_traj_tan=self.__traj_tan_integrator_func,
-            poincare_section=poincare_section,
-            section_index=int(section_index),
-            section_value=section_value,
-            crossing=int(crossing),
-        )
+        if self.__integrator in ["vv2", "svy4"]:
+            return compute_clvs_sep(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                grad_T=self.__system_func_1,
+                grad_V=self.__system_func_2,
+                hess_T=self.__system_func_3,
+                hess_V=self.__system_func_4,
+                num_clvs=int(num_clvs),
+                warmup_time=warmup_time,
+                tail_time=tail_time,
+                qr_time_step=qr_time_step,
+                seed=int(seed),
+                method=method,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+                poincare_section=poincare_section,
+                section_index=int(section_index),
+                section_value=section_value,
+                crossing=int(crossing),
+            )
+        else:
+            return compute_clvs_imp(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                eom=self.__system_func_1,
+                hess_H=self.__system_func_2,
+                num_clvs=int(num_clvs),
+                warmup_time=warmup_time,
+                tail_time=tail_time,
+                qr_time_step=qr_time_step,
+                seed=int(seed),
+                method=method,
+                tol=self.__tol,
+                max_iter=self.__max_iter,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+                poincare_section=poincare_section,
+                section_index=int(section_index),
+                section_value=section_value,
+                crossing=int(crossing),
+            )
 
     def CLV_angles(
         self,
@@ -1354,29 +1436,54 @@ class HamiltonianSystem:
             section_value = np.float64(0.0)
             crossing = 1
 
-        return clv_angles(
-            q=q,
-            p=p,
-            total_time=total_time,
-            time_step=self.__time_step,
-            parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
-            hess_T=self.__hess_T,
-            hess_V=self.__hess_V,
-            warmup_time=warmup_time,
-            tail_time=tail_time,
-            qr_time_step=qr_time_step,
-            seed=int(seed),
-            method=method,
-            integrator_traj_tan=self.__traj_tan_integrator_func,
-            poincare_section=poincare_section,
-            section_index=int(section_index),
-            section_value=section_value,
-            crossing=int(crossing),
-            subspaces=subspaces,
-            pairs=pairs,
-        )
+        if self.__integrator in ["vv2", "svy4"]:
+            return clv_angles_sep(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                grad_T=self.__system_func_1,
+                grad_V=self.__system_func_2,
+                hess_T=self.__system_func_3,
+                hess_V=self.__system_func_4,
+                warmup_time=warmup_time,
+                tail_time=tail_time,
+                qr_time_step=qr_time_step,
+                seed=int(seed),
+                method=method,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+                poincare_section=poincare_section,
+                section_index=int(section_index),
+                section_value=section_value,
+                crossing=int(crossing),
+                subspaces=subspaces,
+                pairs=pairs,
+            )
+        else:
+            return clv_angles_imp(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                eom=self.__system_func_1,
+                hess_H=self.__system_func_2,
+                warmup_time=warmup_time,
+                tail_time=tail_time,
+                qr_time_step=qr_time_step,
+                seed=int(seed),
+                method=method,
+                tol=self.__tol,
+                max_iter=self.__max_iter,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+                poincare_section=poincare_section,
+                section_index=int(section_index),
+                section_value=section_value,
+                crossing=int(crossing),
+                subspaces=subspaces,
+                pairs=pairs,
+            )
 
     def SALI(
         self,
@@ -1465,21 +1572,39 @@ class HamiltonianSystem:
         validate_non_negative(threshold, "threshold", Real)
         threshold = np.float64(threshold)
 
-        result = sali(
-            q=q,
-            p=p,
-            total_time=total_time,
-            time_step=self.__time_step,
-            parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
-            hess_T=self.__hess_T,
-            hess_V=self.__hess_V,
-            return_history=return_history,
-            seed=int(seed),
-            integrator_traj_tan=self.__traj_tan_integrator_func,
-            threshold=threshold,
-        )
+        if self.__integrator in ["vv2", "svy4"]:
+            result = sali_sep(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                grad_T=self.__system_func_1,
+                grad_V=self.__system_func_2,
+                hess_T=self.__system_func_3,
+                hess_V=self.__system_func_4,
+                return_history=return_history,
+                seed=int(seed),
+                threshold=threshold,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+            )
+
+        else:
+            result = sali_imp(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                eom=self.__system_func_1,
+                hess_H=self.__system_func_2,
+                return_history=return_history,
+                seed=int(seed),
+                threshold=threshold,
+                tol=self.__tol,
+                max_iter=self.__max_iter,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+            )
 
         if return_history:
             return result
@@ -1581,22 +1706,41 @@ class HamiltonianSystem:
         validate_non_negative(threshold, "threshold", Real)
         threshold = np.float64(threshold)
 
-        result = ldi_k(
-            q=q,
-            p=p,
-            total_time=total_time,
-            time_step=self.__time_step,
-            parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
-            hess_T=self.__hess_T,
-            hess_V=self.__hess_V,
-            k=int(k),
-            return_history=return_history,
-            seed=int(seed),
-            integrator_traj_tan=self.__traj_tan_integrator_func,
-            threshold=threshold,
-        )
+        if self.__integrator in ["vv2", "svy4"]:
+            result = ldi_k_sep(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                grad_T=self.__system_func_1,
+                grad_V=self.__system_func_2,
+                hess_T=self.__system_func_3,
+                hess_V=self.__system_func_4,
+                k=int(k),
+                return_history=return_history,
+                seed=int(seed),
+                threshold=threshold,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+            )
+
+        else:
+            result = ldi_k_imp(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                eom=self.__system_func_1,
+                hess_H=self.__system_func_2,
+                k=int(k),
+                return_history=return_history,
+                seed=int(seed),
+                threshold=threshold,
+                tol=self.__tol,
+                max_iter=self.__max_iter,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+            )
 
         if return_history:
             return result
@@ -1713,23 +1857,42 @@ class HamiltonianSystem:
         if method not in ("DET", "QR", "QR_HH"):
             raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
-        result = gali_k(
-            q=q,
-            p=p,
-            total_time=total_time,
-            time_step=self.__time_step,
-            parameters=parameters,
-            grad_T=self.__grad_T,
-            grad_V=self.__grad_V,
-            hess_T=self.__hess_T,
-            hess_V=self.__hess_V,
-            k=int(k),
-            return_history=return_history,
-            seed=int(seed),
-            integrator_traj_tan=self.__traj_tan_integrator_func,
-            threshold=threshold,
-            method=method,
-        )
+        if self.__integrator in ["vv2", "svy4"]:
+            result = gali_k_sep(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                grad_T=self.__system_func_1,
+                grad_V=self.__system_func_2,
+                hess_T=self.__system_func_3,
+                hess_V=self.__system_func_4,
+                k=int(k),
+                return_history=return_history,
+                seed=int(seed),
+                threshold=threshold,
+                method=method,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+            )
+        else:
+            result = gali_k_imp(
+                q=q,
+                p=p,
+                total_time=total_time,
+                time_step=self.__time_step,
+                parameters=parameters,
+                eom=self.__system_func_1,
+                hess_H=self.__system_func_2,
+                k=int(k),
+                return_history=return_history,
+                seed=int(seed),
+                threshold=threshold,
+                method=method,
+                tol=self.__tol,
+                max_iter=self.__max_iter,
+                integrator_traj_tan=self.__traj_tan_integrator_func,
+            )
 
         if return_history:
             return result
