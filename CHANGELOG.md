@@ -5,6 +5,100 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `common.types`:
+  - Added `system_func_t` type alias for the polymorphic per-step callables
+    (gradients, Hessians, equations of motion) consumed by Hamiltonian
+    integrators, since their argument count and meaning depend on which
+    integrator they are paired with.
+
+- `hamiltonian_systems` module:
+  - Added support for the **implicit midpoint method**, a symplectic
+    integrator applicable to general (including non-separable) Hamiltonian
+    systems `H(q, p)`, specified via the full equations of motion `eom`
+    and the Hessian of `H` with respect to the combined state `(q, p)`,
+    `hess_H`.
+  - `fixed_step.py`:
+    - Added `implicit_midpoint_step`, advancing the trajectory `(q, p)`
+      via a Newton-solved implicit midpoint update.
+  - `tangent.py`:
+    - Added `implicit_midpoint_step_traj_tan`, jointly advancing the
+      trajectory and a set of tangent (deviation) vectors in a single
+      implicit midpoint step, by reusing the Jacobian from the converged
+      midpoint Newton solve to update the deviation vectors via the
+      discrete-map monodromy without forming the full monodromy matrix.
+    - Added `advance_block_imp`, mirroring `advance_block` (now
+      `advance_block_sep`) for the implicit midpoint stepper.
+  - `poincare.py`:
+    - Added `generate_poincare_section_midpoint` and
+      `ensemble_poincare_section_midpoint` for Poincaré-section generation
+      under the implicit midpoint integrator.
+    - Added `generate_poincare_section_from_traj_imp`, extracting
+      Poincaré-section crossings from precomputed trajectories using the
+      full equations of motion for the crossing-velocity check, required
+      for non-separable systems.
+  - `lyapunov.py`, `clv.py`, `sali.py`, `ldi.py`, `gali.py`:
+    - Added `_imp`-suffixed variants of the Lyapunov spectrum, largest
+      Lyapunov exponent, CLV, CLV-angle, SALI, LDI, and GALI computations,
+      supporting the implicit midpoint integrator via `eom`/`hess_H` and
+      Newton-solver `tol`/`max_iter` controls.
+
+- `HamiltonianSystem` class:
+  - Added support for constructing general (possibly non-separable)
+    Hamiltonian systems via new `eom` and `hess_H` constructor parameters,
+    integrated with the implicit midpoint method.
+  - Added `"imp"` as a selectable integrator in `integrator()`, with `tol`
+    and `max_iter` parameters controlling the underlying Newton solve.
+  - `lyapunov`, `CLV`, `CLV_angles`, `SALI`, `LDI`, and `GALI` now dispatch
+    to the implicit midpoint backend automatically when `"imp"` is the
+    active integrator.
+
+### Changed
+
+- `common.types`:
+  - Widened `symplectic_step_t` and `symplectic_tangent_step_t` to
+    variadic `Callable` aliases, since the explicit symplectic steppers
+    (velocity Verlet, fourth-order Yoshida) and the implicit midpoint
+    stepper genuinely differ in argument count and cannot share one fixed
+    positional signature.
+
+- `hamiltonian_systems` module:
+  - Renamed the separable-only implementations to `_sep`-suffixed names
+    for symmetry with their new `_imp` counterparts, including
+    `velocity_verlet_2nd_step`/`yoshida_4th_step`'s gradient/Hessian
+    parameters (now typed `system_func_t`), `generate_poincare_section`
+    (now split into `generate_poincare_section_sep` and
+    `generate_poincare_section_midpoint`), `advance_block` (now
+    `advance_block_sep`), `lyapunov_spectrum`/`largest_lyapunov_exponent`,
+    `compute_clvs`/`clv_angles`, `sali`, `ldi_k`, and `gali_k`.
+  - `generate_trajectory` and `ensemble_trajectories` (`trajectory.py`)
+    now take generic `system_func_1`/`system_func_2` parameters in place
+    of `grad_T`/`grad_V`, since these slots hold different callables
+    depending on the active integrator.
+  - `recurrence_time_entropy` (`rte.py`) and `hurst_exponent_wrapped`
+    (`hurst.py`) gained a `pss_func` parameter selecting which
+    Poincaré-section generator to call, and `tol`/`max_iter` parameters
+    forwarded to it.
+
+- `HamiltonianSystem` class:
+  - Updated the class docstring to describe both the separable
+    (`grad_T`/`grad_V`/`hess_T`/`hess_V`) and general/non-separable
+    (`eom`/`hess_H`) ways of specifying a system, including the required
+    `(qdot, pdot)` return order for `eom`. The class previously documented
+    only separable Hamiltonians.
+  - `poincare_section`, `recurrence_time_entropy`, and `hurst_exponent`
+    now select the separable or implicit-midpoint Poincaré-section
+    generator based on the active integrator, rather than always using
+    the separable one.
+  - `lyapunov`'s Hessian-requirement check is now scoped to the
+    velocity-Verlet and Yoshida integrators, since the implicit midpoint
+    integrator uses `hess_H` instead of `hess_T`/`hess_V`.
+
+[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.5.4...HEAD
+
 ## [v1.5.4] - 2026-05-28
 
 ### Added
