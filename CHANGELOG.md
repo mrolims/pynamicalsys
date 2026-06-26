@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     to the implicit midpoint backend automatically when `"imp"` is the
     active integrator.
 
+- `BasinMetrics` class:
+  - Added `uncertainty_fraction_mapping`, a Monte Carlo estimator for the
+    uncertainty fraction and uncertainty exponent of escape basins in
+    discrete-time dynamical systems.
+  - Supports estimating the scaling law
+    `f(ε) ~ ε^α` by sampling random initial conditions and perturbed
+    neighborhoods, classifying points as uncertain when a user-defined
+    fraction of perturbations reach different exits.
+  - Supports parallel evaluation over ε values through `joblib`, with
+    reproducible random sampling controlled by a user-provided seed.
+
 ### Changed
 
 - `common.types`:
