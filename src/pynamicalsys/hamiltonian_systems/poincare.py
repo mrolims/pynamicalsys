@@ -15,24 +15,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+
 import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from pynamicalsys.common.types import system_func_t, symplectic_step_t
+from pynamicalsys.common.poincare import detect_crossing, wrap_period
 from concurrent.futures import ProcessPoolExecutor
 
 
-"""
-TODO
-
-- Factor out the common Poincaré section logic. The only difference
-  between the integrators is the derivative callbacks:
-  (grad_T, grad_V) vs. (eom, hess_H).
-"""
-
-
 @njit
-def generate_poincare_section_sep(
+def generate_poincare_section(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
     num_intersections: np.int64,
@@ -44,15 +37,22 @@ def generate_poincare_section_sep(
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
     crossing: int = 1,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     tol: np.float64 = np.float64(1e-12),
     max_iter: int = 50,
 ) -> NDArray[np.float64]:
     """
-    Generate a Poincaré surface of section for a separable Hamiltonian system,
-    H(q, p) = T(p) + V(q), integrated with an explicit symplectic stepper
-    (velocity Verlet or fourth-order Yoshida).
+    Generate a Poincaré surface of section for a Hamiltonian system.
 
-    Requires grad_T and grad_V to advance the trajectory.
+    The section is defined by monitoring a single coordinate q[section_index]
+    and detecting crossings of a reference value. This coordinate can be either
+    a real-valued variable or a periodic (angular) variable.
+
+    If `periodic_section_coordinate=True`, the coordinate is treated as living
+    on a circle S¹ with given `period`, and crossings are detected using wrapped
+    differences modulo `period`. Otherwise, standard Euclidean sign-change
+    crossings are used.
 
     Parameters
     ----------
@@ -65,9 +65,11 @@ def generate_poincare_section_sep(
     parameters : NDArray[np.float64]
         Additional system parameters passed to `system_func_1` and `system_func_2`.
     system_func_1 : system_func_t
-        Gradient of the kinetic energy with respect to the momenta.
+        Gradient of the kinetic energy with respect to the momenta when using the vv2 or svy4 integrators
+        or the equations of motion when using the imp integrator.
     system_func_2 : system_func_t
-        Gradient of the potential energy with respect to the coordinates.
+        Gradient of the potential energy with respect to the coordinates when using the vv2 or svy4 integrators
+        or the hessian of the Hamiltonian w.r.t. z = (q, p) when using the imp integrator.
     time_step : np.float64
         Integration time step.
     integrator : symplectic_step_t
@@ -75,12 +77,20 @@ def generate_poincare_section_sep(
     section_index : int, optional
         Index of the coordinate used to define the section.
     section_value : np.float64, optional
-        Value of `q[section_index]` defining the section.
+        Value of q[section_index] defining the section.
     crossing : int, optional
         Crossing rule:
         - `+1` for upward crossings
         - `-1` for downward crossings
         - `0` for all crossings
+    periodic_section_coordinate : bool, optional
+        If True, treats q[section_index] as a periodic coordinate on S¹ and
+        performs crossing detection using modulo arithmetic.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`.
+        Typically 2π for action-angle systems.
     tol : np.float64
         Newton convergence tolerance on the residual norm.
     max_iter : int
@@ -97,13 +107,17 @@ def generate_poincare_section_sep(
     dof = len(q)
     section_points = np.zeros((num_intersections, 2 * dof + 1), dtype=np.float64)
 
-    count = 0
-    n_steps = 0
+    num_crossings_found = 0
+    step = 0
 
     q_prev = q.copy()
     p_prev = p.copy()
 
-    while count < num_intersections:
+    g_old = q_prev[section_index] - section_value
+    if periodic_section_coordinate:
+        g_old = wrap_period(g_old, period)
+
+    while num_crossings_found < num_intersections:
         q_new, p_new = integrator(
             q_prev,
             p_prev,
@@ -115,34 +129,37 @@ def generate_poincare_section_sep(
             max_iter,
         )
 
-        if (q_prev[section_index] - section_value) * (
-            q_new[section_index] - section_value
-        ) < np.float64(0.0):
-            lam = (section_value - q_prev[section_index]) / (
-                q_new[section_index] - q_prev[section_index]
-            )
+        if periodic_section_coordinate:
+            raw_old = q_prev[section_index] - section_value
+            raw_new = q_new[section_index] - section_value
+            delta = wrap_period(raw_new - raw_old, period)
+            g_new = g_old + delta
+        else:
+            g_new = q_new[section_index] - section_value
 
+        if detect_crossing(g_old, g_new, crossing):
+            lam = g_old / (g_old - g_new)
             q_cross = (np.float64(1.0) - lam) * q_prev + lam * q_new
             p_cross = (np.float64(1.0) - lam) * p_prev + lam * p_new
-            t_cross = np.float64(n_steps) * time_step + lam * time_step
+            t_cross = np.float64(step) * time_step + lam * time_step
+            section_points[num_crossings_found, 0] = t_cross
+            section_points[num_crossings_found, 1 : dof + 1] = q_cross
+            section_points[num_crossings_found, dof + 1 :] = p_cross
+            num_crossings_found += 1
 
-            velocity = system_func_1(p_cross, parameters)[section_index]
-
-            if crossing == 0 or np.sign(velocity) == crossing:
-                section_points[count, 0] = t_cross
-                section_points[count, 1 : dof + 1] = q_cross
-                section_points[count, dof + 1 :] = p_cross
-                count += 1
+        if periodic_section_coordinate:
+            g_old = wrap_period(g_new, period)
+        else:
+            g_old = g_new
 
         q_prev = q_new
         p_prev = p_new
-        n_steps += 1
+        step += 1
 
     return section_points
 
 
-@njit
-def generate_poincare_section_midpoint(
+def ensemble_poincare_section(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
     num_intersections: np.int64,
@@ -154,116 +171,8 @@ def generate_poincare_section_midpoint(
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
     crossing: int = 1,
-    tol: np.float64 = np.float64(1e-12),
-    max_iter: int = 50,
-) -> NDArray[np.float64]:
-    """
-    Generate a Poincaré surface of section for a general (possibly
-    non-separable) Hamiltonian system H(q, p), integrated with the
-    implicit midpoint method.
-
-    Requires eom and hess_H to advance the trajectory.
-
-    Parameters
-    ----------
-    q : NDArray[np.float64]
-        Initial generalized coordinates of shape `(dof,)`.
-    p : NDArray[np.float64]
-        Initial generalized momenta of shape `(dof,)`.
-    num_intersections : np.int32
-        Number of section crossings to record.
-    parameters : NDArray[np.float64]
-        Additional system parameters passed to `system_func_1` and `system_func_2`.
-    system_func_1 : system_func_t
-        Equations of motion of the system.
-    system_func_2 : system_func_t
-        Hessian of the Hamiltonian w.r.t. z = (q, p).
-    time_step : np.float64
-        Integration time step.
-    integrator : symplectic_step_t
-        Symplectic integration step.
-    section_index : int, optional
-        Index of the coordinate used to define the section.
-    section_value : np.float64, optional
-        Value of `q[section_index]` defining the section.
-    crossing : int, optional
-        Crossing rule:
-        - `+1` for upward crossings
-        - `-1` for downward crossings
-        - `0` for all crossings
-    tol : np.float64
-        Newton convergence tolerance on the residual norm.
-    max_iter : int
-        Maximum Newton iterations per step.
-
-    Returns
-    -------
-    NDArray[np.float64]
-        Array of shape `(num_intersections, 2 * dof + 1)` containing:
-        - column 0: crossing times
-        - columns `1:dof+1`: coordinates at the crossing
-        - columns `dof+1:2*dof+1`: momenta at the crossing
-    """
-    dof = len(q)
-    section_points = np.zeros((num_intersections, 2 * dof + 1), dtype=np.float64)
-
-    count = 0
-    n_steps = 0
-
-    q_prev = q.copy()
-    p_prev = p.copy()
-
-    while count < num_intersections:
-        q_new, p_new = integrator(
-            q_prev,
-            p_prev,
-            time_step,
-            system_func_1,
-            system_func_2,
-            parameters,
-            tol,
-            max_iter,
-        )
-
-        if (q_prev[section_index] - section_value) * (
-            q_new[section_index] - section_value
-        ) < np.float64(0.0):
-            lam = (section_value - q_prev[section_index]) / (
-                q_new[section_index] - q_prev[section_index]
-            )
-
-            q_cross = (np.float64(1.0) - lam) * q_prev + lam * q_new
-            p_cross = (np.float64(1.0) - lam) * p_prev + lam * p_new
-            t_cross = np.float64(n_steps) * time_step + lam * time_step
-
-            qdot, _ = system_func_1(q_cross, p_cross, parameters)
-            velocity = qdot[section_index]
-
-            if crossing == 0 or np.sign(velocity) == crossing:
-                section_points[count, 0] = t_cross
-                section_points[count, 1 : dof + 1] = q_cross
-                section_points[count, dof + 1 :] = p_cross
-                count += 1
-
-        q_prev = q_new
-        p_prev = p_new
-        n_steps += 1
-
-    return section_points
-
-
-def ensemble_poincare_section_sep(
-    q: NDArray[np.float64],
-    p: NDArray[np.float64],
-    num_intersections: np.int64,
-    parameters: NDArray[np.float64],
-    system_func_1: system_func_t,
-    system_func_2: system_func_t,
-    time_step: np.float64,
-    integrator: symplectic_step_t,
-    section_index: int = 0,
-    section_value: np.float64 = np.float64(0.0),
-    crossing: int = 1,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     tol: np.float64 = np.float64(1e-12),
     max_iter: int = 50,
     n_workers=10,
@@ -298,6 +207,14 @@ def ensemble_poincare_section_sep(
         - `+1` for upward crossings
         - `-1` for downward crossings
         - `0` for all crossings
+    periodic_section_coordinate : bool, optional
+        If True, treats q[section_index] as a periodic coordinate on S¹ and
+        performs crossing detection using modulo arithmetic.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`.
+        Typically 2π for action-angle systems.
     tol : np.float64
         Newton convergence tolerance on the residual norm.
     max_iter : int
@@ -315,7 +232,7 @@ def ensemble_poincare_section_sep(
     with ProcessPoolExecutor(max_workers=n_workers) as executor:
         futures = [
             executor.submit(
-                generate_poincare_section_sep,
+                generate_poincare_section,
                 q[i],
                 p[i],
                 num_intersections,
@@ -327,91 +244,8 @@ def ensemble_poincare_section_sep(
                 section_index,
                 section_value,
                 crossing,
-                tol,
-                max_iter,
-            )
-            for i in range(num_ic)
-        ]
-        results = [future.result() for future in futures]
-
-    return np.stack(results)
-
-
-def ensemble_poincare_section_midpoint(
-    q: NDArray[np.float64],
-    p: NDArray[np.float64],
-    num_intersections: np.int64,
-    parameters: NDArray[np.float64],
-    system_func_1: system_func_t,
-    system_func_2: system_func_t,
-    time_step: np.float64,
-    integrator: symplectic_step_t,
-    section_index: int = 0,
-    section_value: np.float64 = np.float64(0.0),
-    crossing: int = 1,
-    tol: np.float64 = np.float64(1e-12),
-    max_iter: int = 50,
-    n_workers=10,
-) -> NDArray[np.float64]:
-    """
-    Generate Poincaré sections for an ensemble of initial conditions using the midpoint implicit method.
-
-    Parameters
-    ----------
-    q : NDArray[np.float64]
-        Initial generalized coordinates of shape `(num_ic, dof)`.
-    p : NDArray[np.float64]
-        Initial generalized momenta of shape `(num_ic, dof)`.
-    num_intersections : int
-        Number of section crossings to record for each trajectory.
-    parameters : NDArray[np.float64]
-        Additional system parameters passed to `system_func_1` and `system_func_2`.
-    system_func_1 : system_func_t
-        Equations of motion of the system.
-    system_func_2 : system_func_t
-        Hessian of the Hamiltonian w.r.t. z = (q, p)
-    time_step : np.float64
-        Integration time step.
-    integrator : symplectic_step_t
-        Symplectic integration step.
-    section_index : int, optional
-        Index of the coordinate used to define the section.
-    section_value : np.float64, optional
-        Value of `q[section_index]` defining the section.
-    crossing : int, optional
-        Crossing rule:
-        - `+1` for upward crossings
-        - `-1` for downward crossings
-        - `0` for all crossings
-    tol : np.float64
-        Newton convergence tolerance on the residual norm.
-    max_iter : int
-        Maximum Newton iterations per step.
-
-    Returns
-    -------
-    NDArray[np.float64]
-        Array of shape `(num_ic, num_intersections, 2 * dof + 1)` containing the
-        Poincaré section points for each initial condition, with the first column
-        storing the crossing times.
-    """
-    num_ic = q.shape[0]
-
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
-        futures = [
-            executor.submit(
-                generate_poincare_section_midpoint,
-                q[i],
-                p[i],
-                num_intersections,
-                parameters,
-                system_func_1,
-                system_func_2,
-                time_step,
-                integrator,
-                section_index,
-                section_value,
-                crossing,
+                periodic_section_coordinate,
+                period,
                 tol,
                 max_iter,
             )
@@ -423,18 +257,24 @@ def ensemble_poincare_section_midpoint(
 
 
 @njit
-def generate_poincare_section_from_traj_sep(
+def generate_poincare_section_from_traj(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
-    parameters: NDArray[np.float64],
-    system_func_1: system_func_t,
     time_step: np.float64,
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
     crossing: int = 1,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
 ) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
     """
     Extract Poincaré-section crossings from precomputed trajectory samples.
+
+    Works for both separable and non-separable Hamiltonian systems:
+    `system_func_1` must be the full equations-of-motion function
+    `(qdot, pdot) = system_func_1(q, p, parameters)`. For a separable
+    system, `qdot` may depend only on `p` internally; this function does
+    not assume otherwise.
 
     Parameters
     ----------
@@ -442,10 +282,6 @@ def generate_poincare_section_from_traj_sep(
         Sampled generalized coordinates of shape `(num_points, dof)`.
     p : NDArray[np.float64]
         Sampled generalized momenta of shape `(num_points, dof)`.
-    parameters : NDArray[np.float64]
-        Additional system parameters passed to `system_func_1`.
-    system_func_1 : system_func_t
-        Gradient of the kinetic energy with respect to the momenta.
     time_step : np.float64
         Time interval between successive stored trajectory samples.
     section_index : int, optional
@@ -457,6 +293,15 @@ def generate_poincare_section_from_traj_sep(
         - `+1` for upward crossings
         - `-1` for downward crossings
         - `0` for all crossings
+    periodic_section_coordinate : bool, optional
+        If True, treats q[:, section_index] as a periodic coordinate on S¹
+        with the given `period`, accumulating unbounded across samples
+        (never re-wrapped). Crossing detection shifts the wrapped offset
+        using delta arithmetic, mirroring generate_poincare_section.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`. Typically 2π.
 
     Returns
     -------
@@ -469,159 +314,55 @@ def generate_poincare_section_from_traj_sep(
     dof = q.shape[1]
     num_points = q.shape[0]
 
-    n_hits = 0
-    for i in range(1, num_points):
-        q_prev_i = q[i - 1, section_index]
-        q_new_i = q[i, section_index]
-
-        if (q_prev_i - section_value) * (q_new_i - section_value) < np.float64(0.0):
-            denom = q_new_i - q_prev_i
-            if denom == np.float64(0.0):
-                continue
-
-            lam = (section_value - q_prev_i) / denom
-            p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
-            vel = system_func_1(p_cross, parameters)[section_index]
-
-            if crossing == 0 or np.sign(vel) == crossing:
-                n_hits += 1
-
-    section_points = np.empty((n_hits, 1 + 2 * dof), dtype=np.float64)
-    section_k = np.empty(n_hits, dtype=np.int64)
-
-    hit = 0
-    for i in range(1, num_points):
-        q_prev_i = q[i - 1, section_index]
-        q_new_i = q[i, section_index]
-
-        if (q_prev_i - section_value) * (q_new_i - section_value) < np.float64(0.0):
-            denom = q_new_i - q_prev_i
-            if denom == np.float64(0.0):
-                continue
-
-            lam = (section_value - q_prev_i) / denom
-
-            q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
-            p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
-            t_cross = np.float64(i - 1) * time_step + lam * time_step
-
-            vel = system_func_1(p_cross, parameters)[section_index]
-            ok = (crossing == 0) or (np.sign(vel) == crossing)
-
-            if ok:
-                section_points[hit, 0] = t_cross
-
-                for j in range(dof):
-                    section_points[hit, 1 + j] = q_cross[j]
-
-                for j in range(dof):
-                    section_points[hit, 1 + dof + j] = p_cross[j]
-
-                section_k[hit] = i - 1
-                hit += 1
-
-    return section_points, section_k
-
-
-@njit
-def generate_poincare_section_from_traj_imp(
-    q: NDArray[np.float64],
-    p: NDArray[np.float64],
-    parameters: NDArray[np.float64],
-    system_func_1: system_func_t,
-    time_step: np.float64,
-    section_index: int = 0,
-    section_value: np.float64 = np.float64(0.0),
-    crossing: int = 1,
-) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
-    """
-    Extract Poincaré-section crossings from precomputed trajectory samples.
-
-    Parameters
-    ----------
-    q : NDArray[np.float64]
-        Sampled generalized coordinates of shape `(num_points, dof)`.
-    p : NDArray[np.float64]
-        Sampled generalized momenta of shape `(num_points, dof)`.
-    parameters : NDArray[np.float64]
-        Additional system parameters passed to `system_func_1`.
-    system_func_1 : system_func_t
-        Gradient of the kinetic energy with respect to the momenta.
-    time_step : np.float64
-        Time interval between successive stored trajectory samples.
-    section_index : int, optional
-        Index of the coordinate used to define the section.
-    section_value : np.float64, optional
-        Value of `q[:, section_index]` defining the section.
-    crossing : int, optional
-        Crossing rule:
-        - `+1` for upward crossings
-        - `-1` for downward crossings
-        - `0` for all crossings
-
-    Returns
-    -------
-    tuple[NDArray[np.float64], NDArray[np.int64]]
-        - `section_points`: array of shape `(n_hits, 1 + 2 * dof)` whose rows are
-          `[t_cross, q_cross..., p_cross...]`
-        - `section_k`: integer array of shape `(n_hits,)` containing the index `k`
-          such that each crossing lies between samples `k` and `k + 1`
-    """
-    dof = q.shape[1]
-    num_points = q.shape[0]
+    g_old = q[0, section_index] - section_value
+    if periodic_section_coordinate:
+        g_old = wrap_period(g_old, period)
 
     n_hits = 0
     for i in range(1, num_points):
-        q_prev_i = q[i - 1, section_index]
-        q_new_i = q[i, section_index]
+        if periodic_section_coordinate:
+            raw_old = q[i - 1, section_index] - section_value
+            raw_new = q[i, section_index] - section_value
+            delta = wrap_period(raw_new - raw_old, period)
+            g_new = g_old + delta
+        else:
+            g_new = q[i, section_index] - section_value
 
-        if (q_prev_i - section_value) * (q_new_i - section_value) < np.float64(0.0):
-            denom = q_new_i - q_prev_i
-            if denom == np.float64(0.0):
-                continue
+        if detect_crossing(g_old, g_new, crossing):
+            n_hits += 1
 
-            lam = (section_value - q_prev_i) / denom
-            q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
-            p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
-            qdot, _ = system_func_1(q_cross, p_cross, parameters)
-            vel = qdot[section_index]
-
-            if crossing == 0 or np.sign(vel) == crossing:
-                n_hits += 1
+        g_old = wrap_period(g_new, period) if periodic_section_coordinate else g_new
 
     section_points = np.empty((n_hits, 1 + 2 * dof), dtype=np.float64)
     section_k = np.empty(n_hits, dtype=np.int64)
-
     hit = 0
+
+    g_old = q[0, section_index] - section_value
+    if periodic_section_coordinate:
+        g_old = wrap_period(g_old, period)
+
     for i in range(1, num_points):
-        q_prev_i = q[i - 1, section_index]
-        q_new_i = q[i, section_index]
+        if periodic_section_coordinate:
+            raw_old = q[i - 1, section_index] - section_value
+            raw_new = q[i, section_index] - section_value
+            delta = wrap_period(raw_new - raw_old, period)
+            g_new = g_old + delta
+        else:
+            g_new = q[i, section_index] - section_value
 
-        if (q_prev_i - section_value) * (q_new_i - section_value) < np.float64(0.0):
-            denom = q_new_i - q_prev_i
-            if denom == np.float64(0.0):
-                continue
-
-            lam = (section_value - q_prev_i) / denom
-
+        if detect_crossing(g_old, g_new, crossing):
+            lam = g_old / (g_old - g_new)
             q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
             p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
             t_cross = np.float64(i - 1) * time_step + lam * time_step
+            section_points[hit, 0] = t_cross
+            for j in range(dof):
+                section_points[hit, 1 + j] = q_cross[j]
+            for j in range(dof):
+                section_points[hit, 1 + dof + j] = p_cross[j]
+            section_k[hit] = i - 1
+            hit += 1
 
-            qdot, _ = system_func_1(q_cross, p_cross, parameters)
-            vel = qdot[section_index]
-            ok = (crossing == 0) or (np.sign(vel) == crossing)
-
-            if ok:
-                section_points[hit, 0] = t_cross
-
-                for j in range(dof):
-                    section_points[hit, 1 + j] = q_cross[j]
-
-                for j in range(dof):
-                    section_points[hit, 1 + dof + j] = p_cross[j]
-
-                section_k[hit] = i - 1
-                hit += 1
+        g_old = wrap_period(g_new, period) if periodic_section_coordinate else g_new
 
     return section_points, section_k
