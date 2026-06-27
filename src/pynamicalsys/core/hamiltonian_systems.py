@@ -440,12 +440,6 @@ class HamiltonianSystem:
 
         return self.__AVAILABLE_INTEGRATORS[integrator]
 
-    # def __get_pss_func(self):
-    #
-    #     if self.__integrator in ["vv2", "svy4"]:
-    #         return generate_poincare_section_sep
-    #     return generate_poincare_section_midpoint
-
     def integrator(
         self,
         integrator: str,
@@ -773,7 +767,7 @@ class HamiltonianSystem:
             If True, treats q[section_index] as a periodic coordinate on S¹ and
             performs crossing detection using modulo arithmetic.
             If False, uses standard Euclidean crossing detection.
-        period : np.float64, optional
+        period : numeric_t, optional
             Period of the angular coordinate when
             `periodic_section_coordinate=True`.
             Typically 2π for action-angle systems.
@@ -801,6 +795,7 @@ class HamiltonianSystem:
         TypeError
             If `num_intersections` or `section_index` is not an integer.
             If `section_value` is not a valid real number.
+            If `periodic_section_coordinate` is not a boolean.
         """
         q = validate_initial_conditions(q, self.__degrees_of_freedom)
         p = validate_initial_conditions(p, self.__degrees_of_freedom)
@@ -830,12 +825,8 @@ class HamiltonianSystem:
         if crossing not in (-1, 0, 1):
             raise ValueError("crossing must be -1, 0, or 1")
 
-        # if self.__integrator in ["svy4", "vv2"]:
-        #     generate_poincare_section = generate_poincare_section_sep
-        #     ensemble_poincare_section = ensemble_poincare_section_sep
-        # else:
-        #     generate_poincare_section = generate_poincare_section_midpoint
-        #     ensemble_poincare_section = ensemble_poincare_section_midpoint
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
 
         if q.ndim == 1:
             return generate_poincare_section(
@@ -1093,6 +1084,8 @@ class HamiltonianSystem:
         section_index: int_t | None = None,
         section_value: numeric_t | None = None,
         crossing: int_t | None = None,
+        periodic_section_coordinate: bool = False,
+        period: numeric_t = 2.0 * np.pi,
         method: str = "QR",
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
@@ -1138,6 +1131,15 @@ class HamiltonianSystem:
             - `-1` for downward crossings
             - `0` for all crossings
             - `1` for upward crossings
+        periodic_section_coordinate : bool, optional
+            If True, treats q[:, section_index] as a periodic coordinate on S¹
+            with the given `period`, accumulating unbounded across samples
+            (never re-wrapped). Crossing detection shifts the wrapped offset
+            using delta arithmetic, mirroring generate_poincare_section.
+            If False, uses standard Euclidean crossing detection.
+        period : numeric_t, optional
+            Period of the angular coordinate when
+            `periodic_section_coordinate=True`. Typically 2π.
         method : str, optional
             QR decomposition method:
             - `"QR"`: internal reduced modified Gram-Schmidt QR
@@ -1240,6 +1242,9 @@ class HamiltonianSystem:
                 raise TypeError("crossing must be an integer")
             if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
+
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
         else:
             section_index = 0
             section_value = np.float64(0.0)
@@ -1267,6 +1272,8 @@ class HamiltonianSystem:
                 section_index=int(section_index),
                 section_value=section_value,
                 crossing=int(crossing),
+                periodic_section_coordinate=periodic_section_coordinate,
+                period=np.float64(period),
             )
         else:
             return compute_clvs_imp(
@@ -1290,6 +1297,8 @@ class HamiltonianSystem:
                 section_index=int(section_index),
                 section_value=section_value,
                 crossing=int(crossing),
+                periodic_section_coordinate=periodic_section_coordinate,
+                period=np.float64(period),
             )
 
     def CLV_angles(
@@ -1308,6 +1317,8 @@ class HamiltonianSystem:
         section_index: int_t = 0,
         section_value: numeric_t = 0.0,
         crossing: int_t = 1,
+        periodic_section_coordinate: bool = False,
+        period: numeric_t = 2.0 * np.pi,
         method: str = "QR",
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
@@ -1352,6 +1363,15 @@ class HamiltonianSystem:
             - `-1` for downward crossings
             - `0` for all crossings
             - `1` for upward crossings
+        periodic_section_coordinate : bool, optional
+            If True, treats q[:, section_index] as a periodic coordinate on S¹
+            with the given `period`, accumulating unbounded across samples
+            (never re-wrapped). Crossing detection shifts the wrapped offset
+            using delta arithmetic, mirroring generate_poincare_section.
+            If False, uses standard Euclidean crossing detection.
+        period : numeric_t, optional
+            Period of the angular coordinate when
+            `periodic_section_coordinate=True`. Typically 2π.
         method : str, optional
             QR decomposition method:
             - `"QR"`: internal reduced modified Gram-Schmidt QR
@@ -1445,6 +1465,9 @@ class HamiltonianSystem:
                 raise TypeError("crossing must be an integer")
             if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
+
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
         else:
             section_index = 0
             section_value = np.float64(0.0)
@@ -1471,6 +1494,8 @@ class HamiltonianSystem:
                 section_index=int(section_index),
                 section_value=section_value,
                 crossing=int(crossing),
+                periodic_section_coordinate=periodic_section_coordinate,
+                period=np.float64(period),
                 subspaces=subspaces,
                 pairs=pairs,
             )
@@ -1495,6 +1520,8 @@ class HamiltonianSystem:
                 section_index=int(section_index),
                 section_value=section_value,
                 crossing=int(crossing),
+                periodic_section_coordinate=periodic_section_coordinate,
+                period=np.float64(period),
                 subspaces=subspaces,
                 pairs=pairs,
             )
@@ -2031,6 +2058,9 @@ class HamiltonianSystem:
         if crossing not in (-1, 0, 1):
             raise ValueError("crossing must be -1, 0, or 1")
 
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
+
         return recurrence_time_entropy_core(
             q=q,
             p=p,
@@ -2156,6 +2186,9 @@ class HamiltonianSystem:
             raise ValueError(
                 f"`wmin` must be an integer >= 2 and < num_intersections // 2. Got {wmin}."
             )
+
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
 
         return hurst_exponent_wrapped(
             q=q,
