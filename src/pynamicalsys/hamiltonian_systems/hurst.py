@@ -20,7 +20,7 @@ from numpy.typing import NDArray
 import numpy as np
 from pynamicalsys.common.hurst import hurst_exponent
 from pynamicalsys.common.types import symplectic_step_t, system_func_t
-from pynamicalsys.hamiltonian_systems.poincare import generate_poincare_section_sep
+from pynamicalsys.hamiltonian_systems.poincare import generate_poincare_section
 
 
 def hurst_exponent_wrapped(
@@ -35,10 +35,11 @@ def hurst_exponent_wrapped(
     section_index: int,
     section_value: np.float64,
     crossing: int,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     wmin: int = 2,
     tol: np.float64 = np.float64(1e-12),
     max_iter: int = 50,
-    pss_func=generate_poincare_section_sep,
 ) -> NDArray[np.float64]:
     """
     Estimate the Hurst exponent from a Hamiltonian Poincaré section.
@@ -70,6 +71,15 @@ def hurst_exponent_wrapped(
         - `+1` for upward crossings
         - `-1` for downward crossings
         - `0` for all crossings
+    periodic_section_coordinate : bool, optional
+        If True, treats q[:, section_index] as a periodic coordinate on S¹
+        with the given `period`, accumulating unbounded across samples
+        (never re-wrapped). Crossing detection shifts the wrapped offset
+        using delta arithmetic, mirroring generate_poincare_section.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`. Typically 2π.
     wmin : int, optional
         Minimum window size used in the rescaled-range calculation.
     tol : np.float64
@@ -85,7 +95,7 @@ def hurst_exponent_wrapped(
     q = q.copy()
     p = p.copy()
 
-    points = pss_func(
+    points = generate_poincare_section(
         q=q,
         p=p,
         num_intersections=num_points,
@@ -97,6 +107,8 @@ def hurst_exponent_wrapped(
         section_index=section_index,
         section_value=section_value,
         crossing=crossing,
+        periodic_section_coordinate=periodic_section_coordinate,
+        period=period,
         tol=tol,
         max_iter=max_iter,
     )

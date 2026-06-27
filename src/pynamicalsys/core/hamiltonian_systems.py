@@ -58,10 +58,8 @@ from pynamicalsys.hamiltonian_systems.trajectory import (
 )
 
 from pynamicalsys.hamiltonian_systems.poincare import (
-    ensemble_poincare_section_midpoint,
-    ensemble_poincare_section_sep,
-    generate_poincare_section_sep,
-    generate_poincare_section_midpoint,
+    ensemble_poincare_section,
+    generate_poincare_section,
 )
 
 
@@ -442,11 +440,11 @@ class HamiltonianSystem:
 
         return self.__AVAILABLE_INTEGRATORS[integrator]
 
-    def __get_pss_func(self):
-
-        if self.__integrator in ["vv2", "svy4"]:
-            return generate_poincare_section_sep
-        return generate_poincare_section_midpoint
+    # def __get_pss_func(self):
+    #
+    #     if self.__integrator in ["vv2", "svy4"]:
+    #         return generate_poincare_section_sep
+    #     return generate_poincare_section_midpoint
 
     def integrator(
         self,
@@ -744,6 +742,8 @@ class HamiltonianSystem:
         section_index: int_t = 0,
         section_value: numeric_t = 0.0,
         crossing: int_t = 1,
+        periodic_section_coordinate: bool = False,
+        period: numeric_t = np.float64(2.0 * np.pi),
     ) -> NDArray[np.float64]:
         """
         Compute a Poincaré section of the Hamiltonian trajectory.
@@ -769,6 +769,14 @@ class HamiltonianSystem:
             - `-1` for downward crossings
             - `0` for all crossings
             - `1` for upward crossings
+        periodic_section_coordinate : bool, optional
+            If True, treats q[section_index] as a periodic coordinate on S¹ and
+            performs crossing detection using modulo arithmetic.
+            If False, uses standard Euclidean crossing detection.
+        period : np.float64, optional
+            Period of the angular coordinate when
+            `periodic_section_coordinate=True`.
+            Typically 2π for action-angle systems.
 
         Returns
         -------
@@ -822,12 +830,12 @@ class HamiltonianSystem:
         if crossing not in (-1, 0, 1):
             raise ValueError("crossing must be -1, 0, or 1")
 
-        if self.__integrator in ["svy4", "vv2"]:
-            generate_poincare_section = generate_poincare_section_sep
-            ensemble_poincare_section = ensemble_poincare_section_sep
-        else:
-            generate_poincare_section = generate_poincare_section_midpoint
-            ensemble_poincare_section = ensemble_poincare_section_midpoint
+        # if self.__integrator in ["svy4", "vv2"]:
+        #     generate_poincare_section = generate_poincare_section_sep
+        #     ensemble_poincare_section = ensemble_poincare_section_sep
+        # else:
+        #     generate_poincare_section = generate_poincare_section_midpoint
+        #     ensemble_poincare_section = ensemble_poincare_section_midpoint
 
         if q.ndim == 1:
             return generate_poincare_section(
@@ -842,6 +850,10 @@ class HamiltonianSystem:
                 section_index=int(section_index),
                 section_value=section_value,
                 crossing=int(crossing),
+                periodic_section_coordinate=periodic_section_coordinate,
+                period=np.float64(period),
+                tol=self.__tol,
+                max_iter=self.__max_iter,
             )
 
         return ensemble_poincare_section(
@@ -856,6 +868,8 @@ class HamiltonianSystem:
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
+            periodic_section_coordinate=periodic_section_coordinate,
+            period=np.float64(period),
             tol=self.__tol,
             max_iter=self.__max_iter,
         )
@@ -1908,6 +1922,8 @@ class HamiltonianSystem:
         section_index: int_t = 0,
         section_value: numeric_t = 0.0,
         crossing: int_t = 1,
+        periodic_section_coordinate: bool = False,
+        period: numeric_t = 2.0 * np.pi,
         **kwargs: Any,
     ) -> (
         float
@@ -1943,6 +1959,14 @@ class HamiltonianSystem:
             - `-1` for downward crossings
             - `0` for all crossings
             - `1` for upward crossings
+        periodic_section_coordinate : bool, optional
+            If True, treats q[section_index] as a periodic coordinate on S¹ and
+            performs crossing detection using modulo arithmetic.
+            If False, uses standard Euclidean crossing detection.
+        period : numeric_t, optional
+            Period of the angular coordinate when
+            `periodic_section_coordinate=True`.
+            Typically 2π for action-angle systems.
         **kwargs : Any
             Additional keyword arguments passed to `RTEConfig`, including:
             - `metric`
@@ -2007,8 +2031,6 @@ class HamiltonianSystem:
         if crossing not in (-1, 0, 1):
             raise ValueError("crossing must be -1, 0, or 1")
 
-        pss_func = self.__get_pss_func()
-
         return recurrence_time_entropy_core(
             q=q,
             p=p,
@@ -2021,9 +2043,10 @@ class HamiltonianSystem:
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
+            periodic_section_coordinate=periodic_section_coordinate,
+            period=np.float64(period),
             tol=self.__tol,
             max_iter=self.__max_iter,
-            pss_func=pss_func,
             **kwargs,
         )
 
@@ -2037,6 +2060,8 @@ class HamiltonianSystem:
         section_index: int_t = 0,
         section_value: numeric_t = 0.0,
         crossing: int_t = 1,
+        periodic_section_coordinate: bool = False,
+        period: numeric_t = 2 * np.pi,
     ) -> NDArray[np.float64]:
         """
         Estimate the Hurst exponent from a Hamiltonian Poincaré section.
@@ -2065,6 +2090,14 @@ class HamiltonianSystem:
             - `-1` for downward crossings
             - `0` for all crossings
             - `1` for upward crossings
+        periodic_section_coordinate : bool, optional
+            If True, treats q[section_index] as a periodic coordinate on S¹ and
+            performs crossing detection using modulo arithmetic.
+            If False, uses standard Euclidean crossing detection.
+        period : numeric_t, optional
+            Period of the angular coordinate when
+            `periodic_section_coordinate=True`.
+            Typically 2π for action-angle systems.
 
         Returns
         -------
@@ -2124,8 +2157,6 @@ class HamiltonianSystem:
                 f"`wmin` must be an integer >= 2 and < num_intersections // 2. Got {wmin}."
             )
 
-        pss_func = self.__get_pss_func()
-
         return hurst_exponent_wrapped(
             q=q,
             p=p,
@@ -2138,8 +2169,9 @@ class HamiltonianSystem:
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
+            periodic_section_coordinate=periodic_section_coordinate,
+            period=np.float64(period),
             wmin=int(wmin),
             tol=self.__tol,
             max_iter=self.__max_iter,
-            pss_func=pss_func,
         )

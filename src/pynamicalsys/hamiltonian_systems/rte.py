@@ -28,7 +28,7 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
     white_vertline_distr,
 )
 from pynamicalsys.common.types import system_func_t, symplectic_step_t
-from pynamicalsys.hamiltonian_systems.poincare import generate_poincare_section_sep
+from pynamicalsys.hamiltonian_systems.poincare import generate_poincare_section
 
 
 def recurrence_time_entropy(
@@ -43,9 +43,10 @@ def recurrence_time_entropy(
     section_index: int,
     section_value: np.float64,
     crossing: int,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     tol: np.float64 = np.float64(1e-12),
     max_iter: int = 50,
-    pss_func=generate_poincare_section_sep,
     **kwargs: Any,
 ) -> (
     float
@@ -86,6 +87,14 @@ def recurrence_time_entropy(
         - `+1` for upward crossings
         - `-1` for downward crossings
         - `0` for all crossings
+    periodic_section_coordinate : bool, optional
+        If True, treats q[section_index] as a periodic coordinate on S¹ and
+        performs crossing detection using modulo arithmetic.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`.
+        Typically 2π for action-angle systems.
     tol : np.float64
         Newton convergence tolerance on the residual norm. Only used by the implicit midpoint integrator (imp).
     max_iter : int
@@ -112,7 +121,7 @@ def recurrence_time_entropy(
     """
     config = RTEConfig(**kwargs)
 
-    points = pss_func(
+    points = generate_poincare_section(
         q=q,
         p=p,
         num_intersections=num_points,
@@ -124,6 +133,8 @@ def recurrence_time_entropy(
         section_index=section_index,
         section_value=section_value,
         crossing=crossing,
+        periodic_section_coordinate=periodic_section_coordinate,
+        period=period,
         tol=tol,
         max_iter=max_iter,
     )
