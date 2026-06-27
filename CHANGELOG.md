@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     integrator they are paired with.
 
 - `hamiltonian_systems` module:
+  - `hamiltonian_systems` Poincaré section API:
+    - Added support for **periodic Poincaré sections** via:
+      - `periodic_section_coordinate: bool`
+      - `period: numeric_t`
+    - Enables treating selected section coordinates as angular variables on
+      \( S^1 \), with crossing detection performed using wrapped differences
+      modulo the specified period.
+    - Preserves default Euclidean crossing behavior when disabled.
   - Added support for the **implicit midpoint method**, a symplectic
     integrator applicable to general (including non-separable) Hamiltonian
     systems `H(q, p)`, specified via the full equations of motion `eom`
@@ -93,6 +101,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     (`hurst.py`) gained a `pss_func` parameter selecting which
     Poincaré-section generator to call, and `tol`/`max_iter` parameters
     forwarded to it.
+
+- `hamiltonian_systems` Poincaré section infrastructure:
+  - Unified Poincaré section implementation across separable and
+    non-separable Hamiltonian systems under a single `generate_poincare_section`
+    interface.
+  - Removed legacy integrator-specific Poincaré section dispatch logic and
+    duplicated implementations.
+  - Propagated periodic section support through all Poincaré-dependent
+    analysis routines, including:
+    - Covariant Lyapunov Vectors (CLVs)
+    - CLV angles
+    - Recurrence Time Entropy (RTE)
+    - Hurst exponent estimation
+  - Introduced input validation for `periodic_section_coordinate` to enforce
+    boolean type safety.
+  - Standardized `period` parameter typing across the Hamiltonian analysis
+    stack for consistency with numeric type aliases.
 
 - `HamiltonianSystem` class:
   - Updated the class docstring to describe both the separable
