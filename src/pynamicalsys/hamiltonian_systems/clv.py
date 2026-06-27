@@ -28,8 +28,7 @@ from pynamicalsys.common.clv import (
     clv_solve_upper_inplace,
 )
 from pynamicalsys.hamiltonian_systems.poincare import (
-    generate_poincare_section_from_traj_imp,
-    generate_poincare_section_from_traj_sep,
+    generate_poincare_section_from_traj,
 )
 from pynamicalsys.hamiltonian_systems.tangent import (
     advance_block_imp,
@@ -69,6 +68,8 @@ def compute_clvs_sep(
     section_index: int,
     section_value: np.float64,
     crossing: int,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     normalize_A: bool = True,
     eps_norm: np.float64 = np.float64(1e-300),
     rcond_guard: np.float64 = np.float64(1e-14),
@@ -130,6 +131,15 @@ def compute_clvs_sep(
         Value of the section coordinate.
     crossing : int
         Crossing rule for the Poincaré section.
+    periodic_section_coordinate : bool, optional
+        If True, treats q[:, section_index] as a periodic coordinate on S¹
+        with the given `period`, accumulating unbounded across samples
+        (never re-wrapped). Crossing detection shifts the wrapped offset
+        using delta arithmetic, mirroring generate_poincare_section.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`. Typically 2π.
     normalize_A : bool, optional
         Whether to normalize the columns of the backward coefficient matrix.
     eps_norm : np.float64, optional
@@ -289,15 +299,15 @@ def compute_clvs_sep(
     traj_size = total_blocks + 1
 
     if poincare_section:
-        section_points, section_k = generate_poincare_section_from_traj_sep(
+        section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
-            parameters,
-            grad_T,
             qr_time_step,
             section_index,
             section_value,
             crossing,
+            periodic_section_coordinate,
+            period,
         )
         times = section_points[:, 0]
         q_history = section_points[:, 1 : dof + 1]
@@ -333,6 +343,8 @@ def clv_angles_sep(
     section_index: int,
     section_value: np.float64,
     crossing: int,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     subspaces: Optional[Sequence[tuple[Sequence[int], Sequence[int]]]] = None,
     pairs: Optional[Sequence[tuple[int, int]]] = None,
     normalize_A: bool = True,
@@ -387,6 +399,15 @@ def clv_angles_sep(
         Value of the section coordinate.
     crossing : int
         Crossing rule for the Poincaré section.
+    periodic_section_coordinate : bool, optional
+        If True, treats q[:, section_index] as a periodic coordinate on S¹
+        with the given `period`, accumulating unbounded across samples
+        (never re-wrapped). Crossing detection shifts the wrapped offset
+        using delta arithmetic, mirroring generate_poincare_section.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`. Typically 2π.
     subspaces : sequence of tuple[Sequence[int], Sequence[int]] or None, optional
         Subspace pairs used to compute minimum principal angles.
     pairs : sequence of tuple[int, int] or None, optional
@@ -434,6 +455,8 @@ def clv_angles_sep(
         section_index=section_index,
         section_value=section_value,
         crossing=crossing,
+        periodic_section_coordinate=periodic_section_coordinate,
+        period=period,
         normalize_A=normalize_A,
         eps_norm=eps_norm,
         rcond_guard=rcond_guard,
@@ -498,6 +521,8 @@ def compute_clvs_imp(
     section_index: int,
     section_value: np.float64,
     crossing: int,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     normalize_A: bool = True,
     eps_norm: np.float64 = np.float64(1e-300),
     rcond_guard: np.float64 = np.float64(1e-14),
@@ -557,6 +582,15 @@ def compute_clvs_imp(
         Value of the section coordinate.
     crossing : int
         Crossing rule for the Poincaré section.
+    periodic_section_coordinate : bool, optional
+        If True, treats q[:, section_index] as a periodic coordinate on S¹
+        with the given `period`, accumulating unbounded across samples
+        (never re-wrapped). Crossing detection shifts the wrapped offset
+        using delta arithmetic, mirroring generate_poincare_section.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`. Typically 2π.
     normalize_A : bool, optional
         Whether to normalize the columns of the backward coefficient matrix.
     eps_norm : np.float64, optional
@@ -716,15 +750,15 @@ def compute_clvs_imp(
     traj_size = total_blocks + 1
 
     if poincare_section:
-        section_points, section_k = generate_poincare_section_from_traj_imp(
+        section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
-            parameters,
-            eom,
             qr_time_step,
             section_index,
             section_value,
             crossing,
+            periodic_section_coordinate,
+            period,
         )
         times = section_points[:, 0]
         q_history = section_points[:, 1 : dof + 1]
@@ -760,6 +794,8 @@ def clv_angles_imp(
     section_index: int,
     section_value: np.float64,
     crossing: int,
+    periodic_section_coordinate: bool = False,
+    period: np.float64 = np.float64(2.0 * np.pi),
     subspaces: Optional[Sequence[tuple[Sequence[int], Sequence[int]]]] = None,
     pairs: Optional[Sequence[tuple[int, int]]] = None,
     normalize_A: bool = True,
@@ -814,6 +850,15 @@ def clv_angles_imp(
         Value of the section coordinate.
     crossing : int
         Crossing rule for the Poincaré section.
+    periodic_section_coordinate : bool, optional
+        If True, treats q[:, section_index] as a periodic coordinate on S¹
+        with the given `period`, accumulating unbounded across samples
+        (never re-wrapped). Crossing detection shifts the wrapped offset
+        using delta arithmetic, mirroring generate_poincare_section.
+        If False, uses standard Euclidean crossing detection.
+    period : np.float64, optional
+        Period of the angular coordinate when
+        `periodic_section_coordinate=True`. Typically 2π.
     subspaces : sequence of tuple[Sequence[int], Sequence[int]] or None, optional
         Subspace pairs used to compute minimum principal angles.
     pairs : sequence of tuple[int, int] or None, optional
@@ -861,6 +906,8 @@ def clv_angles_imp(
         section_index=section_index,
         section_value=section_value,
         crossing=crossing,
+        periodic_section_coordinate=periodic_section_coordinate,
+        period=period,
         normalize_A=normalize_A,
         eps_norm=eps_norm,
         rcond_guard=rcond_guard,

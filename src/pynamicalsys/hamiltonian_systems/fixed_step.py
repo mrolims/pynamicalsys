@@ -239,8 +239,7 @@ def implicit_midpoint_step(
             tol,
             " max_iter =",
             max_iter,
-            ". Returning unconverged result; consider reducing time_step "
-            "or increasing max_iter.",
+            ". Consider reducing time_step or increasing max_iter.",
         )
 
     q_new = np.float64(2.0) * q_bar - q
