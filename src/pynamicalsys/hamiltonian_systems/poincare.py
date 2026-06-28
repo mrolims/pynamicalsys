@@ -175,7 +175,7 @@ def ensemble_poincare_section(
     period: np.float64 = np.float64(2.0 * np.pi),
     tol: np.float64 = np.float64(1e-12),
     max_iter: int = 50,
-    n_workers=10,
+    max_workers: int = 10,
 ) -> NDArray[np.float64]:
     """
     Generate Poincaré sections for an ensemble of initial conditions.
@@ -229,7 +229,7 @@ def ensemble_poincare_section(
     """
     num_ic = q.shape[0]
 
-    with ProcessPoolExecutor(max_workers=n_workers) as executor:
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(
                 generate_poincare_section,
