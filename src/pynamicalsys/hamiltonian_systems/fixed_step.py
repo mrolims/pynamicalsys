@@ -239,8 +239,9 @@ def implicit_midpoint_step(
             tol,
             " max_iter =",
             max_iter,
-            ". Consider reducing time_step or increasing max_iter.",
+            ". Consider reducing time_step, tol, or increasing max_iter.",
         )
+        raise RuntimeError("implicit_midpoint_step failed to converge")
 
     q_new = np.float64(2.0) * q_bar - q
     p_new = np.float64(2.0) * p_bar - p
