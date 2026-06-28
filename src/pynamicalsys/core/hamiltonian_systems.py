@@ -18,6 +18,7 @@
 from numbers import Integral, Real
 from typing import Any, Dict, List, Sequence, Union
 
+import os
 import numpy as np
 from numpy.typing import NDArray
 
@@ -738,6 +739,7 @@ class HamiltonianSystem:
         crossing: int_t = 1,
         periodic_section_coordinate: bool = False,
         period: numeric_t = np.float64(2.0 * np.pi),
+        max_workers: int_t = -1,
     ) -> NDArray[np.float64]:
         """
         Compute a Poincaré section of the Hamiltonian trajectory.
@@ -771,6 +773,11 @@ class HamiltonianSystem:
             Period of the angular coordinate when
             `periodic_section_coordinate=True`.
             Typically 2π for action-angle systems.
+        max_workers : int_t, optional
+            The maximum number of processes that can be used to execute the
+            given calls. If -1 or not given then as many worker processes
+            will be created as the machine has processors. Only used when passing
+            an ensemble of initial conditions.
 
         Returns
         -------
@@ -828,6 +835,12 @@ class HamiltonianSystem:
         if not isinstance(periodic_section_coordinate, bool):
             raise TypeError("periodic_section_coordinate must be a boolean")
 
+        if not isinstance(max_workers, Integral):
+            raise TypeError("max_workers must be an integer")
+
+        if max_workers == -1:
+            max_workers = os.cpu_count() or 1
+
         if q.ndim == 1:
             return generate_poincare_section(
                 q=q,
@@ -863,6 +876,7 @@ class HamiltonianSystem:
             period=np.float64(period),
             tol=self.__tol,
             max_iter=self.__max_iter,
+            max_workers=int(max_workers),
         )
 
     def lyapunov(
