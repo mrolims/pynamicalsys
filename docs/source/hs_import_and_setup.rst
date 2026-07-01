@@ -5,7 +5,7 @@ To get started, import the necessary modules:
 
 .. code-block:: python
 
-    from pynamicalsys import HamiltonianSystem as hs
+    from pynamicalsys import HamiltonianSystem
 
 If you don't have **pynamicalsys** installed, check the :doc:`installation guide <installation>`. Please also make sure to import Numpy, Matplotlib, and Seaborn, as they are required for numerical computations and visualizations:
 

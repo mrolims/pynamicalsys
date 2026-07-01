@@ -204,12 +204,23 @@ To get started, you need to create a Hamiltonian system object. This is done usi
         H(x, y, p_x, p_y) = \frac{1}{2}(p_x^2 + p_y^2) + \frac{1}{2}(x^2 + y^2) + x^2y - \frac{y^3}{3}.
     \end{align*}
 
+with equations of motion:
+
+.. math::
+
+    \begin{align*}
+        \dot{x} &= \frac{\partial H}{\partial p_x} = p_x,\\
+        \dot{y} &= \frac{\partial H}{\partial p_y} = p_y,\\
+        \dot{p}_x &= -\frac{\partial H}{\partial x} = x (2y - 1),\\
+        \dot{p}_y &= -\frac{\partial H}{\partial y} = y^2 - y - x^2.\\
+    \end{align*}
+
 This system is a paradigmatic example of a Hamiltonian system that exhibits both regular and chaotic solutions. The create the Hamiltonian system object, we need to instanciante the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class using the `model` parameter, since the Hénon-Heiles system is built in within this class:
 
 .. code-block:: python
 
-    from pynamicalsys import HamiltonianSystem as HS  # Import the Hamiltonian system class
-    hs = HS(model="henon heiles")  # Create the Hénon-Heiles Hamiltonian system object
+    from pynamicalsys import HamiltonianSystem  # Import the Hamiltonian system class
+    hs = HamiltonianSystem(model="henon heiles")  # Create the Hénon-Heiles Hamiltonian system object
 
 Generating Poincaré section
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -247,7 +258,7 @@ To visualize the different behaviors of this system, we are going to generate th
 
     num_intersections = 10000  # Number of Poincaré section intersections to compute
 
-We choose as our section the :math:`x = 0` plane with :math:`\dot{x} > 0` and integrate the system using two symplectic integrators: the second-order velocity-Verlet integrator (VV2) and the fourth-order Yoshida method (SVY4):
+We choose as our section the :math:`x = 0` plane with :math:`\dot{x} > 0` and integrate the system using three symplectic integrators: the second-order velocity-Verlet integrator (VV2), the fourth-order Yoshida method (SVY4), and the implicit midpoint method (IMP). The first two (VV2 and SVY4) are specific to separable Hamiltonians, i.e., :math:`H(\mathbf{q}, \mathbf{p}) = T(\mathbf{p}) + V(\mathbf{q})`, whereas the last one (IMP) is aplicable to general Hamiltonians.
 
 .. code-block:: python
 
@@ -261,6 +272,10 @@ We choose as our section the :math:`x = 0` plane with :math:`\dot{x} > 0` and in
     hs.integrator("svy4", time_step=time_step)
     PS_svy4 = hs.poincare_section(q.copy(), p.copy(), num_intersections)
 
+    # Compute Poincaré section using the IMP integrator
+    hs.integrator("imp", time_step=time_step)
+    PS_imp = hs.poincare_section(q.copy(), p.copy(), num_intersections)
+
 Visualizing the Poincaré section
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -273,24 +288,30 @@ To visualize the trajectory, we can use the :py:class:`PlotStyler <pynamicalsys.
     import matplotlib.pyplot as plt  # For plotting
 
     # Apply plot style for scatter plots
-    ps = PlotStyler(fontsize=18, markersize=0.25, markeredgewidth=0)
+    fontsize = 18
+    ps = PlotStyler(fontsize=fontsize, markersize=0.25, markeredgewidth=0)
     ps.apply_style()
 
     # Define colors for each initial condition
     colors = sns.color_palette("tab10", num_ic)
 
-    # Create side-by-side figures for VV2 and SVY4
-    fig, ax = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(10, 4))
+    # Create side-by-side figures for VV2, SVY4, and IMP
+    fig, ax = plt.subplots(1, 3, sharex=True, sharey=True, figsize=(12, 4))
 
-    # Plot each Poincaré section point for VV2 and SVY4
+    # Plot each Poincaré section point
     for i in range(num_ic):
         ax[0].plot(PS_vv2[i, :, 2], PS_vv2[i, :, 4], "o", c=colors[i])  # VV2 plot
         ax[1].plot(PS_svy4[i, :, 2], PS_svy4[i, :, 4], "o", c=colors[i])  # SVY4 plot
+        ax[2].plot(PS_imp[i, :, 2], PS_imp[i, :, 4], "o", c=colors[i])  # IMP plot
 
-    # Add axis labels
+    # Add axis labels and titles
     ax[0].set_xlabel("$y$")
-    ax[1].set_xlabel("$y$")
     ax[0].set_ylabel("$p_y$")
+    ax[0].set_title("VV2", fontsize=fontsize)
+    ax[1].set_xlabel("$y$")
+    ax[1].set_title("SVY4", fontsize=fontsize)
+    ax[2].set_xlabel("$y$")
+    ax[2].set_title("IMP", fontsize=fontsize)
 
     plt.tight_layout(pad=0.2)  # Improve layout spacing
     plt.show()  # Display the figure
@@ -299,7 +320,7 @@ To visualize the trajectory, we can use the :py:class:`PlotStyler <pynamicalsys.
    :align: center
    :width: 100%
    
-   The Poincaré section for the Hénon-Heiles system using the (left) VV2 integrator and the (right) SVY4 integrator. Each color corresponds to a different initial condition.
+   The Poincaré section for the Hénon-Heiles system using the VV2 integrator, the SVY4 integrator, and the IMP integrator. Each color corresponds to a different initial condition.
 
 Further reading
 ---------------
@@ -308,5 +329,3 @@ Further reading
 - For detailed API docs, see the :doc:`api/dds`, :doc:`api/cds`, and :doc:`api/hs` pages.
 - For installation instructions, see the :doc:`installation` page.
 - To contribute or get support, visit the :doc:`contact` page.
-
-Happy coding!
