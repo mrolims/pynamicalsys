@@ -1,5 +1,5 @@
-Creating a discrete dynamical system
-------------------------------------
+Creating a Hamiltonian system
+-----------------------------
 
 The :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class allows you to create a discrete dynamical system object. You can use built-in systems or define your own continuous dynamical system.
 
