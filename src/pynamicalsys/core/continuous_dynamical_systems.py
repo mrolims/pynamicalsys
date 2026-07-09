@@ -159,8 +159,8 @@ class ContinuousDynamicalSystem:
             "description": "3D Lorenz system",
             "equation": Math(
                 r"""
-        \dot{x} = \sigma (y - x), \quad
-        \dot{y} = x (\rho - z) - y, \quad
+        \dot{x} = \sigma (y - x), \quad\\
+        \dot{y} = x (\rho - z) - y, \quad\\
         \dot{z} = xy - \beta z
         """
             ),
