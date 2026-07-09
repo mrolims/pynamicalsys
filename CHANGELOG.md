@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## Added
+
+- All built-in dynamical system classes now include the governing equations
+  in the `.info` property, which returns a dictionary describing the current
+  model. The equation is available in LaTeX form via `.info["equation"]` and
+  in plain-text Unicode form via `.info["equation_readable"]`, along with a
+  short descriptive note.
+
+[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.6.0...HEAD
+
 ## [v1.6.0] - 2026-07-01
 
 ### Added
