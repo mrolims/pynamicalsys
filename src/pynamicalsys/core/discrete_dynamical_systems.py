@@ -19,7 +19,7 @@
 import warnings
 from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, Literal
-
+from IPython.display import Math
 import numpy as np
 from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
@@ -193,6 +193,16 @@ class DiscreteDynamicalSystem:
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
         "standard map": {
             "description": "Standard Chirikov-Taylor map (area-preserving 2D)",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            y_{n+1} &= y_n + \frac{k}{2\pi}\sin(2\pi x_n)\pmod{1},\\
+            x_{n+1} &= x_n + y_{n+1}\pmod{1}
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "yₙ₊₁ = yₙ + k sin(2πxₙ)/(2π) (mod 1), xₙ₊₁ = xₙ + yₙ₊₁ (mod 1)",
+            "notes": "Canonical area-preserving map introduced by Chirikov; fundamental model for Hamiltonian chaos.",
             "has_jacobian": True,
             "has_backwards_map": True,
             "mapping": standard_map,
@@ -203,7 +213,17 @@ class DiscreteDynamicalSystem:
             "parameters": ["k"],
         },
         "unbounded standard map": {
-            "description": "Standard Chirikov-Taylor map withou boundaries on the y varibles. Useful to study diffusion",
+            "description": "Standard Chirikov-Taylor map without boundaries on the y variable",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            y_{n+1} &= (1-\gamma)y_n + \frac{k}{2\pi}\sin(2\pi x_n),\\
+            x_{n+1} &= x_n + y_{n+1}\pmod{1}
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "yₙ₊₁ = (1−γ)yₙ + k sin(2πxₙ)/(2π), xₙ₊₁ = xₙ + yₙ₊₁ (mod 1)",
+            "notes": "Variant of the standard map with unbounded momentum, commonly used to study diffusion.",
             "has_jacobian": False,
             "has_backwards_map": False,
             "mapping": unbounded_standard_map,
@@ -215,6 +235,16 @@ class DiscreteDynamicalSystem:
         },
         "henon map": {
             "description": "Hénon quadratic map",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            x_{n+1} &= 1 - ax_n^2 + y_n,\\
+            y_{n+1} &= bx_n
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "xₙ₊₁ = 1 − axₙ² + yₙ, yₙ₊₁ = bxₙ",
+            "notes": "Classic two-dimensional dissipative map exhibiting strange attractors.",
             "has_jacobian": True,
             "has_backwards_map": False,
             "mapping": henon_map,
@@ -226,6 +256,16 @@ class DiscreteDynamicalSystem:
         },
         "lozi map": {
             "description": "Lozi map",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            x_{n+1} &= 1 - a|x_n| + y_n,\\
+            y_{n+1} &= bx_n
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "xₙ₊₁ = 1 − a|xₙ| + yₙ, yₙ₊₁ = bxₙ",
+            "notes": "Piecewise-linear analogue of the Hénon map with chaotic dynamics.",
             "has_jacobian": True,
             "has_backwards_map": False,
             "mapping": lozi_map,
@@ -237,6 +277,16 @@ class DiscreteDynamicalSystem:
         },
         "rulkov map": {
             "description": "Rulkov map",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            x_{n+1} &= \frac{\alpha}{1+x_n^2} + y_n,\\
+            y_{n+1} &= y_n - \mu(x_n-\sigma)
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "xₙ₊₁ = α/(1+xₙ²) + yₙ, yₙ₊₁ = yₙ − μ(xₙ−σ)",
+            "notes": "Two-dimensional neuron model capable of reproducing bursting and spiking behavior.",
             "has_jacobian": True,
             "has_backwards_map": False,
             "mapping": rulkov_map,
@@ -248,6 +298,9 @@ class DiscreteDynamicalSystem:
         },
         "logistic map": {
             "description": "Logistic map (1D nonlinear system)",
+            "equation": Math(r"x_{n+1}=rx_n(1-x_n)"),
+            "equation_readable": "xₙ₊₁ = rxₙ(1−xₙ)",
+            "notes": "Canonical one-dimensional nonlinear map exhibiting the period-doubling route to chaos.",
             "has_jacobian": True,
             "has_backwards_map": False,
             "mapping": logistic_map,
@@ -258,7 +311,17 @@ class DiscreteDynamicalSystem:
             "parameters": ["r"],
         },
         "standard nontwist map": {
-            "description": "Standard nontwist map (area-preserving but violates twist condition)",
+            "description": "Standard nontwist map (area-preserving but violates the twist condition)",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            y_{n+1} &= y_n - b\sin(2\pi x_n),\\
+            x_{n+1} &= x_n + a(1-y_{n+1}^2)\pmod{1}
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "yₙ₊₁ = yₙ − b sin(2πxₙ), xₙ₊₁ = xₙ + a(1−yₙ₊₁²) (mod 1)",
+            "notes": "Area-preserving map that violates the twist condition and is widely used to study shearless transport barriers.",
             "has_jacobian": True,
             "has_backwards_map": True,
             "mapping": standard_nontwist_map,
@@ -269,7 +332,17 @@ class DiscreteDynamicalSystem:
             "parameters": ["a", "b"],
         },
         "extended standard nontwist map": {
-            "description": "Extended version of standard nontwist map",
+            "description": "Extended standard nontwist map",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            y_{n+1} &= y_n - b\sin(2\pi x_n) - c\sin(2\pi m x_n),\\
+            x_{n+1} &= x_n + a(1-y_{n+1}^2)\pmod{1}
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "yₙ₊₁ = yₙ − b sin(2πxₙ) − c sin(2πmxₙ), xₙ₊₁ = xₙ + a(1−yₙ₊₁²) (mod 1)",
+            "notes": "Generalization of the standard nontwist map including an additional harmonic perturbation.",
             "has_jacobian": True,
             "has_backwards_map": True,
             "mapping": extended_standard_nontwist_map,
@@ -280,7 +353,17 @@ class DiscreteDynamicalSystem:
             "parameters": ["a", "b", "c", "m"],
         },
         "leonel map": {
-            "description": "Leonel's map model",
+            "description": "Leonel map model",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            y_{n+1} &= y_n + \varepsilon\sin(x_n),\\
+            x_{n+1} &= x_n + \frac{1}{|y_{n+1}|^\gamma}\pmod{2\pi}
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "yₙ₊₁ = yₙ + ε sin(xₙ), xₙ₊₁ = xₙ + |yₙ₊₁|⁻ᵞ (mod 2π)",
+            "notes": "Area-preserving map proposed by Leonel for studying Fermi acceleration.",
             "has_jacobian": True,
             "has_backwards_map": True,
             "mapping": leonel_map,
@@ -292,6 +375,20 @@ class DiscreteDynamicalSystem:
         },
         "4d symplectic map": {
             "description": "4D symplectic map: two coupled standard maps",
+            "equation": Math(
+                r"""
+            \begin{aligned}
+            x_{1,n+1} &= x_{1,n}+x_{2,n},\\
+            x_{2,n+1} &= x_{2,n}-\varepsilon_1\sin(x_{1,n}+x_{2,n})
+                -\xi\!\left[1-\cos\!\left(\sum_{i=1}^4x_{i,n}\right)\right],\\
+            x_{3,n+1} &= x_{3,n}+x_{4,n},\\
+            x_{4,n+1} &= x_{4,n}-\varepsilon_2\sin(x_{3,n}+x_{4,n})
+                -\xi\!\left[1-\cos\!\left(\sum_{i=1}^4x_{i,n}\right)\right]
+            \end{aligned}
+            """
+            ),
+            "equation_readable": "Coupled 4D symplectic map with parameters ε₁, ε₂ and ξ.",
+            "notes": "Four-dimensional symplectic map consisting of two coupled standard maps.",
             "has_jacobian": True,
             "has_backwards_map": True,
             "mapping": symplectic_map_4D,

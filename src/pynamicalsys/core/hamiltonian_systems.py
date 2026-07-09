@@ -17,6 +17,7 @@
 
 from numbers import Integral, Real
 from typing import Any, Dict, List, Sequence, Union
+from IPython.display import Math
 
 import os
 import numpy as np
@@ -182,6 +183,14 @@ class HamiltonianSystem:
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
         "henon heiles": {
             "description": "two d.o.f. Hénon-Heiles Hamiltonian system",
+            "equation": Math(
+                r"""
+        H = \frac{1}{2}(p_x^2 + p_y^2) + 
+            \frac{1}{2}(x^2 + y^2) + 
+            x^2 y - \frac{1}{3}y^3
+        """
+            ),
+            "equation_readable": "H = ½(pₓ² + pᵧ²) + ½(x² + y²) + x²y − y³/3",
             "grad_T": henon_heiles_grad_T,
             "grad_V": henon_heiles_grad_V,
             "hess_T": henon_heiles_hess_T,
