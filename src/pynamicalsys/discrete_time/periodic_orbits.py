@@ -21,7 +21,7 @@ import numpy as np
 from numba import njit, prange
 from numpy.typing import NDArray
 
-from pynamicalsys.common.types import int_t, map_t, numeric_t
+from pynamicalsys.common.types import int_t, jacobian_t, map_t, numeric_t
 from pynamicalsys.discrete_time.trajectory import iterate_mapping
 from pynamicalsys.discrete_time.symmetry import generate_symmetry_points
 
@@ -316,6 +316,135 @@ def scan_symmetry_line(
         return np.empty((0, n_dim), dtype=np.float64)
 
     return periodic_points[:num_periodic_points, :]
+
+
+
+@njit
+def newton_periodic_orbit(
+    u0: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    mapping: map_t,
+    jacobian: jacobian_t,
+    period: int,
+    tolerance: numeric_t = 1e-13,
+    max_iter: int_t = 100,
+    rcond: numeric_t = 1e-12,
+    periods: NDArray[np.float64] | None = None,
+) -> tuple[NDArray[np.float64], bool, int, float, bool]:
+    """
+    Refine a periodic orbit with Newton's method, in any dimension.
+
+    Solves `G(u) = F^p(u) - u = 0`, whose derivative is `M - I` with
+
+    `M = J(u_{p-1}) @ ... @ J(u_1) @ J(u_0)`
+
+    the monodromy matrix, built with the same convention as
+    `stability.eigenvalues_and_eigenvectors`. Convergence is quadratic near a
+    solution and does not depend on the system dimension, so unlike the grid
+    refinement this places no restriction on the number of variables.
+
+    Parameters
+    ----------
+    u0 : NDArray[np.float64]
+        Initial guess of shape `(system_dimension,)`.
+    parameters : NDArray[np.float64]
+        System parameters.
+    mapping : map_t
+        System mapping function.
+    jacobian : jacobian_t
+        Jacobian of the mapping.
+    period : int
+        Period of the orbit sought.
+    tolerance : numeric_t, optional
+        Convergence threshold on the Euclidean norm of the residual.
+    max_iter : int_t, optional
+        Maximum number of Newton iterations.
+    rcond : numeric_t, optional
+        Smallest ratio of singular values of `M - I` treated as non-singular.
+    periods : NDArray[np.float64] | None, optional
+        Wrapping period of each coordinate, with `np.inf` for coordinates that
+        do not wrap. Supply this for maps defined on a torus so that an orbit
+        which winds around the domain is not mistaken for a large residual.
+
+    Returns
+    -------
+    tuple
+        `(u, converged, iterations, residual_norm, singular)` where `u` is the
+        refined point, `converged` reports whether the residual fell below
+        `tolerance`, and `singular` reports that `M - I` was too close to
+        singular for a Newton step to be defined.
+
+    Notes
+    -----
+    The equation solved is `F^p(u) = u`, which is satisfied by points of any
+    period dividing `p`: a fixed point is also a period-2 point. The solver
+    returns whatever solution the iteration reaches, so a caller that requires
+    the period to be exactly `p` must verify it. Checks and validation are
+    expected to be done in the wrapper.
+
+    `M - I` is singular precisely when 1 is a Floquet multiplier, which happens
+    when the orbit is not isolated or sits at a bifurcation. Newton has no
+    well-defined step there and the routine reports `singular` rather than
+    returning an arbitrary point.
+    """
+    dim = u0.size
+    u = np.asarray(u0, dtype=np.float64).copy()
+    identity = np.eye(dim)
+
+    residual_norm = np.inf
+
+    for iteration in range(max_iter):
+        # One pass computes both F^p(u) and the monodromy matrix.
+        point = u.copy()
+        monodromy = np.eye(dim)
+        for _ in range(period):
+            J = np.ascontiguousarray(jacobian(point, parameters, mapping))
+            monodromy = J @ monodromy
+            point = mapping(point, parameters)
+
+        residual = point - u
+
+        # On a torus, coordinates differing by a whole period describe the same
+        # point, so reduce the residual onto (-P/2, P/2].
+        if periods is not None:
+            for i in range(dim):
+                wrap = periods[i]
+                if np.isfinite(wrap):
+                    residual[i] = (residual[i] + wrap / 2.0) % wrap - wrap / 2.0
+
+        residual_norm = np.sqrt(np.sum(residual * residual))
+
+        if residual_norm < tolerance:
+            # Newton steps freely in R^n, so a converged iterate can drift out
+            # of the fundamental domain: a period-3 orbit of the standard map
+            # can come back at x = 3.0 rather than x = 0.0. Return the
+            # representative nearest the initial guess.
+            #
+            # Reducing onto [0, P) instead would be worse. A point that
+            # converges to a coordinate of -1e-17 is at 0 for every practical
+            # purpose, but taking it modulo P reports it as P - 1e-17, at the
+            # opposite edge of the domain.
+            if periods is not None:
+                for i in range(dim):
+                    wrap = periods[i]
+                    if np.isfinite(wrap):
+                        offset = u[i] - u0[i]
+                        offset = (offset + wrap / 2.0) % wrap - wrap / 2.0
+                        u[i] = u0[i] + offset
+            return u, True, iteration, residual_norm, False
+
+        A = monodromy - identity
+
+        singular_values = np.linalg.svd(A)[1]
+        if (
+            singular_values[0] <= 0.0
+            or singular_values[dim - 1] / singular_values[0] < rcond
+        ):
+            return u, False, iteration, residual_norm, True
+
+        u = u + np.linalg.solve(A, -residual)
+
+    return u, False, max_iter, residual_norm, False
 
 
 def find_periodic_orbit_symmetry_line(

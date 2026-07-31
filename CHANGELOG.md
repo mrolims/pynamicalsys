@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `find_periodic_orbit` can now refine a single initial guess with **Newton's
+  method**, selected by passing a 1D initial guess instead of a grid. The
+  existing grid and symmetry-line searches are unchanged and still restricted
+  to two dimensions, but the Newton solver works in **any number of
+  dimensions**: one-dimensional maps such as the logistic map, and
+  four-dimensional ones such as the 4D symplectic map, previously raised an
+  error and are now supported. It is also far more accurate at elliptic orbits,
+  where the searches stall. At the elliptic fixed point of the standard map it
+  reaches round-off rather than about `1e-09`.
+
+  Two options apply to this solver. `periods` gives the wrapping period of each
+  coordinate, for maps defined on a torus, so that an orbit winding around the
+  domain is not mistaken for a large error. `prime_period` turns a solution
+  whose period is a proper divisor of the one requested into an error; such
+  points genuinely solve `F^p(u) = u`, since a fixed point is also a period-2
+  point, so they are returned by default.
 - All built-in dynamical system classes now include the governing equations
   in the `.info` property, which returns a dictionary describing the current
   model. The equation is available in LaTeX form via `.info["equation"]` and

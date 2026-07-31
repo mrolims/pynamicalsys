@@ -48,6 +48,7 @@ from pynamicalsys.discrete_time.periodic_orbits import (
     is_periodic,
     find_periodic_orbit,
     find_periodic_orbit_symmetry_line,
+    newton_periodic_orbit,
 )
 from pynamicalsys.discrete_time.stability import (
     eigenvalues_and_eigenvectors,
@@ -1095,33 +1096,58 @@ class DiscreteDynamicalSystem:
         symmetry_line: Callable[..., NDArray[np.float64]] | None = None,
         axis: int | None = None,
         transient_time: int_t | None = None,
+        periods: numeric_like_t | None = None,
+        prime_period: bool = False,
     ) -> NDArray[np.float64]:
         """
-        Find a periodic orbit through iterative grid refinement.
+        Find a periodic orbit, either by searching a region or by refining a guess.
+
+        Which solver runs is determined by what is passed as `grid_points`:
+
+        - a 3D array and `symmetry_line=None` selects the **grid refinement**,
+          which repeatedly scans a box for near-periodic points and contracts
+          around them. It searches a whole region, so it needs no initial guess,
+          but it is restricted to two-dimensional systems.
+        - a 1D array with `symmetry_line` given selects the **symmetry-line
+          search**, the same refinement restricted to a curve. Also 2D only.
+        - a 1D array with `symmetry_line=None` selects **Newton's method**, which
+          refines a single initial guess. It works in any dimension and converges
+          quadratically, but only from a guess already close to an orbit.
+
+        The two searches are global and slow; Newton is local and fast. A common
+        pattern in two dimensions is to locate an orbit roughly with the grid
+        search and then polish it with Newton.
 
         Parameters
         ----------
         grid_points : numeric_like_t
-            Initial search set.
+            Initial search set, whose shape selects the solver.
 
-            - If `symmetry_line is None`, it must be a 3D array of shape
-              `(grid_size_x, grid_size_y, 2)`.
-            - If `symmetry_line is not None`, it must be a 1D array containing the
-              coordinates sampled along the chosen symmetry parametrization.
+            - Grid refinement: a 3D array of shape `(grid_size_x, grid_size_y, 2)`.
+            - Symmetry-line search: a 1D array of coordinates sampled along the
+              chosen symmetry parametrization.
+            - Newton: a 1D initial guess of shape `(system_dimension,)`.
         period : int
             Period of the orbit to search for.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
         tolerance : numeric_t, optional
-            Initial periodicity tolerance.
+            Initial periodicity tolerance. **Searches only**; ignored by Newton.
+            This is the radius used to decide whether a candidate point looks
+            periodic at all, not the accuracy of the result, and it must be loose
+            enough that some point in the initial set qualifies.
         max_iter : int_t, optional
-            Maximum number of refinement iterations.
+            Maximum number of iterations, of refinement for the searches and of
+            Newton steps for Newton.
         convergence_threshold : numeric_t, optional
-            Convergence threshold for orbit displacement and search-box size.
+            For the searches, the convergence threshold on orbit displacement and
+            search-box size. For Newton, the threshold on the Euclidean norm of
+            the residual `F^p(u) - u`.
         tolerance_decay_factor : numeric_t, optional
-            Multiplicative factor used to reduce the tolerance after each iteration.
-            Must satisfy `0 < tolerance_decay_factor < 1`.
+            Multiplicative factor used to reduce the tolerance after each
+            iteration. Must satisfy `0 < tolerance_decay_factor < 1`.
+            **Searches only**; ignored by Newton.
         verbose : bool, optional
             If True, print iteration diagnostics.
         symmetry_line : Callable[..., NDArray[np.float64]] | None, optional
@@ -1132,6 +1158,16 @@ class DiscreteDynamicalSystem:
             `symmetry_line` is provided.
         transient_time : int_t | None, optional
             Number of initial iterations discarded before testing periodicity.
+            **Searches only**; ignored by Newton.
+        periods : numeric_like_t | None, optional
+            **Newton only.** Wrapping period of each coordinate, of shape
+            `(system_dimension,)`, using `np.inf` for coordinates that do not
+            wrap. Supply this for maps defined on a torus, such as the standard
+            map (`[1.0, 1.0]`) or the 4D symplectic map (`[2*pi] * 4`), so that an
+            orbit winding around the domain is not mistaken for a large residual.
+        prime_period : bool, optional
+            **Newton only.** If True, raise when the point found has a period that
+            is a proper divisor of `period`. Default is False. See the Notes.
 
         Returns
         -------
@@ -1141,7 +1177,7 @@ class DiscreteDynamicalSystem:
         Raises
         ------
         ValueError
-            - If the system dimension is not 2.
+            - If the system dimension is not 2 and a search was selected.
             - If `grid_points` has invalid shape.
             - If `period < 1`.
             - If `tolerance <= 0`.
@@ -1151,24 +1187,111 @@ class DiscreteDynamicalSystem:
             - If `symmetry_line` is provided and `axis` is missing.
             - If `axis` is not 0 or 1.
             - If `transient_time` is negative.
+            - If `periods` has the wrong shape or a non-positive entry.
+        RuntimeError
+            - If Newton does not reach `convergence_threshold` in `max_iter` steps.
+            - If the Newton step is undefined because `M - I` is singular.
+            - If `prime_period` is True and the point found has a lower period.
         TypeError
             - If `grid_points` cannot be interpreted as an array.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `symmetry_line` is not callable.
             - If `period`, `max_iter`, or `axis` are not integers.
-        """
-        if self.__system_dimension != 2:
-            raise ValueError("find_periodic_orbit is only implemented for 2D systems")
 
+        Notes
+        -----
+        Newton's method solves `G(u) = F^p(u) - u = 0`. Its derivative is `M - I`,
+        where `M = J(u_{p-1}) @ ... @ J(u_0)` is the monodromy matrix, so each step
+        solves `(M - I) d = -G(u)` and updates `u` by `d`.
+
+        Three consequences are worth knowing.
+
+        The equation `F^p(u) = u` is satisfied by points of *any period dividing*
+        `p`: a fixed point is also a period-2 point. Newton returns whichever
+        solution the iteration reaches, so a guess near a fixed point can return
+        that fixed point when a period-2 orbit was requested. This is a correct
+        solution of the stated equation rather than a failure, so it is not
+        rejected by default; set `prime_period=True` to turn it into an error.
+
+        `M - I` is singular exactly when 1 is a Floquet multiplier, which happens
+        when the orbit is not isolated or sits at a bifurcation. The Newton step is
+        undefined there and a `RuntimeError` is raised rather than an arbitrary
+        point returned.
+
+        When `periods` is given, the point returned is the representative nearest
+        the initial guess, rather than one reduced onto `[0, P)`. A coordinate that
+        converges to `-1e-17` is at the origin for every practical purpose, but
+        reducing it onto `[0, P)` would report it at the opposite edge of the
+        domain as `P - 1e-17`.
+
+        Newton is markedly more accurate than the searches at elliptic orbits. The
+        refinement contracts onto a hyperbolic point because nearby orbits leave
+        its neighbourhood, whereas near an elliptic point orbits stay close and
+        continue to look almost periodic, so the search box stops shrinking. For
+        the elliptic fixed point of the standard map the grid search reaches about
+        `1e-09` while Newton reaches round-off.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+
+        Refine a guess with Newton, in any dimension:
+
+        >>> ds = dds(model="henon map")
+        >>> ds.set_parameters([1.4, 0.3])
+        >>> ds.find_periodic_orbit([0.5, 0.2], 1)
+        array([0.63135448, 0.18940634])
+
+        On a torus, pass the wrapping periods:
+
+        >>> ds = dds(model="standard map")
+        >>> ds.set_parameters(1.5)
+        >>> np.round(ds.find_periodic_orbit([0.48, 0.02], 1, periods=[1.0, 1.0]), 12)
+        array([ 0.5, -0. ])
+
+        Search a region instead, without an initial guess (2D only). The box must
+        actually contain the orbit, since the search does not extrapolate:
+
+        >>> x = np.linspace(0.3, 0.9, 50)
+        >>> y = np.linspace(0.0, 0.4, 50)
+        >>> grid = np.stack(np.meshgrid(x, y, indexing="ij"), axis=-1)
+        >>> ds = dds(model="henon map")
+        >>> ds.set_parameters([1.4, 0.3])
+        >>> ds.find_periodic_orbit(grid, 1, tolerance=1e-2)
+        array([0.63135448, 0.18940634])
+        """
         if symmetry_line is not None and not callable(symmetry_line):
             raise TypeError("symmetry_line must be callable")
 
         grid_points_arr = np.asarray(grid_points, dtype=np.float64)
 
+        # Which solver runs is decided by what the caller passed. A 1D array
+        # with no symmetry line is an initial guess and selects Newton, which
+        # works in any dimension; the grid and symmetry-line searches are
+        # unchanged and remain restricted to two dimensions.
+        use_newton = symmetry_line is None and grid_points_arr.ndim == 1
+
+        if not use_newton and self.__system_dimension != 2:
+            raise ValueError(
+                "The grid and symmetry-line searches are only implemented for 2D "
+                "systems. Pass a 1D initial guess instead to use the Newton solver, "
+                "which supports any dimension."
+            )
+
         if symmetry_line is None:
-            if grid_points_arr.ndim != 3 or grid_points_arr.shape[2] != 2:
+            if not use_newton and (
+                grid_points_arr.ndim != 3 or grid_points_arr.shape[2] != 2
+            ):
                 raise ValueError(
-                    "grid_points must have shape (grid_size_x, grid_size_y, 2) when symmetry_line is None"
+                    "grid_points must have shape (grid_size_x, grid_size_y, 2) for the "
+                    "grid search, or a 1D initial guess of shape (system_dimension,) "
+                    "for the Newton solver"
+                )
+            if use_newton and grid_points_arr.size != self.__system_dimension:
+                raise ValueError(
+                    f"a Newton initial guess must have shape "
+                    f"({self.__system_dimension},), got {grid_points_arr.shape}"
                 )
         else:
             if grid_points_arr.ndim != 1:
@@ -1193,6 +1316,77 @@ class DiscreteDynamicalSystem:
 
         if transient_time is not None:
             validate_non_negative(transient_time, "transient_time", Integral)
+
+        if use_newton:
+            periods_arr: NDArray[np.float64] | None = None
+            if periods is not None:
+                periods_arr = np.atleast_1d(
+                    np.asarray(periods, dtype=np.float64)
+                ).ravel()
+                if periods_arr.size != self.__system_dimension:
+                    raise ValueError(
+                        f"periods must have shape ({self.__system_dimension},), "
+                        f"got {periods_arr.shape}"
+                    )
+                if np.any(periods_arr <= 0):
+                    raise ValueError("every entry of periods must be positive")
+
+            orbit, converged, iterations, residual, singular = newton_periodic_orbit(
+                u0=grid_points_arr,
+                parameters=parameters_arr,
+                mapping=self.__mapping,
+                jacobian=self.__jacobian,
+                period=period,
+                tolerance=convergence_threshold,
+                max_iter=max_iter,
+                periods=periods_arr,
+            )
+
+            if verbose:
+                print(
+                    f"Newton: converged={converged} iterations={iterations} "
+                    f"residual={residual:.3e}"
+                )
+
+            if singular:
+                raise RuntimeError(
+                    "Newton's method stopped because the matrix M - I is singular "
+                    "to working precision, where M is the monodromy matrix. This "
+                    "means 1 is a Floquet multiplier, so the orbit is not isolated "
+                    "and the Newton step is undefined. Try a different initial "
+                    "guess, or a period that is not a multiple of an existing "
+                    f"degenerate orbit. Residual was {residual:.3e}."
+                )
+
+            if not converged:
+                raise RuntimeError(
+                    f"Newton's method did not converge in {max_iter} iterations; "
+                    f"the residual was {residual:.3e}, above the requested "
+                    f"convergence_threshold of {convergence_threshold:.3e}. Newton "
+                    "converges only from a sufficiently good initial guess, so try "
+                    "a starting point closer to the orbit, or raise max_iter."
+                )
+
+            if prime_period:
+                for divisor in range(1, period):
+                    if period % divisor == 0 and is_periodic(
+                        orbit,
+                        parameters_arr,
+                        self.__mapping,
+                        divisor,
+                        tolerance=max(convergence_threshold, 1e-10),
+                        transient_time=None,
+                    ):
+                        raise RuntimeError(
+                            f"Newton's method converged on a point of period "
+                            f"{divisor}, which divides the requested period "
+                            f"{period}. Every point of period dividing p solves "
+                            "F^p(u) = u, so this is a valid solution of the "
+                            "equation but not the orbit you asked for. Try an "
+                            "initial guess further from the lower-period orbit."
+                        )
+
+            return orbit
 
         if symmetry_line is not None:
             if axis is None:
