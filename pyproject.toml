@@ -29,6 +29,7 @@ requires-python = ">=3.10"
 
 [project.optional-dependencies]
 notebook = ["ipython >=8.0"]
+test = ["pytest >=7.0"]
 
 [build-system]
 requires = ["setuptools>=77.0", "setuptools-scm>=9"]
@@ -47,3 +48,11 @@ package-dir = { "" = "src" }
 
 [tool.setuptools_scm]
 write_to = "src/pynamicalsys/__version__.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--import-mode=importlib"
+markers = [
+  "slow: long-running convergence and statistical tests",
+]
