@@ -18,13 +18,14 @@
 import warnings
 from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Sequence, Union
-from IPython.display import Math
 
 import numpy as np
 from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t, numeric_t, numeric_like_t
+
+from pynamicalsys.common.display import render_latex
 
 from pynamicalsys.continuous_time.step import evolve_system
 
@@ -157,13 +158,11 @@ class ContinuousDynamicalSystem:
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
         "lorenz system": {
             "description": "3D Lorenz system",
-            "equation": Math(
-                r"""
+            "equation": r"""
         \dot{x} = \sigma (y - x), \quad\\
         \dot{y} = x (\rho - z) - y, \quad\\
         \dot{z} = xy - \beta z
-        """
-            ),
+        """,
             "equation_readable": "x' = σ(y − x), y' = x(ρ − z) − y, z' = xy − βz",
             "notes": "Classic Lorenz 1963 model of atmospheric convection. Exhibits chaotic dynamics for some parameter values.",
             "has_jacobian": True,
@@ -176,13 +175,11 @@ class ContinuousDynamicalSystem:
         },
         "henon heiles": {
             "description": "Two d.o.f. Hénon–Heiles system",
-            "equation": Math(
-                r"""
+            "equation": r"""
         H = \frac{1}{2}(p_x^2 + p_y^2) + 
             \frac{1}{2}(x^2 + y^2) + 
             x^2 y - \frac{1}{3}y^3
-        """
-            ),
+        """,
             "equation_readable": "H = ½(pₓ² + pᵧ²) + ½(x² + y²) + x²y − y³/3",
             "notes": "Hamiltonian system modeling stellar motion near a galactic center; classic example of a mixed chaotic/regular system.",
             "has_jacobian": True,
@@ -195,13 +192,11 @@ class ContinuousDynamicalSystem:
         },
         "rossler system": {
             "description": "3D Rössler system",
-            "equation": Math(
-                r"""
+            "equation": r"""
         \dot{x} = -y - z, \quad
         \dot{y} = x + a y, \quad
         \dot{z} = b + z(x - c)
-        """
-            ),
+        """,
             "equation_readable": "x' = −y − z, y' = x + a y, z' = b + z(x − c)",
             "notes": "Continuous-time chaotic system proposed by Otto Rössler (1976).",
             "has_jacobian": True,
@@ -214,14 +209,12 @@ class ContinuousDynamicalSystem:
         },
         "4d rossler system": {
             "description": "4D Rössler system",
-            "equation": Math(
-                r"""
+            "equation": r"""
         \dot{x} = -y - z, \quad
         \dot{y} = x + a y + w, \quad
         \dot{z} = b + z(x - c), \quad
         \dot{w} = -d y
-        """
-            ),
+        """,
             "equation_readable": "x' = −y − z, y' = x + a y + w, z' = b + z(x − c), w' = −d y",
             "notes": "A 4D generalization of the Rössler attractor with an added variable w.",
             "has_jacobian": True,
@@ -234,9 +227,7 @@ class ContinuousDynamicalSystem:
         },
         "duffing": {
             "description": "Duffing oscillator (nonlinear forced damped oscillator)",
-            "equation": Math(
-                r"\ddot{x} + \delta \dot{x} - \alpha x + \beta x^3 = \gamma \cos(\omega t)"
-            ),
+            "equation": r"\ddot{x} + \delta \dot{x} - \alpha x + \beta x^3 = \gamma \cos(\omega t)",
             "equation_readable": "x'' + δ x' − α x + β x³ = γ cos(ω t)",
             "notes": "A nonlinear oscillator with a double-well potential, forced and damped; exhibits chaos under some parameters.",
             "has_jacobian": True,
@@ -390,7 +381,23 @@ class ContinuousDynamicalSystem:
 
     @property
     def info(self) -> Dict[str, Any]:
-        """Return a dictionary with information about the current model."""
+        """
+        Return a dictionary with information about the current model.
+
+        Returns
+        -------
+        dict
+            Metadata for the selected model. The `"equation"` entry renders as
+            typeset mathematics when IPython is installed (optional extra
+            `pynamicalsys[notebook]`) and is returned as the raw LaTeX source
+            otherwise. A plain-text form is always available under
+            `"equation_readable"`.
+
+        Raises
+        ------
+        ValueError
+            If the system was not created from a built-in model.
+        """
 
         if self.__model is None:
             raise ValueError(
@@ -399,7 +406,10 @@ class ContinuousDynamicalSystem:
 
         model = self.__model.lower()
 
-        return self.__AVAILABLE_MODELS[model]
+        info = dict(self.__AVAILABLE_MODELS[model])
+        info["equation"] = render_latex(info["equation"])
+
+        return info
 
     @property
     def integrator_info(self):

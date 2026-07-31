@@ -17,7 +17,6 @@
 
 from numbers import Integral, Real
 from typing import Any, Dict, List, Sequence, Union
-from IPython.display import Math
 
 import os
 import numpy as np
@@ -32,6 +31,8 @@ from pynamicalsys.common.types import (
     symplectic_step_t,
     symplectic_tangent_step_t,
 )
+
+from pynamicalsys.common.display import render_latex
 
 from pynamicalsys.hamiltonian_systems.models import (
     henon_heiles_grad_T,
@@ -183,13 +184,11 @@ class HamiltonianSystem:
     __AVAILABLE_MODELS: Dict[str, Dict[str, Any]] = {
         "henon heiles": {
             "description": "two d.o.f. Hénon-Heiles Hamiltonian system",
-            "equation": Math(
-                r"""
+            "equation": r"""
         H = \frac{1}{2}(p_x^2 + p_y^2) + 
             \frac{1}{2}(x^2 + y^2) + 
             x^2 y - \frac{1}{3}y^3
-        """
-            ),
+        """,
             "equation_readable": "H = ½(pₓ² + pᵧ²) + ½(x² + y²) + x²y − y³/3",
             "grad_T": henon_heiles_grad_T,
             "grad_V": henon_heiles_grad_V,
@@ -417,8 +416,12 @@ class HamiltonianSystem:
         Returns
         -------
         dict
-            Dictionary containing metadata such as description, gradients,
-            Hessians, degrees of freedom, and parameters.
+            Metadata such as description, gradients, Hessians, degrees of
+            freedom, and parameters. The `"equation"` entry renders as typeset
+            mathematics when IPython is installed (optional extra
+            `pynamicalsys[notebook]`) and is returned as the raw LaTeX source
+            otherwise. A plain-text form is always available under
+            `"equation_readable"`.
 
         Raises
         ------
@@ -426,14 +429,17 @@ class HamiltonianSystem:
             If no predefined model was used to initialize the system.
         """
 
-        if self.__model is None:
+        model = self.__model.lower()
+
+        if model not in self.__AVAILABLE_MODELS:
             raise ValueError(
                 "The 'info' property is only available when a model is provided."
             )
 
-        model = self.__model.lower()
+        info = dict(self.__AVAILABLE_MODELS[model])
+        info["equation"] = render_latex(info["equation"])
 
-        return self.__AVAILABLE_MODELS[model]
+        return info
 
     @property
     def integrator_info(self) -> Dict[str, Any]:

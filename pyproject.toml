@@ -7,26 +7,28 @@ readme = "README.md"
 license = "GPL-3.0-only"
 license-files = ["LICENSE"]
 classifiers = [
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Operating System :: OS Independent",
-    "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering :: Physics",
-    "Topic :: Software Development :: Libraries :: Python Modules",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 dependencies = [
-    "numpy >=1.21",
-    "matplotlib >=3.4",
-    "numba >=0.63",
-    "scikit-learn >=1.0",
-    "joblib >=1.0",
-    "ipython >=8.0,<9",
+  "numpy >=1.21",
+  "matplotlib >=3.4",
+  "numba >=0.63",
+  "scikit-learn >=1.0",
+  "joblib >=1.0",
 ]
 requires-python = ">=3.10"
+
+[project.optional-dependencies]
+notebook = ["ipython >=8.0"]
 
 [build-system]
 requires = ["setuptools>=77.0", "setuptools-scm>=9"]
@@ -34,12 +36,12 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = [
-    "pynamicalsys",
-    "pynamicalsys.common",
-    "pynamicalsys.continuous_time",
-    "pynamicalsys.core",
-    "pynamicalsys.discrete_time",
-    "pynamicalsys.hamiltonian_systems",
+  "pynamicalsys",
+  "pynamicalsys.common",
+  "pynamicalsys.continuous_time",
+  "pynamicalsys.core",
+  "pynamicalsys.discrete_time",
+  "pynamicalsys.hamiltonian_systems",
 ]
 package-dir = { "" = "src" }
 

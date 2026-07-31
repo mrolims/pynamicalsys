@@ -7,13 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## Added
+### Added
 
 - All built-in dynamical system classes now include the governing equations
   in the `.info` property, which returns a dictionary describing the current
   model. The equation is available in LaTeX form via `.info["equation"]` and
   in plain-text Unicode form via `.info["equation_readable"]`, along with a
   short descriptive note.
+- New optional install `pip install pynamicalsys[notebook]`, which adds
+  IPython so that `.info["equation"]` renders as typeset mathematics in a
+  notebook.
+
+### Changed
+
+- IPython is no longer required. Installing **pynamicalsys** no longer pulls
+  it in, and it now works with any IPython version. Without IPython,
+  `.info["equation"]` returns the LaTeX source as a plain string instead of a
+  rendered equation; everything else is unchanged. Install
+  `pynamicalsys[notebook]` to get rendered output back.
+- The minimum supported Python version is now correctly declared as 3.10.
+  **pynamicalsys** already required 3.10, but advertised 3.8, so installing on
+  3.8 or 3.9 appeared to succeed and then failed on import. `pip` now reports
+  the incompatibility up front.
+
+### Fixed
+
+- Modifying the dictionary returned by `.info` no longer alters the built-in
+  model definition for the rest of the session.
+- `HamiltonianSystem.info` now raises `ValueError` with an explanatory message
+  for systems built from custom functions, as documented, instead of an
+  unhelpful `KeyError`.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.6.0...HEAD
 
