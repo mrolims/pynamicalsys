@@ -32,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Jacobian of the **Lozi map** had the wrong sign on its `dx'/dx` entry:
+  the map is `x' = 1 - a|x| + y`, so the derivative is `-a sign(x)`, not
+  `+a sign(x)`. Any quantity computed from the linearised dynamics of this
+  model was affected, including eigenvalues and eigenvectors of periodic
+  orbits, stability classification, invariant manifolds, covariant Lyapunov
+  vectors, and the finite-time SALI, LDI and GALI indicators. The averaged
+  Lyapunov exponents were largely unaffected, which is why this went
+  unnoticed: the incorrect Jacobian at `x` equals the correct one at `-x`, so
+  the long-time averages over a nearly symmetric attractor came out close to
+  the right values.
+- The backward mapping of the **4D symplectic map** was not the inverse of the
+  forward mapping, with an O(1) round-trip error. Computations that iterate
+  the map backwards, such as the stable branches of invariant manifolds, gave
+  incorrect results for this model.
 - Modifying the dictionary returned by `.info` no longer alters the built-in
   model definition for the rest of the session.
 - `HamiltonianSystem.info` now raises `ValueError` with an explanatory message

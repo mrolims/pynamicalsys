@@ -285,10 +285,16 @@ def symplectic_map_4D_backwards(
     eps1, eps2, xi = parameters
     x1, x2, x3, x4 = u
 
-    x1_new = x1 - x2
-    x2_new = x2 + eps1 * np.sin(x1 - x2) + xi * (1 - np.cos(x1 - x2 + x3 + x4))
-    x3_new = x3 - x4
-    x4_new = x4 + eps2 * np.sin(x3 - x4) + xi * (1 - np.cos(x1 - x2 + x3 + x4))
+    # The input (x1, x2, x3, x4) is the image of the forward map, so
+    # x1 == x1_old + x2_old and x3 == x3_old + x4_old. The sine arguments of
+    # the forward map are therefore x1 and x3, and its coupling argument
+    # x1_old + x2_old + x3_old + x4_old is x1 + x3.
+    coupling = xi * (1 - np.cos(x1 + x3))
+
+    x2_new = x2 + eps1 * np.sin(x1) + coupling
+    x1_new = x1 - x2_new
+    x4_new = x4 + eps2 * np.sin(x3) + coupling
+    x3_new = x3 - x4_new
 
     x1_new = x1_new % (2 * np.pi)
     x2_new = x2_new % (2 * np.pi)
@@ -374,7 +380,8 @@ def lozi_map_jacobian(
 ) -> NDArray[np.float64]:
     a, b = parameters
     x, y = u
-    return np.array([[a * np.sign(x), 1], [b, 0]])
+    # d/dx (1 - a*|x| + y) = -a*sign(x)
+    return np.array([[-a * np.sign(x), 1], [b, 0]])
 
 
 # ! -------------------- !
