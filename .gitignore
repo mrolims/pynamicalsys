@@ -1,13 +1,18 @@
 __pycache__
+*.pyc
+*.egg
+*.egg-info/
+
 .vscode/
 .venv/
 .DS_Store
-*.egg-info/
-tests/*.png
-dist/
-src/pynamicalsys/__version__.py
-docs/build/
+
 build/
+dist/
+docs/build/
+src/pynamicalsys/__version__.py
+
+tests/*.png
 paper/*.eps
 paper/*.png
 paper/*.svg
@@ -17,5 +22,24 @@ paper/*.py
 anaconda-project.yml
 make.bat
 Makefile
-*.egg
-*.pyc
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
+
+# Numba ahead-of-time / on-disk cache artifacts
+*.nbi
+*.nbc
+
+# iCloud Drive duplicate-name artifacts (e.g. "_modules 2", "foo 3.py")
+* 2
+* 3
+* 4
+* 2.*
+* 3.*
+* 4.*

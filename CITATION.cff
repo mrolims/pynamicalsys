@@ -1,10 +1,40 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite it as below."
+message: "If you use this software, please cite both the software and the paper below."
 authors:
   - family-names: Rolim Sales
     given-names: Matheus
     orcid: https://orcid.org/0000-0002-1121-6371
 title: "pynamicalsys"
-version: 1.0.0
-date-released: 2025-06-16
+version: 1.6.0
+date-released: 2026-07-01
 repository-code: "https://github.com/mrolims/pynamicalsys.git"
+url: "https://pynamicalsys.readthedocs.io/"
+license: GPL-3.0-only
+preferred-citation:
+  type: article
+  title: "pynamicalsys: A Python toolkit for the analysis of dynamical systems"
+  authors:
+    - family-names: Rolim Sales
+      given-names: Matheus
+      orcid: https://orcid.org/0000-0002-1121-6371
+    - family-names: Costa de Souza
+      given-names: Leonardo
+    - family-names: Borin
+      given-names: Daniel
+    - family-names: Mugnaine
+      given-names: Michele
+    - family-names: Szezech
+      given-names: José Danilo
+    - family-names: Viana
+      given-names: Ricardo Luiz
+    - family-names: Caldas
+      given-names: Iberê Luiz
+    - family-names: Leonel
+      given-names: Edson Denis
+    - family-names: Antonopoulos
+      given-names: Chris G.
+  journal: "Chaos, Solitons & Fractals"
+  volume: 201
+  start: 117269
+  year: 2025
+  doi: 10.1016/j.chaos.2025.117269
