@@ -36,6 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Choosing a recurrence threshold from a **fixed recurrence rate** now uses a
+  small, constant amount of memory instead of an amount growing with the square
+  of the series length. It previously built the whole matrix of pairwise
+  distances just to take one quantile from it, which needed about 610 MB for a
+  4000-point series and around 5 GB for 10000 points, far more than the
+  recurrence matrix itself. It now needs about 2 MB whatever the length, and is
+  also considerably faster: 0.05 s instead of 2.6 s for 4000 points, and 1.3 s
+  for 20000 points, which previously would not have fitted in memory at all.
+  The threshold returned is unchanged.
 - IPython is no longer required. Installing **pynamicalsys** no longer pulls
   it in, and it now works with any IPython version. Without IPython,
   `.info["equation"]` returns the LaTeX source as a plain string instead of a
@@ -48,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Recurrence matrices built with `metric="euclidean"` used the **Manhattan**
+  distance, and `metric="manhattan"` used the **Euclidean** distance. The two
+  were swapped wherever a recurrence matrix is built, which affects recurrence
+  plots, recurrence time entropy and `TimeSeriesMetrics`. With a fixed
+  recurrence rate the effect was worse still, because the threshold was chosen
+  using the metric you asked for while the matrix was built with the other one.
+  Results obtained with either of these two metrics will change. The default
+  `"supremum"` metric was always correct and is unaffected.
 - The Jacobian of the **Lozi map** had the wrong sign on its `dx'/dx` entry:
   the map is `x' = 1 - a|x| + y`, so the derivative is `-a sign(x)`, not
   `+a sign(x)`. Any quantity computed from the linearised dynamics of this
