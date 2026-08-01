@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Literal, Union, Callable, Optional
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from numpy.typing import NDArray
 
 import warnings
@@ -165,16 +165,176 @@ def _threshold_from_std(
     return float(eps)
 
 
+
+# The integer codes `_recurrence_matrix` branches on. Defined once and used by
+# every caller: the threshold and the matrix must agree on what "euclidean"
+# means, and keeping two copies of this mapping is exactly how they came to
+# disagree before.
+METRIC_IDS = {"supremum": 0, "manhattan": 1, "euclidean": 2}
+
+
+def metric_id_of(metric: str) -> int:
+    """Return the integer code for a named metric."""
+    key = metric.lower()
+    if key not in METRIC_IDS:
+        raise ValueError(
+            f"Metric must be one of {sorted(METRIC_IDS)}, or a callable; got {metric!r}"
+        )
+    return METRIC_IDS[key]
+
+
+@njit(inline="always")
+def _pair_distance(
+    arr: NDArray[np.float64], i: int, j: int, metric_id: int
+) -> float:
+    """Distance between rows `i` and `j` under the selected built-in metric."""
+    d = arr.shape[1]
+    if metric_id == 0:  # supremum
+        dist = 0.0
+        for k in range(d):
+            value = abs(arr[i, k] - arr[j, k])
+            if value > dist:
+                dist = value
+    elif metric_id == 1:  # manhattan
+        dist = 0.0
+        for k in range(d):
+            dist += abs(arr[i, k] - arr[j, k])
+    else:  # euclidean
+        dist = 0.0
+        for k in range(d):
+            value = arr[i, k] - arr[j, k]
+            dist += value * value
+        dist = np.sqrt(dist)
+    return dist
+
+
+@njit(parallel=True)
+def _distance_bounds(
+    arr: NDArray[np.float64], metric_id: int, n_blocks: int
+) -> tuple[float, float]:
+    """Smallest and largest off-diagonal pairwise distance, without storing any."""
+    N = arr.shape[0]
+    lows = np.full(n_blocks, np.inf, dtype=np.float64)
+    highs = np.full(n_blocks, -np.inf, dtype=np.float64)
+    for block in prange(n_blocks):
+        low = np.inf
+        high = -np.inf
+        for i in range(block, N, n_blocks):
+            for j in range(i + 1, N):
+                dist = _pair_distance(arr, i, j, metric_id)
+                if dist < low:
+                    low = dist
+                if dist > high:
+                    high = dist
+        lows[block] = low
+        highs[block] = high
+    return lows.min(), highs.max()
+
+
+@njit(parallel=True)
+def _distance_histogram(
+    arr: NDArray[np.float64],
+    metric_id: int,
+    low: float,
+    high: float,
+    n_bins: int,
+    n_blocks: int,
+) -> tuple[NDArray[np.int64], int]:
+    """
+    Histogram of the off-diagonal pairwise distances over `[low, high]`.
+
+    Returns the per-bin counts and the number of distances falling strictly
+    below `low`. Nothing proportional to the number of pairs is ever stored, so
+    the memory cost is the number of bins rather than N squared.
+    """
+    N = arr.shape[0]
+    counts = np.zeros((n_blocks, n_bins), dtype=np.int64)
+    below = np.zeros(n_blocks, dtype=np.int64)
+    width = (high - low) / n_bins
+    for block in prange(n_blocks):
+        for i in range(block, N, n_blocks):
+            for j in range(i + 1, N):
+                dist = _pair_distance(arr, i, j, metric_id)
+                if dist < low:
+                    below[block] += 1
+                elif dist <= high:
+                    index = int((dist - low) / width)
+                    if index >= n_bins:
+                        index = n_bins - 1
+                    counts[block, index] += 1
+    total = np.zeros(n_bins, dtype=np.int64)
+    for block in range(n_blocks):
+        for b in range(n_bins):
+            total[b] += counts[block, b]
+    return total, below.sum()
+
+
+@njit
+def _distances_in_range(
+    arr: NDArray[np.float64],
+    metric_id: int,
+    low: float,
+    high: float,
+    capacity: int,
+) -> NDArray[np.float64]:
+    """Collect the off-diagonal distances lying in `[low, high]`."""
+    N = arr.shape[0]
+    out = np.empty(capacity, dtype=np.float64)
+    n = 0
+    for i in range(N):
+        for j in range(i + 1, N):
+            dist = _pair_distance(arr, i, j, metric_id)
+            if low <= dist <= high and n < capacity:
+                out[n] = dist
+                n += 1
+    return out[:n]
+
+
 def _threshold_from_rr(
     X: NDArray[np.float64],
     recurrence_rate: float,
     metric: PairwiseMetric = "supremum",
+    n_bins: int = 4096,
+    max_collect: int = 1 << 20,
 ) -> float:
     """
     Compute the recurrence threshold epsilon for a fixed recurrence rate.
 
-    The threshold is the recurrence_rate-quantile of the off-diagonal
-    pairwise distance distribution.
+    The threshold is the `recurrence_rate`-quantile of the off-diagonal pairwise
+    distance distribution, matching `numpy.quantile` with linear interpolation.
+
+    Parameters
+    ----------
+    X : NDArray[np.float64]
+        Time series of shape `(N, d)`.
+    recurrence_rate : float
+        Target recurrence rate in `[0, 1]`.
+    metric : PairwiseMetric, optional
+        Named metric or a callable taking two points.
+    n_bins : int, optional
+        Number of histogram bins used per refinement round.
+    max_collect : int, optional
+        Largest number of distances materialised in the final exact step.
+
+    Returns
+    -------
+    float
+        The requested quantile of the pairwise distance distribution.
+
+    Notes
+    -----
+    The quantile is found without ever building the distance matrix. Forming it
+    outright costs order `N**2` doubles for the distances, plus the same again
+    for the coordinate differences and for the pair of index arrays that extract
+    the upper triangle, so the peak was several times the size of the recurrence
+    matrix the threshold is being computed for.
+
+    Instead the distances are histogrammed in a streaming pass, the bin holding
+    the wanted order statistic is located, and the search is repeated inside that
+    bin until few enough distances remain to sort exactly. Each round narrows the
+    bracket by a factor of `n_bins`, so two or three passes suffice, and the
+    memory used is the number of bins rather than the number of pairs. The result
+    is exact, not an approximation: only the last, tiny bracket is materialised.
     """
     if not 0.0 <= recurrence_rate <= 1.0:
         raise ValueError("recurrence_rate must be between 0 and 1.")
@@ -183,29 +343,80 @@ def _threshold_from_rr(
     if N < 2:
         raise ValueError("time_series must contain at least two samples.")
 
-    if isinstance(metric, str):
-        diff = X[:, None, :] - X[None, :, :]
+    n_pairs = N * (N - 1) // 2
+    n_blocks = min(64, max(1, N))
 
-        metric_lower = metric.lower()
-        if metric_lower == "euclidean":
-            D = np.sqrt(np.sum(diff**2, axis=2))
-        elif metric_lower == "manhattan":
-            D = np.sum(np.abs(diff), axis=2)
-        elif metric_lower == "supremum":
-            D = np.max(np.abs(diff), axis=2)
-        else:
-            raise ValueError(
-                "Unsupported metric. Use 'euclidean', 'manhattan', 'supremum', or a callable."
-            )
-    else:
-        D = np.empty((N, N), dtype=np.float64)
+    if not isinstance(metric, str):
+        # A Python callable cannot be compiled, so fall back to evaluating it
+        # row by row. This is slow, but it still never holds more than one row
+        # of distances at a time.
+        distances = np.empty(n_pairs, dtype=np.float64)
+        pos = 0
         for i in range(N):
-            for j in range(N):
-                D[i, j] = metric(X[i], X[j])
+            for j in range(i + 1, N):
+                distances[pos] = metric(X[i], X[j])
+                pos += 1
+        return float(np.quantile(distances, recurrence_rate))
 
-    distances = D[np.triu_indices(N, k=1)]
-    eps = np.quantile(distances, recurrence_rate)
-    return float(eps)
+    metric_id = metric_id_of(metric)
+
+    low, high = _distance_bounds(X, metric_id, n_blocks)
+    if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+        return float(low)
+
+    # numpy.quantile with linear interpolation reads between these two order
+    # statistics of the ascending distances.
+    position = (n_pairs - 1) * recurrence_rate
+    lower_index = int(np.floor(position))
+    fraction = position - lower_index
+    upper_index = min(lower_index + 1, n_pairs - 1)
+
+    n_below = 0
+    while True:
+        counts, below = _distance_histogram(X, metric_id, low, high, n_bins, n_blocks)
+        n_below += below
+
+        width = (high - low) / n_bins
+        cumulative = n_below
+        chosen = n_bins - 1
+        for b in range(n_bins):
+            if cumulative + counts[b] > lower_index:
+                chosen = b
+                break
+            cumulative += counts[b]
+
+        # Extend forward until the upper order statistic is inside the bracket
+        # too, since the interpolation needs both. Stepping a single bin is not
+        # enough: with many bins and few pairs most bins are empty, and stopping
+        # early silently drops the interpolation and biases the result low.
+        chosen_high = chosen
+        running = cumulative + counts[chosen]
+        while running <= upper_index and chosen_high + 1 < n_bins:
+            chosen_high += 1
+            running += counts[chosen_high]
+
+        bracket_low = low + chosen * width
+        bracket_high = low + (chosen_high + 1) * width
+        if chosen_high == n_bins - 1:
+            bracket_high = high
+        span = running - cumulative
+
+        low, high, n_below = bracket_low, bracket_high, cumulative
+        if span <= max_collect or bracket_high - bracket_low <= 0.0:
+            break
+
+    values = _distances_in_range(X, metric_id, low, high, int(span) + 1)
+    values.sort()
+
+    offset = lower_index - n_below
+    if offset < 0:
+        offset = 0
+    if offset >= values.size:
+        offset = values.size - 1
+    result = values[offset]
+    if fraction > 0.0 and offset + 1 < values.size:
+        result = result + fraction * (values[offset + 1] - result)
+    return float(result)
 
 
 def calculate_threshold(time_series: NDArray[np.float64], config) -> float:
@@ -340,12 +551,8 @@ def build_recurrence_matrix(
     ValueError
         If the specified metric is invalid.
     """
-    metrics = {"supremum": 0, "euclidean": 1, "manhattan": 2}
-
     if isinstance(metric, str):
-        if metric not in metrics:
-            raise ValueError("Metric must be 'supremum', 'euclidean', or 'manhattan'")
-        metric_id = metrics[metric]
+        metric_id = metric_id_of(metric)
 
         return _recurrence_matrix(arr, threshold, metric_id)
 
