@@ -1,213 +1,159 @@
 Generating trajectories
 -----------------------
 
-To generate trajectories for a discrete dynamical system, we can use the :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. This method allows us to specify the initial condition and total time for the simulation.
+Use :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` to iterate a discrete map from one initial condition or an ensemble of initial conditions. The ``total_time`` argument is the total number of iterations, not a physical duration.
 
-Single initial condition
-~~~~~~~~~~~~~~~~~~~~~~~~
+A single trajectory
+~~~~~~~~~~~~~~~~~~~
 
-As a first example, let's consider the standard map. We first create an instance of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class:
+Consider the standard map with :math:`k=1.5` and initial state :math:`(x_0,y_0)=(0.2,0.5)`:
 
 .. code-block:: python
 
-    from pynamicalsys import DiscreteDynamicalSystem
-
-    import numpy as np
     import matplotlib.pyplot as plt
-    import seaborn as sns
+    from pynamicalsys import DiscreteDynamicalSystem as dds, PlotStyler
 
-    # Create an instance of the standard map
-    ds = DiscreteDynamicalSystem(model="standard_map")
+    system = dds(model="standard map")
+    system.set_parameters([1.5])
 
-Next, we can generate a trajectory by specifying the initial condition, parameters, and total time. The :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method returns a Numpy array with shape `(N, d)`, where `N` is the number of iterations and `d` is the dimension of the system. Each row of the array corresponds to a time step, and each column corresponds to a state variable. 
+    initial_state = [0.2, 0.5]
+    total_time = 5_000_000
+    trajectory = system.trajectory(initial_state, total_time)
 
-.. code-block:: python
+For a two-dimensional map, the result has shape ``(total_time, 2)``. Each row contains ``[x, y]`` at one iteration. The initial state is not included, so the first row is :math:`(x_1,y_1)` and the last row is :math:`(x_{5000000},y_{5000000})`.
 
-    # Generate a trajectory with initial condition (x, y) = (0.2, 0.5), k = 1.5, and total_time = 100000
-    u = [0.2, 0.5]
-    k = 1.5
-    ds.set_parameters(k)
-    total_time = 100000
-
-    trajectory = ds.trajectory(u, total_time)
-
-To visualize the generated trajectory, we can use Matplotlib to plot the time series of the system's state. But before, let's import the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class from pynamicalsys to set the plot style:
+Plot the trajectory in phase space:
 
 .. code-block:: python
 
-    from pynamicalsys import PlotStyler
-
-Then, we can apply the style and plot the trajectory:
-
-.. code-block:: python
-
-    # Apply the plot style
     ps = PlotStyler(markersize=0.1, markeredgewidth=0)
     ps.apply_style()
-
-    # Create a figure and axis
-    fig, ax = plt.subplots()
-
-    # Set the tick padding for the x-axis
-    ps.set_tick_padding(ax, pad_x = 6)
-
-    # Plot the trajectory
-    plt.plot(trajectory[:, 0], trajectory[:, 1], "ko")
-
-    # Set the axis limits and labels
-    plt.xlim(0, 1)
-    plt.ylim(0, 1)
-    plt.xlabel("$x$")
-    plt.ylabel("$y$")
-
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.plot(trajectory[:, 0], trajectory[:, 1], "ko")
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+    fig.tight_layout()
     plt.show()
 
 .. figure:: images/standard_map_trajectory.png
-   :align: center
-   :width: 100%
-   
-   Standard map trajectory for :math:`k = 1.5`.
+    :align: center
+    :width: 100%
 
-Now, to generate a trajectory for different parameter values without modifying the internal parameters, we use the `parameters` argument:
+    A standard-map trajectory for :math:`k=1.5`.
 
-.. code-block:: python
+Passing ``parameters=[4.0]`` directly to ``trajectory`` would temporarily override the stored value of :math:`k` for that call. Parameter storage and temporary overrides are described in :doc:`dds_creating_ds`.
 
-    # Generate a trajectory with initial condition (x, y) = (0.2, 0.5), k = 1.5, and total_time = 100000
-    u = [0.2, 0.5]
-    k = 4.0
-    total_time = 100000
-
-    trajectory = ds.trajectory(u, total_time, parameters=k)
-
-The code above generates the trajectory for the standard map using the parameter :math:`k = 4.0`:
-
-.. figure:: images/standard_map_trajectory2.png
-   :align: center
-   :width: 100%
-   
-   Standard map trajectory for :math:`k = 4.0`.
-
-We can then check that the parameter value stored in the system has not been modified by calling the :py:meth:`get_parameters <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.get_parameters>` method.
-
-Multiple initial conditions
+An ensemble of trajectories
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To generate trajectories for multiple initial conditions, we can use the :py:meth:`trajectory <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.trajectory>` method and simply pass a list of initial conditions with shape `(M, d)`, where `M` is the number of initial conditions and `d` is the system's dimension. The method will return a Numpy array with shape `(N * M, d)`, where `N` is the number of iterations. In other words, each initial condition will generate its own trajectory, and the results will be concatenated into a single array. It is, however, possible to reshape the output to get a list of trajectories, each with shape `(N, d)`.
+Pass an array of shape ``(num_initial_conditions, system_dimension)`` to evolve several initial conditions with the same parameters. The trajectories are returned in one concatenated array rather than as a three-dimensional array.
 
-Let's then generate trajectories for 200 randomly chosen initial conditions in the unit square, with a fixed parameter value and total time:
-
-.. code-block:: python
-    
-    # Set the random seed for reproducibility
-    np.random.seed(13)
-    
-    # Range for initial conditions 
-    x_range = (0, 1)
-    y_range = (0, 1)
-
-    # Number of initial conditions
-    num_ic = 200
-
-    # Generate random initial conditions in the unit square
-    x_ic = np.random.uniform(x_range[0], x_range[1], num_ic)
-    y_ic = np.random.uniform(y_range[0], y_range[1], num_ic)
-    u = np.column_stack((x_ic, y_ic)) # Initial conditions array with shape (num_ic, 2)
-    
-    # Parameter value and total time
-    k = 1.5
-    ds.set_parameters(k)
-    total_time = 10000
-    
-    # Generate trajectories for each initial condition
-    trajectories = ds.trajectory(u, total_time)
-    
-    # Reshape the output to get a list of trajectories
-    trajectories_reshaped = trajectory.reshape(num_ic, total_time, 2)
-
-To visualize the results, we can plot each trajectory in a loop. We will use the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class to set the plot style and customize the appearance of the trajectories and we will use Seaborn to generate a color palette for the trajectories:
+The following example samples 20 initial conditions in the unit square:
 
 .. code-block:: python
 
-    # Apply the plot style
-    ps = PlotStyler(markersize=0.1, markeredgewidth=0)
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from pynamicalsys import DiscreteDynamicalSystem as dds, PlotStyler
+
+    system = dds(model="standard map")
+    system.set_parameters([1.5])
+
+    rng = np.random.default_rng(13)
+    num_initial_conditions = 20
+    total_time = 100_000
+    initial_conditions = rng.uniform(
+        0.0,
+        1.0,
+        size=(num_initial_conditions, 2),
+    )
+
+    trajectories = system.trajectory(initial_conditions, total_time)
+    trajectories = trajectories.reshape(
+        num_initial_conditions,
+        total_time,
+        2,
+    )
+
+Before reshaping, the output has shape ``(num_initial_conditions * total_time, 2)``. After reshaping, it has shape ``(20, 100000, 2)``, so ``trajectories[i]`` contains the orbit generated from ``initial_conditions[i]``.
+
+Plot each orbit with a different color:
+
+.. code-block:: python
+
+    colors = plt.cm.nipy_spectral(np.linspace(0.0, 1.0, num_initial_conditions))
+
+    ps = PlotStyler(markersize=0.3, markeredgewidth=0)
     ps.apply_style()
+    fig, ax = plt.subplots(figsize=(7, 6))
+    for trajectory, color in zip(trajectories, colors):
+        ax.plot(trajectory[:, 0], trajectory[:, 1], "o", color=color)
 
-    # Create a figure and axis
-    fig, ax = plt.subplots()
-
-    # Set the tick padding for the x-axis
-    ps.set_tick_padding(ax, pad_x = 6)
-    
-    # Plot each trajectory with a different color
-    colors = sns.color_palette("husl", num_ic)
-    for i in range(trajectories_reshaped.shape[0]):
-        plt.plot(trajectories_reshaped[i, :, 0], trajectories_reshaped[i, :, 1],
-                 'o', c=colors[i])
-    
-    # Set the axis limits and labels
-    plt.xlim(0, 1)
-    plt.ylim(0, 1)
-    plt.xlabel(r'$x$')
-    plt.ylabel(r'$y$')
-
+    ax.set_xlim(0.0, 1.0)
+    ax.set_ylim(0.0, 1.0)
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+    fig.tight_layout()
     plt.show()
 
 .. figure:: images/standard_map_rand_trajectories.png
-   :align: center
-   :width: 100%
-   
-   Standard map trajectories for :math:`k = 1.5`.
+    :align: center
+    :width: 100%
 
-This plot shows the trajectories of the system starting from different initial conditions in the unit square. Each trajectory is represented by a different color, allowing us to visualize the system's behavior over time.
+    Standard-map trajectories generated from an ensemble of initial conditions for :math:`k=1.5`.
 
-Dissipative system example
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Discarding a transient
+~~~~~~~~~~~~~~~~~~~~~~
 
-As a final example, let's consider a dissipative system, the Hénon map. The Hénon map is defined as:
+For a dissipative system, early iterations may describe the approach to an attractor rather than its long-term dynamics. Use ``transient_time`` to discard those iterations before storing the trajectory.
+
+The Hénon map is
 
 .. math::
 
-    \begin{align*}
-        x_{n+1} &= 1 - a x_n^2 + y_n, \\
-        y_{n+1} &= b x_n,
-    \end{align*}
+    \begin{aligned}
+        x_{n+1} &= 1-ax_n^2+y_n, \\
+        y_{n+1} &= bx_n.
+    \end{aligned}
 
-where :math:`a` and :math:`b` are parameters of the system. We can create an instance of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class for the Hénon map and generate trajectories in a similar way as before. However, in the case of dissipative systems, we often discard the initial transient period and focus on the long-term behavior of the system.
+Generate :math:`100000` iterations and discard the first :math:`10000`:
 
 .. code-block:: python
 
-    # Create an instance of the Hénon map
-    ds = dds(model="henon map")
+    import matplotlib.pyplot as plt
+    from pynamicalsys import DiscreteDynamicalSystem as dds, PlotStyler
 
-    # Parameters for the Hénon map
-    a = 1.4
-    b = 0.3
-    parameters = [a, b]
-    ds.set_parameters(parameters)
-    total_time = 500000
-    transient_time = 50000
+    system = dds(model="henon map")
+    system.set_parameters([1.4, 0.3])
 
-    # Generate a trajectory with initial condition (x, y) = (0.2, 0.2)
-    u = [0.2, 0.2]
-    tracjectory = ds.trajectory(u, total_time, transient_time=transient_time)
+    initial_state = [0.2, 0.2]
+    total_time = 100_000
+    transient_time = 10_000
+    trajectory = system.trajectory(
+        initial_state,
+        total_time,
+        transient_time=transient_time,
+    )
 
-
-We can then visualize the Hénon map trajectory:
+The result has shape ``(90000, 2)`` because ``total_time`` includes the discarded transient. The first stored row is the state after iteration :math:`10001`, and the last is the state after iteration :math:`100000`.
 
 .. code-block:: python
 
     ps = PlotStyler(markersize=0.2, markeredgewidth=0)
     ps.apply_style()
-
-    plt.plot(tracjectory[:, 0], tracjectory[:, 1], "ko")
-    
-    plt.xlabel("$x$")
-    plt.ylabel("$y$")
-
+    fig, ax = plt.subplots(figsize=(7, 6))
+    ax.plot(trajectory[:, 0], trajectory[:, 1], "ko")
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+    fig.tight_layout()
     plt.show()
 
 .. figure:: images/henon_map_trajectory.png
-   :align: center
-   :width: 100%
-   
-   Hénon map trajectory for :math:`a = 1.4` and :math:`b = 0.3`.
+    :align: center
+    :width: 100%
+
+    The Hénon attractor for :math:`a=1.4` and :math:`b=0.3` after discarding the transient.
+
+For a one-dimensional map and one initial condition, ``trajectory`` returns a one-dimensional array with shape ``(sample_size,)``. For higher-dimensional maps, the final axis always follows the state-variable order documented by the model's ``info`` property.
