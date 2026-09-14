@@ -1,7 +1,7 @@
 Chaotic indicators
 ------------------
 
-We have seen that depending on the parameters of the system, the dynamics can be chaotic. In this section, we will explore some indicators that can help us identify chaotic behavior in a time series.
+Different trajectories of the same discrete dynamical system can exhibit periodic, quasiperiodic, or chaotic behavior. The following pages introduce complementary tools for characterizing that behavior. Lyapunov exponents and the linear dependence index use the tangent dynamics, while the weighted Birkhoff average, recurrence time entropy, and Hurst exponent analyze properties of the generated trajectories. Each indicator measures a different feature, so its interpretation should be combined with knowledge of the system and adequate convergence checks.
 
 .. toctree::
    :maxdepth: 1
