@@ -24,6 +24,56 @@ This map is a discrete dynamical system that exhibits a wide range of behaviors 
     from pynamicalsys import DiscreteDynamicalSystem as dds  # Import the discrete-time system class
     ds = dds(model="logistic map")  # Create the logistic map discrete system object
 
+All the relevant details of a specific built-in system can be inspected via the ``.info`` property.
+
+For instance, to view the model's equation, in LaTeX form (rendered automatically in Jupyter) or as plain-text Unicode:
+
+.. code-block:: python
+
+   ds.info["equation"]  # LaTeX, rendered in Jupyter/IPython
+   ds.info["equation_readable"]  # plain-text Unicode
+
+.. code-block:: text
+
+   xₙ₊₁ = rxₙ(1−xₙ)
+
+.. note::
+
+   Rendering ``.info["equation"]`` as typeset mathematics requires IPython,
+   which is an optional dependency: install it with
+   ``pip install pynamicalsys[notebook]``. Without IPython the entry is the
+   LaTeX source as a plain string. ``.info["equation_readable"]`` is always
+   available either way.
+
+
+A short description and notes are also available:
+
+.. code-block:: python
+
+   ds.info["description"]  # 'Logistic map (1D nonlinear system)'
+   ds.info["notes"]        # 'Canonical one-dimensional nonlinear map...'
+
+The full ``.info`` dictionary also includes metadata about the model's dimension, parameters, and available functions (Jacobian, backwards map, etc.):
+
+.. code-block:: python
+
+   ds.info
+
+.. code-block:: text
+
+   {'description': 'Logistic map (1D nonlinear system)',
+    'equation': <IPython.core.display.Math object>,
+    'equation_readable': 'xₙ₊₁ = rxₙ(1−xₙ)',
+    'notes': 'Canonical one-dimensional nonlinear map exhibiting the period-doubling route to chaos.',
+    'has_jacobian': True,
+    'has_backwards_map': False,
+    'mapping': CPUDispatcher(<function logistic_map at ...>),
+    'jacobian': CPUDispatcher(<function logistic_map_jacobian at ...>),
+    'backwards_mapping': None,
+    'dimension': 1,
+    'number_of_parameters': 1,
+    'parameters': ['r']}
+
 Generating a trajectory
 ~~~~~~~~~~~~~~~~~~~~~~~
 
