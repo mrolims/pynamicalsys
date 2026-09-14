@@ -1,98 +1,151 @@
 Creating a discrete dynamical system
 ------------------------------------
 
-The :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class allows you to create a discrete dynamical system object. You can use built-in systems or define your own discrete maps.
+The :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class represents maps that advance a state from one iteration to the next. You can select a built-in model or provide your own mapping function.
 
-Using built-in systems
+Using a built-in model
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To check available built-in systems, you can use the :py:meth:`available_models <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.available_models>` method:
+Import the class as ``dds`` and call :py:meth:`available_models <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.available_models>` to see the built-in models:
 
 .. code-block:: python
 
-    available_models = dds.available_models()
-    print(available_models)
+    from pynamicalsys import DiscreteDynamicalSystem as dds
+
+    for model in dds.available_models():
+        print(model)
 
 .. code-block:: text
 
-    ['standard map',
-    'unbounded standard map',
-    'henon map',
-    'lozi map',
-    'rulkov map',
-    'logistic map',
-    'standard nontwist map',
-    'extended standard nontwist map',
-    'leonel map',
-    '4d symplectic map']
+    standard map
+    unbounded standard map
+    henon map
+    lozi map
+    rulkov map
+    logistic map
+    standard nontwist map
+    extended standard nontwist map
+    leonel map
+    4d symplectic map
 
-For example, you can create a Chirikov-Taylor standard map, given by:
+Select a model by passing its name to ``model``. For example, the Chirikov-Taylor standard map is
 
 .. math::
 
-    \begin{align*}
-        y_{n+1} &= y_n + \frac{k}{2\pi} \sin(2\pi x_n) \bmod1,\\
-        x_{n+1} &= x_n + y_{n+1} \bmod1,
-    \end{align*}
-    
-where :math:`k` is a constant. You can create this system using:
+    \begin{aligned}
+        y_{n+1} &= y_n + \frac{k}{2\pi}\sin(2\pi x_n) \pmod{1}, \\
+        x_{n+1} &= x_n + y_{n+1} \pmod{1}.
+    \end{aligned}
+
+Create the system and inspect its parameter order with the ``info`` property:
 
 .. code-block:: python
 
-    ds = dds(model="standard map")
+    system = dds(model="standard map")
+    print(system.info["parameters"])
 
-and then all the methods available for the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class can be used to run simulations and analyze the system.
+.. code-block:: text
 
-Creating custom discrete maps
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ['k']
 
-You can also create your own discrete maps by defining a function that takes the current state and a list of parameters, and returns the next state. For example, let us create the standard map as a custom function:
+The state is ordered as ``[x, y]``, and the parameter list contains the stochasticity parameter ``k``. The methods of ``system`` can now generate trajectories and perform the analyses supported by the class.
+
+Creating a custom map
+~~~~~~~~~~~~~~~~~~~~~
+
+A custom mapping function receives the current state and a one-dimensional parameter array, then returns the state at the next iteration. The following function reproduces the standard map:
 
 .. code-block:: python
 
+    import numpy as np
     from numba import njit
+    from pynamicalsys import DiscreteDynamicalSystem as dds
 
     @njit
-    def standard_map(state, params):
-        k = params[0]
+    def standard_map(state, parameters):
         x, y = state
-        y_next = (y + k / (2 * np.pi) * np.sin(2 * np.pi * x)) % 1
-        x_next = (x + y_next) % 1
+        k = parameters[0]
+        y_next = (y + k * np.sin(2.0 * np.pi * x) / (2.0 * np.pi)) % 1.0
+        x_next = (x + y_next) % 1.0
         return np.array([x_next, y_next])
 
-Note that we use `numba` to compile the function for performance. Most methods inside the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class are decoreted with numba. Therefore, it is absolute necessary that all custom mapping function be decoreted with it as well. You can then create a discrete dynamical system object with this custom function by informing the mapping function, the system dimension and the number of parameters the system has:
+    @njit
+    def standard_map_jacobian(state, parameters, mapping):
+        x, _ = state
+        k = parameters[0]
+        derivative = k * np.cos(2.0 * np.pi * x)
+        return np.array(
+            [
+                [1.0 + derivative, 1.0],
+                [derivative, 1.0],
+            ]
+        )
+
+The ``@njit`` decorator compiles the mapping for use by the package's Numba-accelerated numerical routines. Keep the function limited to operations supported by Numba.
+
+When the parameter values are already known, pass them while creating the system:
 
 .. code-block:: python
 
-    ds = dds(mapping=standard_map, system_dimension=2, number_of_parameters=1)
+    system = dds(
+        mapping=standard_map,
+        jacobian=standard_map_jacobian,
+        system_dimension=2,
+        parameters=[1.5],
+    )
 
-An alternative is to inform the list of parameters instead of the number of them:
+Here, ``system_dimension=2`` corresponds to the two state variables ``[x, y]``. Supplying ``parameters=[1.5]`` also tells the class that the mapping expects one parameter and stores that value for later method calls.
+
+If you want to provide the parameter value only when performing a calculation, declare the number of parameters instead:
 
 .. code-block:: python
 
-    parameters = [1.5]  # parameters = 1.5 works as well for single values
-    ds = dds(mapping=standard_map, system_dimension=2, parameters=parameters)
-    print(ds.get_parameters())
+    system = dds(
+        mapping=standard_map,
+        jacobian=standard_map_jacobian,
+        system_dimension=2,
+        number_of_parameters=1,
+    )
+
+    next_state = system.step([0.1, 0.2], parameters=[1.5])
+
+In this case, a method call must supply ``parameters`` until a value is stored with :py:meth:`set_parameters <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.set_parameters>`.
+
+Managing parameters
+~~~~~~~~~~~~~~~~~~~
+
+Use ``set_parameters`` to store a parameter value for subsequent calculations:
+
+.. code-block:: python
+
+    system.set_parameters([1.5])
+    print(system.get_parameters())
 
 .. code-block:: text
+
     [1.5]
 
-After creating the object, the parameters passed to the constructor are stored internally and used by default by all methods of the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` instance. In this configuration, every method call that does not explicitly specify parameters will use the internally stored value ([1.5]). You can permanently modify these stored parameters using the
-:py:meth:`set_parameters <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.set_parameters>` method:
+Methods use the stored parameters when their ``parameters`` argument is omitted. Passing the argument to an individual call temporarily overrides the stored value:
 
 .. code-block:: python
 
-    ds.set_parameters([4.0])  # ds.set_parameters(4.0) works as well for single values
-    print(ds.get_parameters())
+    stored_result = system.step([0.1, 0.2])
+    override_result = system.step([0.1, 0.2], parameters=[0.5])
+    print(system.get_parameters())
 
 .. code-block:: text
-    [4.0]
 
-This updates the parameters at the object level, so all subsequent method calls will now use [4.0] by default. Finally, all methods of :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` also accept a parameters argument. When this argument is provided, it temporarily overrides the internally stored parameters for that specific method call only. The parameters stored in the object remain unchanged.
+    [1.5]
 
-.. note::
+The second call uses :math:`k=0.5`, but the value stored in ``system`` remains :math:`k=1.5`. Calling ``system.set_parameters([0.5])`` would replace the stored value for all later calls.
 
-   In other words:
+Jacobians and backward mappings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   - ``set_parameters(...)`` → persistent change (updates the system's internal parameters)
-   - ``parameters=...`` in a method call → temporary, local override (applies only to that call)
+The mapping alone is enough to generate trajectories. If you do not provide a Jacobian, the class estimates one with finite differences when a tangent-space calculation needs it. Supplying an analytical Jacobian, as in the example above, can improve the accuracy and speed of Lyapunov exponents, stability calculations, and other tangent-space analyses.
+
+The Jacobian must accept ``(state, parameters, mapping)`` because the numerical routines use the same calling convention for analytical Jacobians and the finite-difference fallback. An analytical Jacobian does not need to use ``mapping``, but the third argument must still be present. Decorate the function with ``@njit`` and pass it as ``jacobian=...`` when constructing the system.
+
+A backward mapping is optional and is only required by calculations that iterate the system backward, such as stable invariant manifolds. It uses the same ``(state, parameters)`` interface as the forward mapping and should also be decorated with ``@njit``. Pass it as ``backwards_mapping=...`` when constructing a custom system.
+
+The ``info`` property is available only for built-in models because the package cannot infer descriptive metadata or equations from a custom function.
