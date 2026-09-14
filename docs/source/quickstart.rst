@@ -1,381 +1,186 @@
 Quickstart
 ==========
 
-This guide walks you through the basics of using **pynamicalsys**.
+This guide introduces the three system classes through small simulations you can run in Python or a notebook. Each example includes its own imports and produces a plot. If you have not installed **pynamicalsys**, start with :doc:`installation`.
 
-Discrete-time dynamical system
-------------------------------
+The workflow is the same in each case: choose a model, specify its parameters and initial state, then calculate and visualize a trajectory. For a discrete map, ``total_time`` counts iterations. For continuous and Hamiltonian systems, it specifies the duration in the system's time units.
 
-Creating a discrete-time dynamical system object
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Discrete maps: compare parameter values
+---------------------------------------
 
-To get started, you need to create a discrete dynamical system object. This is done using the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class. For this example, we will use the logistic map, defined as:
+A discrete map advances the state one iteration at a time. The logistic map has one state variable, :math:`x`, and one parameter, :math:`r`:
 
 .. math::
-    
-    \begin{equation*}
-        x_{n+1} = r x_n (1 - x_n).
-    \end{equation*}
 
-This map is a discrete dynamical system that exhibits a wide range of behaviors depending on the parameter :math:`r`. It is often used as a classic example in chaos theory. To create the discrete-time dynamical system object, we need to instanciate the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class using the `model` parameter, since the logistic map is built-in within this class:
+    x_{n+1} = r x_n(1-x_n).
+
+Use ``DiscreteDynamicalSystem`` to compare four parameter values, starting from the same initial condition :math:`x_0 = 0.2`:
 
 .. code-block:: python
 
-    from pynamicalsys import DiscreteDynamicalSystem as dds  # Import the discrete-time system class
-    ds = dds(model="logistic map")  # Create the logistic map discrete system object
+    import matplotlib.pyplot as plt
+    from pynamicalsys import DiscreteDynamicalSystem as dds, PlotStyler
 
-All the relevant details of a specific built-in system can be inspected via the ``.info`` property.
+    system = dds(model="logistic map")
+    parameter_values = [2.6, 3.1, 3.5, 3.8]
+    total_time = 100
 
-For instance, to view the model's equation, in LaTeX form (rendered automatically in Jupyter) or as plain-text Unicode:
-
-.. code-block:: python
-
-   ds.info["equation"]  # LaTeX, rendered in Jupyter/IPython
-   ds.info["equation_readable"]  # plain-text Unicode
-
-.. code-block:: text
-
-   xₙ₊₁ = rxₙ(1−xₙ)
-
-.. note::
-
-   Rendering ``.info["equation"]`` as typeset mathematics requires IPython,
-   which is an optional dependency: install it with
-   ``pip install pynamicalsys[notebook]``. Without IPython the entry is the
-   LaTeX source as a plain string. ``.info["equation_readable"]`` is always
-   available either way.
-
-
-A short description and notes are also available:
-
-.. code-block:: python
-
-   ds.info["description"]  # 'Logistic map (1D nonlinear system)'
-   ds.info["notes"]        # 'Canonical one-dimensional nonlinear map...'
-
-The full ``.info`` dictionary also includes metadata about the model's dimension, parameters, and available functions (Jacobian, backwards map, etc.):
-
-.. code-block:: python
-
-   ds.info
-
-.. code-block:: text
-
-   {'description': 'Logistic map (1D nonlinear system)',
-    'equation': <IPython.core.display.Math object>,
-    'equation_readable': 'xₙ₊₁ = rxₙ(1−xₙ)',
-    'notes': 'Canonical one-dimensional nonlinear map exhibiting the period-doubling route to chaos.',
-    'has_jacobian': True,
-    'has_backwards_map': False,
-    'mapping': CPUDispatcher(<function logistic_map at ...>),
-    'jacobian': CPUDispatcher(<function logistic_map_jacobian at ...>),
-    'backwards_mapping': None,
-    'dimension': 1,
-    'number_of_parameters': 1,
-    'parameters': ['r']}
-
-Generating a trajectory
-~~~~~~~~~~~~~~~~~~~~~~~
-
-We are going to generate a trajectory for this system using four different parameters values. Each one of these values produces a different dynamical behavior.
-
-.. code-block:: python
-
-    x0 = 0.2  # Initial condition for x
-    r = [2.6, 3.1, 3.5, 3.8]  # List of parameter values
-
-    # Generate trajectories for each parameter value (100 iterations each)
-    trajectories = [
-        ds.trajectory(x0, 100, parameters=r[i])
-        for i in range(len(r))
-    ]
-
-
-Visualizing the trajectory
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To visualize the trajectory, we can use the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class to customize our plots.
-
-.. code-block:: python
-
-    from pynamicalsys import PlotStyler  # For consistent plot styling
-    import seaborn as sns  # For color palettes
-    import matplotlib.pyplot as plt  # For plotting
-
-    # Apply the plot style
     ps = PlotStyler()
     ps.apply_style()
+    fig, ax = plt.subplots(figsize=(8, 4))
+    for r in parameter_values:
+        trajectory = system.trajectory(0.2, total_time, parameters=[r])
+        ax.plot(range(1, total_time + 1), trajectory, "o-", label=f"$r = {r}$")
 
-    # Create the figure and axes
-    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.set_xlabel("Iteration $n$")
+    ax.set_ylabel("$x$")
+    ax.legend(ncol=4, loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False)
+    fig.tight_layout()
+    plt.show()
 
-    # Define colors for each trajectory
-    colors = sns.color_palette("hls", n_colors=len(r))
+.. figure:: images/quickstart_logistic.png
+    :align: center
+    :width: 100%
 
-    # Plot each trajectory with a different color and label
-    for i, traj in enumerate(trajectories):
-        ax.plot(traj, "-o", color=colors[i], label=f"$r = {r[i]}$")
+    Changing the parameter changes the long-term behavior of the logistic map.
 
-    # Customize the plot labels and limits
-    plt.xlabel("$n$")  # Iteration index
-    plt.ylabel("$x$")  # State variable
-    plt.legend(
-        loc="upper center",
-        frameon=False,
-        ncol=4,
-        bbox_to_anchor=(0.5, 1.15)
-    )
-    plt.ylim(0.15, 1)
-    plt.xlim(-1, 100)
+At :math:`r = 2.6`, the trajectory approaches a fixed point. At :math:`r = 3.1` and :math:`r = 3.5`, it settles into cycles of two and four points. The :math:`r = 3.8` example illustrates irregular motion in a chaotic regime.
 
-    plt.show()  # Display the plot
+For this one-dimensional map, each call returns an array of shape ``(100,)``. The first entry is :math:`x_1`, after one iteration, rather than the initial condition :math:`x_0`. Passing ``parameters=[r]`` applies that value to the current call. To reuse a parameter value across calls, store it with ``system.set_parameters([r])``.
 
-.. _logistic_map_trajectories-figure:
+Inspect a built-in model
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. figure:: images/logistic_map_trajectories.png
-   :align: center
-   :width: 100%
-   
-   Logistic map trajectories for different parameter values.
+The ``info`` property helps you check a built-in model's equation and the order of its parameters. For the logistic-map object above:
 
-Continuous-time dynamical system
---------------------------------
+.. code-block:: python
 
-Creating a continuous-time dynamical system object
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    print(system.info["parameters"])
+    print(system.info["equation_readable"])
 
-The continuous-time analysis is similar to the discrete-time analysis. To get started, you need to create a continuous-time dynamical system object. This is done using the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class. For this example, we will use the Lorenz system, defined as:
+.. code-block:: text
+
+    ['r']
+    xₙ₊₁ = rxₙ(1−xₙ)
+
+In a notebook, put ``system.info["equation"]`` on the last line of a cell to display the equation as typeset mathematics when IPython is available. See :doc:`installation` for notebook support. The full ``system.info`` dictionary also contains the model's description and other metadata.
+
+Continue with the :doc:`discrete-system tutorial <dds_tutorial>` for custom maps, ensembles, bifurcation diagrams, and chaos indicators.
+
+Continuous systems: integrate an equation of motion
+---------------------------------------------------
+
+A continuous system specifies how the state changes with time through differential equations. For example, the Lorenz system is
 
 .. math::
 
-    \begin{align*}
-        \dot{x} &= \sigma(y - x),\\
-        \dot{y} &= x(\rho - z) - y,\\
-        \dot{z} &= xy - \beta z.
-    \end{align*}
+    \begin{aligned}
+        \dot{x} &= \sigma(y-x), \\
+        \dot{y} &= x(\rho-z)-y, \\
+        \dot{z} &= xy-\beta z.
+    \end{aligned}
 
-For this example, we are going to use the same parameters Lorenz used in his original paper in 1963: :math:`\sigma = 10`, :math:`\sigma = 28`, and :math:`\beta = 8/3`. The system exhibits chaotic behavior for this set of parameters.
-
-To create the continuous-time dynamical system object, we need to instanciate the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class using the `model` parameter, since the Lorenz system is built-in within this class:
+Use ``ContinuousDynamicalSystem`` with :math:`\sigma = 10`, :math:`\rho = 28`, and :math:`\beta = 8/3`. Here we explicitly choose the fourth-order Runge-Kutta integrator, ``rk4``, with a fixed step of :math:`0.01` time units:
 
 .. code-block:: python
 
-    from pynamicalsys import ContinuousDynamicalSystem as cds  # Import the continuous-time system class
-    ds = cds(model="lorenz system")  # Create the Lorenz system object
+    import matplotlib.pyplot as plt
+    from pynamicalsys import ContinuousDynamicalSystem as cds, PlotStyler
 
-Generating a trajectory
-~~~~~~~~~~~~~~~~~~~~~~~
+    system = cds(model="lorenz system")
+    system.set_parameters([10.0, 28.0, 8.0 / 3.0])  # sigma, rho, beta
+    system.integrator("rk4", time_step=0.01)
 
-We are going to generate a trajectory for this system using the mentioned parameters. The order in which the parameters must be given for the built-in system can be verified using the :py:attr:`info <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.info>` property.
+    initial_state = [0.1, 0.1, 0.1]  # x, y, z
+    trajectory = system.trajectory(initial_state, total_time=100.0)
+
+    time = trajectory[:, 0]
+    x = trajectory[:, 1]
+    z = trajectory[:, 3]
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+    ax[0].plot(time, x, "k")
+    ax[0].set_xlabel("Time $t$")
+    ax[0].set_ylabel("$x(t)$")
+    ax[1].plot(x, z, "k", lw=0.5)
+    ax[1].set_xlabel("$x$")
+    ax[1].set_ylabel("$z$")
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/quickstart_lorenz.png
+    :align: center
+    :width: 100%
+
+    The same Lorenz trajectory shown as a time series and a projection onto the x-z plane.
+
+Each row of the output contains ``[time, x, y, z]``. With these settings, the array has shape ``(10001, 4)``, including the initial state at time zero. The left plot shows when changes occur, while the right plot shows the trajectory's structure in state space.
+
+The parameter order can be checked with ``system.info["parameters"]``. A smaller integration step can help assess numerical convergence, but it also requires more work. See the :doc:`continuous-system tutorial <cds_tutorial>` for adaptive integration, multiple initial conditions, and further analysis.
+
+Hamiltonian systems: evolve positions and momenta
+-------------------------------------------------
+
+Use ``HamiltonianSystem`` when your model is expressed in terms of generalized coordinates :math:`\mathbf{q}` and momenta :math:`\mathbf{p}`. The built-in Hénon-Heiles model has two degrees of freedom and Hamiltonian
+
+.. math::
+
+    H(x,y,p_x,p_y) = \frac{p_x^2+p_y^2}{2}
+        + \frac{x^2+y^2}{2} + x^2y - \frac{y^3}{3}.
+
+Its equations of motion are
+
+.. math::
+
+    \begin{aligned}
+        \dot{x} &= p_x, & \dot{y} &= p_y, \\
+        \dot{p}_x &= -x-2xy, & \dot{p}_y &= -y-x^2+y^2.
+    \end{aligned}
+
+The example below chooses :math:`x=0`, :math:`y=0.1`, and :math:`p_y=0`, then calculates the positive :math:`p_x` consistent with energy :math:`E=1/8`. We use the fourth-order Yoshida symplectic integrator, ``svy4``:
 
 .. code-block:: python
 
-    # Initial condition for (x, y, z)
-    u = [0.1, 0.1, 0.1]
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from pynamicalsys import HamiltonianSystem as hs, PlotStyler
 
-    # Parameters of the Lorenz system (σ, ρ, β)
-    sigma, rho, beta = 10, 28, 8/3
-    parameters = [sigma, rho, beta]
-    ds.set_parameters(parameters)
+    system = hs(model="henon heiles")
+    system.integrator("svy4", time_step=0.01)
 
-    # Total integration time
-    total_time = 200
+    energy = 1.0 / 8.0
+    x, y, py = 0.0, 0.1, 0.0
+    potential = (x**2 + y**2) / 2.0 + x**2 * y - y**3 / 3.0
+    px = np.sqrt(2.0 * (energy - potential) - py**2)
+    q = [x, y]
+    p = [px, py]
 
-    # Calculate the trajectory of the system
-    trajectory = ds.trajectory(u, total_time, parameters)
+    trajectory = system.trajectory(q, p, total_time=500.0)
 
-Visualizing the trajectory
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The :py:meth:`trajectory <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.trajectory>` method returns the time samples and the coordinates of the system at the respective samples. If we don't specify the integrator, it uses the 4th order Runge-Kutta method with a fixed time step of 0.01. We can then visualize the evolution of each coordiate:
-
-.. code-block:: python
-
-    from pynamicalsys import PlotStyler  # For consistent plot styling
-
-    # Apply the plot style
     ps = PlotStyler(fontsize=18)
     ps.apply_style()
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ax.plot(trajectory[:, 1], trajectory[:, 2], "k", lw=0.75)
+    ax.set_xlabel("$x$")
+    ax.set_ylabel("$y$")
+    fig.tight_layout()
+    plt.show()
 
-    # Create the figure and axes for x(t), y(t), z(t)
-    fig, ax = plt.subplots(3, 1, sharex=True, figsize=(10, 7))
+.. figure:: images/quickstart_henon_heiles.png
+    :align: center
+    :width: 100%
 
-    # Plot x(t), y(t), z(t) separately
-    for i in range(3):
-        ax[i].plot(trajectory[:, 0], trajectory[:, i + 1], "k")  # time vs coordinate
+    A Hénon-Heiles trajectory projected onto the coordinate plane.
 
-    # Add axis labels and limits
-    ax[0].set_ylabel("$x(t)$")
-    ax[1].set_ylabel("$y(t)$")
-    ax[2].set_ylabel("$z(t)$")
-    ax[-1].set_xlabel("$t$")
-    ax[0].set_xlim(0, total_time)
+Positions and momenta are passed separately. The output combines them into rows of ``[time, x, y, px, py]``, including the initial state. Here its shape is ``(50001, 5)``. This built-in model has no adjustable parameters, so no parameter list is needed.
 
-    plt.show()  # Display the plot
+The Yoshida method applies to separable Hamiltonians of the form :math:`H(\mathbf{q},\mathbf{p}) = T(\mathbf{p}) + V(\mathbf{q})`. The :doc:`Hamiltonian-system tutorial <hs_tutorial>` explains the available integrators, custom Hamiltonians, and how to check energy error. The :py:meth:`poincare_section <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.poincare_section>` method provides another way to examine phase-space structure.
 
-.. figure:: images/lorenz_time_series.png
-   :align: center
-   :width: 100%
-   
-   A chaotic trajectory of the Lorenz system.
+Next steps
+----------
 
-We can also visualize the attractor (a projection onto the :math:`xz` plane):
-
-.. code-block:: python
-
-    ps = PlotStyler(fontsize=18, linewidth=0.3)  # Style for attractor plot
-    ps.apply_style()
-
-    # Plot the Lorenz attractor projection on the x-z plane
-    plt.plot(trajectory[:, 1], trajectory[:, 3], "k-")
-
-    plt.xlabel("$x$")
-    plt.ylabel("$z$")
-
-    plt.show()  # Display the attractor plot
-
-.. figure:: images/lorenz_attractor.png
-   :align: center
-   :width: 100%
-   
-   The Lorenz attractor.
-
-Hamiltonian systems
--------------------
-
-Creating a Hamiltonian system object
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To get started, you need to create a Hamiltonian system object. This is done using the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class. For this example, we will use the two degrees of freedom Hénon-Hailes system, defined by the Hamiltonian function:
-
-.. math::
-
-    \begin{align*}
-        H(x, y, p_x, p_y) = \frac{1}{2}(p_x^2 + p_y^2) + \frac{1}{2}(x^2 + y^2) + x^2y - \frac{y^3}{3}.
-    \end{align*}
-
-with equations of motion:
-
-.. math::
-
-    \begin{align*}
-        \dot{x} &= \frac{\partial H}{\partial p_x} = p_x,\\
-        \dot{y} &= \frac{\partial H}{\partial p_y} = p_y,\\
-        \dot{p}_x &= -\frac{\partial H}{\partial x} = x (2y - 1),\\
-        \dot{p}_y &= -\frac{\partial H}{\partial y} = y^2 - y - x^2.\\
-    \end{align*}
-
-This system is a paradigmatic example of a Hamiltonian system that exhibits both regular and chaotic solutions. The create the Hamiltonian system object, we need to instanciante the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class using the `model` parameter, since the Hénon-Heiles system is built in within this class:
-
-.. code-block:: python
-
-    from pynamicalsys import HamiltonianSystem  # Import the Hamiltonian system class
-    hs = HamiltonianSystem(model="henon heiles")  # Create the Hénon-Heiles Hamiltonian system object
-
-Generating Poincaré section
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To visualize the different behaviors of this system, we are going to generate the Poincaré section for an ensemble of randomly chosen initial conditions:
-
-.. code-block:: python
-
-    num_ic = 100  # Number of initial conditions
-    dof = 2  # Degrees of freedom of the system
-
-    # Allocate arrays for initial positions q and momenta p
-    q = np.zeros((num_ic, dof))
-    p = np.zeros((num_ic, dof))
-
-    E_ref = 1 / 8  # Total energy of the system
-    x = 0  # Fixed x = 0 for the Poincaré section
-
-    # Ranges for y and py sampling
-    y_range = (-0.5, 0.5)
-    py_range = (-0.5, 0.5)
-
-    # Randomly generate initial conditions consistent with energy
-    np.random.seed(13)
-    for i in range(num_ic):
-        while True:
-            py = np.random.uniform(*py_range)
-            y = np.random.uniform(*y_range)
-            # Energy constraint to solve for px
-            px_squared = 2 * (E_ref - x**2 * y + y**3 / 3) - x**2 - y**2 - py**2
-            if px_squared > 0:  # Ensure positive px_squared
-                q[i] = [x, y]
-                p[i] = [np.sqrt(px_squared), py]
-                break
-
-    num_intersections = 10000  # Number of Poincaré section intersections to compute
-
-We choose as our section the :math:`x = 0` plane with :math:`\dot{x} > 0` and integrate the system using three symplectic integrators: the second-order velocity-Verlet integrator (VV2), the fourth-order Yoshida method (SVY4), and the implicit midpoint method (IMP). The first two (VV2 and SVY4) are specific to separable Hamiltonians, i.e., :math:`H(\mathbf{q}, \mathbf{p}) = T(\mathbf{p}) + V(\mathbf{q})`, whereas the last one (IMP) is aplicable to general Hamiltonians.
-
-.. code-block:: python
-
-    time_step = 0.01  # Time step for the integrators
-
-    # Compute Poincaré section using the VV2 integrator
-    hs.integrator("vv2", time_step=time_step)
-    PS_vv2 = hs.poincare_section(q.copy(), p.copy(), num_intersections)
-
-    # Compute Poincaré section using the SVY4 integrator
-    hs.integrator("svy4", time_step=time_step)
-    PS_svy4 = hs.poincare_section(q.copy(), p.copy(), num_intersections)
-
-    # Compute Poincaré section using the IMP integrator
-    hs.integrator("imp", time_step=time_step)
-    PS_imp = hs.poincare_section(q.copy(), p.copy(), num_intersections)
-
-Visualizing the Poincaré section
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To visualize the trajectory, we can use the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class to customize our plots. We plot the Poincaré section of each trajectory in different colors to highlight the different behaviors present in the system:
-
-.. code-block:: python
-
-    from pynamicalsys import PlotStyler  # For consistent plot styling
-    import seaborn as sns  # For color palettes
-    import matplotlib.pyplot as plt  # For plotting
-
-    # Apply plot style for scatter plots
-    fontsize = 18
-    ps = PlotStyler(fontsize=fontsize, markersize=0.25, markeredgewidth=0)
-    ps.apply_style()
-
-    # Define colors for each initial condition
-    colors = sns.color_palette("tab10", num_ic)
-
-    # Create side-by-side figures for VV2, SVY4, and IMP
-    fig, ax = plt.subplots(1, 3, sharex=True, sharey=True, figsize=(12, 4))
-
-    # Plot each Poincaré section point
-    for i in range(num_ic):
-        ax[0].plot(PS_vv2[i, :, 2], PS_vv2[i, :, 4], "o", c=colors[i])  # VV2 plot
-        ax[1].plot(PS_svy4[i, :, 2], PS_svy4[i, :, 4], "o", c=colors[i])  # SVY4 plot
-        ax[2].plot(PS_imp[i, :, 2], PS_imp[i, :, 4], "o", c=colors[i])  # IMP plot
-
-    # Add axis labels and titles
-    ax[0].set_xlabel("$y$")
-    ax[0].set_ylabel("$p_y$")
-    ax[0].set_title("VV2", fontsize=fontsize)
-    ax[1].set_xlabel("$y$")
-    ax[1].set_title("SVY4", fontsize=fontsize)
-    ax[2].set_xlabel("$y$")
-    ax[2].set_title("IMP", fontsize=fontsize)
-
-    plt.tight_layout(pad=0.2)  # Improve layout spacing
-    plt.show()  # Display the figure
-
-.. figure:: images/henon_heiles_poincare_section.png
-   :align: center
-   :width: 100%
-   
-   The Poincaré section for the Hénon-Heiles system using the VV2 integrator, the SVY4 integrator, and the IMP integrator. Each color corresponds to a different initial condition.
-
-Further reading
----------------
-
-- For more examples and detailed explanations, check out the :doc:`DiscreteDynamicalSystem tutorial page <dds_tutorial>`, :doc:`ContinuousDynamicalSystem tutorial page <cds_tutorial>`, and :doc:`HamiltonianSystem tutorial page <hs_tutorial>`.
-- For detailed API docs, see the :doc:`api/dds`, :doc:`api/cds`, and :doc:`api/hs` pages.
-- For installation instructions, see the :doc:`installation` page.
-- To contribute or get support, visit the :doc:`contact` page.
+- Use the tutorials linked above to explore the system type relevant to your work.
+- Consult the :doc:`discrete <api/dds>`, :doc:`continuous <api/cds>`, and :doc:`Hamiltonian <api/hs>` API references for method arguments and return values.
+- Explore :doc:`PlotStyler <api/plot_styler>` for consistent plot formatting. The examples above apply its default style before creating their figures.
