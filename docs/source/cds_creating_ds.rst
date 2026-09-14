@@ -1,95 +1,155 @@
 Creating a continuous dynamical system
 --------------------------------------
 
-The :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class allows you to create a continuous dynamical system object. You can use built-in systems or define your own continuous dynamical system.
+The :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class represents systems defined by ordinary differential equations. You can select a built-in model or provide your own equations of motion.
 
-Using built-in systems
+Using a built-in model
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To check available built-in systems, you can use the :py:meth:`available_models <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.available_models>` method:
+Import the class as ``cds`` and call :py:meth:`available_models <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.available_models>` to see the built-in models:
 
 .. code-block:: python
 
-    available_models = cds.available_models()
-    print(available_models)
+    from pynamicalsys import ContinuousDynamicalSystem as cds
+
+    for model in cds.available_models():
+        print(model)
 
 .. code-block:: text
 
-    ['lorenz system']
+    lorenz system
+    henon heiles
+    rossler system
+    4d rossler system
+    duffing
 
-For example, you can create the 63 Lorenz system, given by:
+Select a model by passing its name to ``model``. For example, the Lorenz system is
 
 .. math::
 
-    \begin{align*}
-        \dot{x} &= \sigma(y - x),\\
-        \dot{y} &= x(\rho - z) - y,\\
-        \dot{z} &= xy - \beta z.
-    \end{align*}
-    
-You can create this system using:
+    \begin{aligned}
+        \dot{x} &= \sigma(y-x), \\
+        \dot{y} &= x(\rho-z)-y, \\
+        \dot{z} &= xy-\beta z.
+    \end{aligned}
+
+Create the system and inspect its parameter order with the ``info`` property:
 
 .. code-block:: python
 
-    ds = cds(model="lorenz system")
+    system = cds(model="lorenz system")
+    print(system.info["parameters"])
 
-and then all the methods available for the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class can be used to run simulations and analyze the system.
+.. code-block:: text
 
-Creating custom continuous dynamical systems
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    ['sigma', 'rho', 'beta']
 
-You can also create your own continuous system by defining a function that takes the current state and a list of parameters, and returns the time derivative of the state. For example, let us create the Lorenz system as a custom function:
+The state is ordered as ``[x, y, z]``, and parameters must follow the order shown by ``info``. The methods of ``system`` can now integrate trajectories and perform the analyses supported by the class.
+
+Creating a custom system
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+A custom equations-of-motion function receives the current time, state, and one-dimensional parameter array, then returns the time derivative of the state. The time argument is required even for an autonomous system such as the Lorenz system:
 
 .. code-block:: python
 
+    import numpy as np
     from numba import njit
+    from pynamicalsys import ContinuousDynamicalSystem as cds
 
     @njit
-    def lorenz_system(time, state, params):
-        sigma, rho, beta = params
+    def lorenz_system(time, state, parameters):
         x, y, z = state
+        sigma, rho, beta = parameters
         dx = sigma * (y - x)
         dy = x * (rho - z) - y
         dz = x * y - beta * z
-
         return np.array([dx, dy, dz])
 
-Note that we use :code:`@njit` to compile the function for performance. Most methods inside the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class are decoreted with :code:`@njit`. Therefore, it is absolute necessary that all custom mapping function be decoreted with it as well. You can then create a continuous dynamical system object with this custom function:
+    @njit
+    def lorenz_jacobian(time, state, parameters):
+        x, y, z = state
+        sigma, rho, beta = parameters
+        return np.array(
+            [
+                [-sigma, sigma, 0.0],
+                [rho - z, -1.0, -x],
+                [y, x, -beta],
+            ]
+        )
+
+The ``@njit`` decorator compiles both functions for use by the package's Numba-accelerated numerical routines. Keep the functions limited to operations supported by Numba.
+
+When the parameter values are already known, pass them while creating the system:
 
 .. code-block:: python
 
-    ds = cds(equations_of_motion=lorenz_system, system_dimension=3, number_of_parameters=3)
+    parameters = [10.0, 28.0, 8.0 / 3.0]
+    system = cds(
+        equations_of_motion=lorenz_system,
+        jacobian=lorenz_jacobian,
+        system_dimension=3,
+        parameters=parameters,
+    )
 
-An alternative is to inform the list of parameters instead of the number of them:
+Here, ``system_dimension=3`` corresponds to the three state variables ``[x, y, z]``. Supplying ``parameters`` also tells the class that the system expects three parameters and stores their values for later method calls.
+
+If you want to provide the parameters only when performing a calculation, declare their number instead:
 
 .. code-block:: python
 
-    sigma, rho, beta = 10.0, 28.0, 8/3
-    parameters = [sigma, rho, beta]
-    ds = cds(equations_of_motion=lorenz_system, system_dimension=3, parameters=parameters)
-    print(ds.get_parameters())
+    system = cds(
+        equations_of_motion=lorenz_system,
+        jacobian=lorenz_jacobian,
+        system_dimension=3,
+        number_of_parameters=3,
+    )
+
+    final_state = system.evolve_system(
+        [1.0, 1.0, 1.0],
+        total_time=0.1,
+        parameters=[10.0, 28.0, 8.0 / 3.0],
+    )
+
+In this case, a method call must supply ``parameters`` until values are stored with :py:meth:`set_parameters <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.set_parameters>`.
+
+Managing parameters
+~~~~~~~~~~~~~~~~~~~
+
+Use ``set_parameters`` to store parameter values for subsequent calculations:
+
+.. code-block:: python
+
+    system.set_parameters([10.0, 28.0, 8.0 / 3.0])
+    print(system.get_parameters())
 
 .. code-block:: text
-    [10.0, 28.0, 2.6666666666666665]
 
-After creating the object, the parameters passed to the constructor are stored internally and used by default by all methods of the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` instance. In this configuration, every method call that does not explicitly specify parameters will use the internally stored value ([10.0, 28.0, 2.6666666666666665]). You can permanently modify these stored parameters using the
-:py:meth:`set_parameters <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.set_parameters>` method:
+    [10.         28.          2.66666667]
+
+Methods use the stored parameters when their ``parameters`` argument is omitted. Passing the argument to an individual call temporarily overrides the stored values:
 
 .. code-block:: python
 
-    sigma, rho, beta = 11.0, 20.0, 3
-    parameters = [sigma, rho, beta]
-    ds.set_parameters(parameters)
-    print(ds.get_parameters())
+    stored_result = system.evolve_system([1.0, 1.0, 1.0], total_time=0.1)
+    override_result = system.evolve_system(
+        [1.0, 1.0, 1.0],
+        total_time=0.1,
+        parameters=[11.0, 20.0, 3.0],
+    )
+    print(system.get_parameters())
 
 .. code-block:: text
-    [11.0, 20.0, 3.0]
 
-This updates the parameters at the object level, so all subsequent method calls will now use [11.0, 20.0, 3.0] by default. Finally, all methods of :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` also accept a parameters argument. When this argument is provided, it temporarily overrides the internally stored parameters for that specific method call only. The parameters stored in the object remain unchanged.
+    [10.         28.          2.66666667]
 
-.. note::
+The second call uses the temporary parameter values, but the values stored in ``system`` remain unchanged. Calling ``system.set_parameters([11.0, 20.0, 3.0])`` would replace the stored values for all later calls.
 
-   In other words:
+Providing a Jacobian
+~~~~~~~~~~~~~~~~~~~~
 
-   - ``set_parameters(...)`` → persistent change (updates the system's internal parameters)
-   - ``parameters=...`` in a method call → temporary, local override (applies only to that call)
+The equations of motion alone are enough to integrate trajectories. A custom Jacobian must accept the same ``(time, state, parameters)`` arguments and return the matrix of partial derivatives with respect to the state variables.
+
+The Jacobian is required for tangent-space calculations such as Lyapunov exponents, covariant Lyapunov vectors, SALI, LDI, and GALI. Decorate it with ``@njit`` and pass it as ``jacobian=...`` when constructing the system, as shown in the Lorenz example above.
+
+The ``info`` property describes built-in models. The package cannot infer descriptive metadata or equations from custom functions.
