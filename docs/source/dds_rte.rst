@@ -1,309 +1,209 @@
 Recurrence time entropy
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-The recurrence plot (RP) is a graphical representation of the times at which a dynamical system revisits the same state. It is a powerful tool for analyzing complex systems, revealing patterns and structures that may not be immediately apparent in the raw data. The recurrence time entropy (RTE) is a measure derived from the recurrence plot that quantifies the complexity recurrence times of a trajectory. The recurrence matrix is a square matrix that represents the recurrence of states in a dynamical system, where each element indicates whether the system's state at one time point is close to its state at another time point. It is defined as:
-
-.. math::
-   
-   \begin{equation}
-        R_{ij} = H\left(\epsilon - \|\mathbf{x}_i - \mathbf{x}_j\|\right),
-   \end{equation}
-
-where :math:`R_{ij}` is the element of the recurrence matrix at row :math:`i` and column :math:`j`, :math:`\mathbf{x}_i` and :math:`\mathbf{x}_j` are the state vectors at time points :math:`i` and :math:`j`, respectively, and :math:`H` is the Heaviside step function. The parameter :math:`\epsilon` is a threshold that determines whether two states are considered close enough to be recurrent.
-
-The recurrence time entropy is defined as the Shannon entropy of the distribution of recurrence times. The recurrence times are obtained from the RP via the distribution of white vertical lines, i.e., the distribution of the gaps between two consecutive diagonal lines in the RP. This distribution captures the time intervals between successive recurrences of the system's state, providing a statistical measure of how often and how regularly the system revisits its states.
-
-The recurrence time entropy is computed as follows:
+A recurrence plot records when a trajectory returns close to a state that it visited previously. This representation was introduced by `Eckmann, Kamphorst, and Ruelle (1987) <https://doi.org/10.1209/0295-5075/4/9/004>`_. For a trajectory :math:`\{\mathbf{x}_i\}_{i=1}^{N}`, the recurrence matrix is
 
 .. math::
 
-   \begin{equation}
-        \mathrm{RTE} = -\sum_{\ell = \ell_{\text{min}}}^{\ell_\text{max}}p(\ell)\ln p(\ell),
-    \end{equation}
+    R_{ij}=\Theta\!\left(\varepsilon-\left\|\mathbf{x}_i-\mathbf{x}_j\right\|\right),
 
-where :math:`p(\ell)` is the probability of recurrence time :math:`\ell`, and :math:`\ell_{\text{min}}` and :math:`\ell_{\text{max}}` are the minimum and maximum recurrence times, respectively. The RTE provides a measure of the complexity of the recurrence times, with higher values indicating chaotic dynamics and lower values indicating more regular behavior.
+where :math:`\Theta` is the Heaviside function, :math:`\varepsilon` is the recurrence threshold, and the norm determines the distance between states. A recurrence is recorded when :math:`R_{ij}=1`.
 
-We are going to illustrate the concept of recurrence time entropy using three different initial conditions for the standard map with :math:`k = 1.5`. First, let's visualize the trajectories of the standard map for these initial conditions:
+The zeros between consecutive recurrence points in a column form white vertical lines. Their lengths estimate the recurrence times of the trajectory. If :math:`P_w(v)` is the number of white vertical lines of length :math:`v`, the normalized distribution is
+
+.. math::
+
+    p_w(v)=\frac{P_w(v)}{\displaystyle\sum_{v=v_{\min}}^{v_{\max}}P_w(v)}.
+
+The recurrence time entropy (RTE) is the Shannon entropy of this distribution:
+
+.. math::
+
+    \mathrm{RTE}=-\sum_{v=v_{\min}}^{v_{\max}}p_w(v)\ln p_w(v).
+
+The entropy of a recurrence-period distribution was introduced by `Little et al. (2007) <https://doi.org/10.1186/1475-925X-6-23>`_. Its formulation from the white vertical lines of recurrence plots and its use for detecting stickiness were developed by `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_.
+
+Interpreting RTE
+^^^^^^^^^^^^^^^^
+
+The interpretation is motivated by `Slater's theorem <https://doi.org/10.1017/S0305004100026086>`_. An irrational rotation on a circle has at most three return times to a connected interval, with the third equal to the sum of the other two. Consequently, periodic motion has a single recurrence time and :math:`\mathrm{RTE}=0`, while quasiperiodic motion generally produces a small number of recurrence times and a low RTE. Chaotic motion has a broader recurrence-time distribution and typically produces a larger RTE.
+
+For mixed phase spaces, sticky chaotic trajectories temporarily resemble quasiperiodic motion near regular islands. Their RTE can therefore be lower than that of trajectories moving through the chaotic sea but higher than that of regular trajectories. `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_ showed that RTE is strongly positively correlated with the largest Lyapunov exponent for the standard map and that the finite-time RTE distribution can resolve different hierarchical levels of islands around islands.
+
+These statements describe the relative behavior of RTE for a fixed analysis procedure. RTE values depend on the trajectory length, recurrence threshold, distance metric, minimum line length, and scaling of the state variables. They should not be compared across calculations that use incompatible settings.
+
+Choosing the recurrence threshold
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The threshold :math:`\varepsilon` must be large enough to produce a useful number of recurrences but small enough to preserve local phase-space structure. The :py:meth:`recurrence_time_entropy <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.recurrence_time_entropy>` method provides three threshold strategies through ``threshold_mode``:
+
+``threshold_mode="std"``
+    Interprets ``threshold`` as a scale multiplying the norm of the componentwise standard-deviation vector. With ``threshold=0.1`` and ``std_metric="supremum"``, the threshold is :math:`\varepsilon=0.1\max_j\sigma_j`. This reproduces the choice used by `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_ for the standard map.
+
+``threshold_mode="direct"``
+    Uses ``threshold`` directly in the units of the state-space distance. This is useful when a physically meaningful neighborhood size is known.
+
+``threshold_mode="rr"``
+    Chooses :math:`\varepsilon` from the quantile of the off-diagonal pairwise distances so that ``threshold`` specifies a target recurrence rate. In this mode, ``threshold`` must lie strictly between zero and one.
+
+For ``"std"`` and ``"direct"``, ``threshold`` must be positive. The deprecated ``threshold_std`` option should not be used in new code. Its replacements are ``threshold_mode="std"`` and ``threshold_mode="direct"``.
+
+The ``metric`` option controls distances between trajectory states and accepts ``"supremum"``, ``"euclidean"``, ``"manhattan"``, or a callable. The ``std_metric`` option independently controls how the componentwise standard deviations are combined in ``"std"`` mode and accepts the same named norms or a callable. The defaults are the supremum norm for both. If the state variables have very different physical scales, normalize them first or choose a metric that accounts for those scales.
+
+For example, the three threshold modes can be selected as follows:
 
 .. code-block:: python
 
-   from pynamicalsys import DiscreteDynamicalSystem as dds
-   from pynamicalsys import PlotStyler
-   import numpy as np
-   import matplotlib.pyplot as plt
+    initial_state = [0.05, 0.05]
 
-   # Create a discrete dynamical system for the standard map
-   ds = dds(model="standard map")
-
-   # Define the initial conditions and parameters
-   u = [[0.05, 0.05],
-        [0.35, 0.0],
-        [0.43, 0.2]]
-   k = 1.5
-   ds.set_parameters(k)
-
-   # Generate trajectories for the standard map
-   total_time = 500000
-   trajectories = ds.trajectory(u, total_time).reshape(len(u), total_time, 2)
-
-   # Set the plot style
-   ps = PlotStyler(
-        fontsize=18,
-        markersize=0.2,
-        markeredgewidth=0,
-        minor_ticks_visible=True,
+    rte_std = system.recurrence_time_entropy(
+        u=initial_state,
+        total_time=5_000,
+        parameters=[1.5],
+        threshold_mode="std",
+        threshold=0.1,
+        metric="supremum",
+        std_metric="supremum",
     )
-   ps.apply_style()
 
-   
-   # Define the figure and axis for plotting
-   fig, ax = plt.subplots()
-   ps.set_tick_padding(ax, pad_x = 6)
-
-   # Plot the trajectories
-   colors = ["black", "green", "darkviolet"]
-   for i in range(len(u)):
-      plt.plot(trajectories[i, :, 0], trajectories[i, :, 1], "o", c=colors[i])
-
-   # Set the axis limits and labels
-   plt.xlim(0, 1)
-   plt.ylim(0, 1)
-   plt.xlabel("$x$")
-   plt.ylabel("$y$")
-   plt.show()
-
-.. figure:: images/rte_trajectories.png
-   :align: center
-   :width: 100%
-   
-   Three trajectories of the standard map with different initial conditions.
-
-Next, we will compute the recurrence matrices for these trajectories using the :py:meth:`recurrence_matrix <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics.recurrence_matrix>` method from the :py:class:`TimeSeriesMetrics <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics>` class. The recurrence matrix is computed using a threshold of 10% of the standard deviation of the trajectory. To change that, use the parameters `threshold` and `threshold_std`. The recurrence matrices, given a trajectory, are calculated as shown below:
-
-.. code-block:: python
-
-   from pynamicalsys import TimeSeriesMetrics
-
-   # Empty lists to store recurrence matrices and white vertical line distributions
-   recmats = []
-   Ps = []
-
-   # Compute the recurrence matrices and white vertical line distributions
-   for i in range(len(u)):
-      # Create a TimeSeriesMetrics object for the trajectory
-      tsm = TimeSeriesMetrics(trajectories[i, :1000, :])
-      # Compute the recurrence matrix and white vertical line distribution
-      recmat, P = tsm.recurrence_matrix(compute_white_vert_distr=True)
-      # Store the recurrence matrix and white vertical line distribution
-      recmats.append(recmat)
-      Ps.append(P)
-   
-   # Set the plot style for recurrence matrices
-   ps = PlotStyler(
-        fontsize=18,
-        markersize=0.5,
-        markeredgewidth=0,
-        minor_ticks_visible=True,
+    rte_direct = system.recurrence_time_entropy(
+        u=initial_state,
+        total_time=5_000,
+        parameters=[1.5],
+        threshold_mode="direct",
+        threshold=0.02,
     )
-   ps.apply_style()
 
-   # Create the figure and axis for plotting the recurrence matrices
-   fig, ax = plt.subplots(1, 3, figsize=(10, 3), sharey=True, sharex=True)
-
-   # Plot the recurrence matrices
-   for i in range(len(u)):
-      # Find the indices of the non-zero elements in the recurrence matrix
-      non_zero_indices = np.nonzero(recmats[i])
-      # Plot the non-zero elements
-      ax[i].plot(non_zero_indices[0], non_zero_indices[1], "o", c=colors[i])
-   
-   # Set the axis limits and labels for the recurrence matrices
-   ax[0].set_xlim(0, 1000)
-   ax[0].set_ylim(0, 1000)
-   ax[0].set_xlabel("$i$")
-   ax[0].set_ylabel("$j$")
-   ax[1].set_xlabel("$i$")
-   ax[2].set_xlabel("$i$")
-
-   plt.tight_layout(pad=0.05)
-   plt.show()
-
-.. figure:: images/rte_recurrence_matrices.png
-   :align: center
-   :width: 100%
-   
-   Recurrence matrices for the standard map with three different initial conditions.
-
-The recurrence matrices for the three trajectories exhibit different patterns, reflecting the underlying dynamics of the system. The first trajectory shows a complex structure, while the second exhibits a more regular pattern. The third trajectory shows a mix of both regular and chaotic behavior.
-
-To calculate the recurrence time entropy from the trajectory data, we use the :py:meth:`recurrence_time_entropy <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics.recurrence_time_entropy>` method from the :py:class:`TimeSeriesMetrics <pynamicalsys.core.time_series_metrics.TimeSeriesMetrics>` class
-
-.. code-block:: python
-
-   rtes = []
-   for i in range(len(u)):
-      tsm = TimeSeriesMetrics(trajectories[i, :1000, :])
-      rte = tsm.recurrence_time_entropy()
-      rtes.append(rte)
-   print(rtes)
-
-.. code-block:: text
-
-   [4.961395761597473, 1.190112332533454, 2.1694882785487892]
-
-The recurrence time entropy values reflect the complexity of the RPs we have discussed above. The first trajectory has a high RTE value, indicating a complex and chaotic behavior, while the second trajectory has a low RTE value, suggesting more regular dynamics. The third trajectory has an intermediate RTE value, indicating a mix of both regular and chaotic behavior.
-
-Finally, we can visualize the white vertical line distributions for the recurrence matrices. The white vertical lines in the recurrence plot represent the gaps between successive diagonal lines, which correspond to the recurrence times:
-
-.. code-block:: python
-
-   # Set the plot style
-   ps = PlotStyler(
-        fontsize=18,
-        markersize=0.5,
-        markeredgewidth=0,
-        minor_ticks_visible=True,
+    rte_rr = system.recurrence_time_entropy(
+        u=initial_state,
+        total_time=5_000,
+        parameters=[1.5],
+        threshold_mode="rr",
+        threshold=0.05,
     )
-   ps.apply_style()
 
-   # Create the figure and axis for plotting the white vertical line distributions
-   fig, ax = plt.subplots(1, 3, figsize=(10, 3), sharey=True)
+The minimum accepted white-line length is controlled by ``lmin`` and defaults to one. Increasing it removes the shortest recurrence times before the probability distribution and entropy are calculated.
 
-   # Plot the white vertical line distributions
-   width = [10, .5, 5]
-   for i in range(len(u)):
-      Ns = np.arange(Ps[i].shape[0])
-      P_norm = Ps[i] / Ps[i].sum()
-      ax[i].bar(Ns, P_norm, color=colors[i], width=width[i])
+Optional outputs
+^^^^^^^^^^^^^^^^
 
-   # Set the axis limits and labels for the white vertical line distributions
-   ax[0].set_yscale("log")
-   ax[0].set_xlim(0, 1000)
-   ax[1].set_xlim(0, 50)
-   ax[2].set_xlim(0, 500)
-   ax[0].set_ylabel(r"$p(\ell)$")
-   ax[0].set_xlabel(r"$\ell$")
-   ax[1].set_xlabel(r"$\ell$")
-   ax[2].set_xlabel(r"$\ell$")
-
-   plt.tight_layout(pad=0.05)
-   plt.show()
-
-.. figure:: images/rte_white_vert_distr.png
-   :align: center
-   :width: 100%
-   
-   White vertical line distribution for the above recurrence matrices.
-
-The recurrence time entropy can also be computed using the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class directly, which simplifies the process:
+By default, ``recurrence_time_entropy`` returns only the scalar RTE. The method can also return the final state, recurrence matrix, and normalized nonzero white-line distribution. Requested outputs always follow the RTE in that order:
 
 .. code-block:: python
 
-   from pynamicalsys import DiscreteDynamicalSystem as dds
+    rte, final_state, recurrence_matrix, distribution = system.recurrence_time_entropy(
+        u=initial_state,
+        total_time=5_000,
+        parameters=[1.5],
+        threshold_mode="std",
+        threshold=0.1,
+        return_final_state=True,
+        return_recmat=True,
+        return_p=True,
+    )
 
-   # Create a discrete dynamical system for the standard map
-   ds = dds(model="standard map")
+The recurrence matrix contains :math:`N^2` entries, so both its construction and storage become expensive for long trajectories. Use only the trajectory length needed to resolve the recurrence-time distribution, and request ``return_recmat=True`` only when the matrix itself is needed.
 
-   u = [[0.05, 0.05],
-        [0.35, 0.0],
-        [0.43, 0.2]]
-   k = 1.5
-   ds.set_parameters(k)
-   total_time = 1000
-   rtes = [
-        ds.recurrence_time_entropy(u[i], total_time)
-        for i in range(len(u))
-    ]
-   print(rtes)
+Comparing parameter values
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. code-block:: text
-
-   [4.961395761597473, 1.190112332533454, 2.1694882785487892]
-
-The `DiscreteDynamicalSystem.recurrence_time_entropy` method can also return the recurrence matrix, the white vertical line distribution, and the final state of the initial condition. See :py:meth:`DiscreteDynamicalSystem.recurrence_time_entropy <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.recurrence_time_entropy>` for more details.
-
-As a final example. let's compute the recurrence time entropy for the standard map for three different parameter values, :math:`k = 0.9`, :math:`k = 1.5`, and :math:`k = 3.6`, using random initial conditions:
+The following example keeps the same ensemble of random initial conditions and compares the standard map at :math:`k=0.9`, :math:`k=1.5`, and :math:`k=3.6`. For each trajectory, the recurrence threshold is ten percent of the supremum norm of its standard-deviation vector:
 
 .. code-block:: python
 
-   from pynamicalsys import DiscreteDynamicalSystem as dds
-   import numpy as np
-   from pynamicalsys import PlotStyler
-   import matplotlib.pyplot as plt
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from pynamicalsys import DiscreteDynamicalSystem as dds, PlotStyler
 
-   # Create a discrete dynamical system for the standard map
-   ds = dds(model="standard map")
+    system = dds(model="standard map")
 
-   # Define the initial conditions and parameters
-   num_ic = 250
-   x_range = (0, 1)  # x range for initial conditions
-   y_range = (0, 1)  # y range for initial conditions
-   np.random.seed(0)  # Set the seed for reproducibility
-   x_ic = np.random.uniform(x_range[0], x_range[1], num_ic)
-   y_ic = np.random.uniform(y_range[0], y_range[1], num_ic)
-   u = np.column_stack((x_ic, y_ic))  # Initial conditions array with shape (num_ic, d)
-   k = [0.9, 1.5, 3.6]  # Parameter values
-   total_time = 10000  # Total time for the simulation
+    num_initial_conditions = 250
+    np.random.seed(0)
+    x_initial = np.random.uniform(0.0, 1.0, num_initial_conditions)
+    y_initial = np.random.uniform(0.0, 1.0, num_initial_conditions)
+    initial_states = np.column_stack((x_initial, y_initial))
+    parameter_values = [0.9, 1.5, 3.6]
+    total_time = 10_000
 
-   # Compute the recurrence time entropy for each parameter value
-   rte = [
-        ds.recurrence_time_entropy(u[i], total_time, parameters=k[j])
-        for i in range(num_ic)
-        for j in range(len(k))
-    ]
-   rte = np.array(rte).reshape(num_ic, len(k))
+    rte_values = np.empty((len(parameter_values), num_initial_conditions))
+    trajectories = np.empty(
+        (len(parameter_values), num_initial_conditions, total_time, 2)
+    )
+    for i, k in enumerate(parameter_values):
+        for j, initial_state in enumerate(initial_states):
+            rte_values[i, j] = system.recurrence_time_entropy(
+                u=initial_state,
+                total_time=total_time,
+                parameters=[k],
+                threshold_mode="std",
+                threshold=0.1,
+                metric="supremum",
+                std_metric="supremum",
+            )
 
-   # We also compute the trajectories for visualization
-   trajectories = [
-        ds.trajectory(
-            u,
-            total_time,
-            parameters=k[i],
-        )
-        for i in range(len(k))
-    ]
-   trajectories_reshaped = []
-   for trajectory in trajectories:
-      trajectory_reshaped = trajectory.reshape(num_ic, total_time, 2)
-      trajectories_reshaped.append(trajectory_reshaped)
+        trajectories[i] = system.trajectory(
+            u=initial_states,
+            total_time=total_time,
+            parameters=[k],
+        ).reshape(num_initial_conditions, total_time, 2)
 
-   # Set the plot style
-   ps = PlotStyler(fontsize=24)
-   ps.apply_style()
+Plot the trajectories and assign every point the RTE of the initial condition that generated it:
 
-   # Create the figure and axis for plotting the recurrence time entropy
-   fig, ax = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-   [ps.set_tick_padding(ax[i], pad_x = 8) for i in range(3)]
+.. code-block:: python
 
-   # Plot the trajectories and recurrence time entropy
-   # Create scatter plots for each parameter value
-   # and color them according to the recurrence time entropy
-   hms = [0, 0, 0]
-   for j in range(len(k)):
-      for i in range(num_ic):
-         hm = ax[j].scatter(
-            trajectories_reshaped[j][i, :, 0],
-            trajectories_reshaped[j][i, :, 1],
-            c=rte[i, j] * np.ones(total_time),
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(1, 3, figsize=(12, 4), sharex=True, sharey=True)
+    for i, k in enumerate(parameter_values):
+        trajectory_rte = np.repeat(rte_values[i], total_time)
+        points = ax[i].scatter(
+            trajectories[i, :, :, 0].ravel(),
+            trajectories[i, :, :, 1].ravel(),
+            c=trajectory_rte,
             s=0.05,
             edgecolor="none",
             cmap="nipy_spectral",
-            vmin=0,
-            vmax=rte[:, j].max(),
+            vmin=0.0,
+            vmax=rte_values[i].max(),
         )
-         hms[j] = hm
-
-   [plt.colorbar(hms[i], ax=ax[i], label=rf"RTE with $k = {k[i]:.1f}$", location="top", aspect=40, pad=0.01) for i in range(len(k))]
-   ax[0].set_xlim(0, 1)
-   ax[0].set_ylim(0, 1)
-   ax[0].set_ylabel("$y$")
-   [ax[i].set_xlabel("$x$") for i in range(len(k))]
-
-   plt.tight_layout(pad=0.05)
-   plt.show()
+        fig.colorbar(
+            points,
+            ax=ax[i],
+            label=rf"RTE with $k={k:.1f}$",
+            location="top",
+            aspect=40,
+            pad=0.01,
+        )
+        ax[i].set_xlim(0.0, 1.0)
+        ax[i].set_ylim(0.0, 1.0)
+        ax[i].set_xlabel("$x$")
+    ax[0].set_ylabel("$y$")
+    fig.tight_layout()
+    plt.show()
 
 .. figure:: images/standard_map_rte.png
-   :align: center
-   :width: 100%
-   
-   Recurrence time entropy for the standard map with three different parameter values
+    :align: center
+    :width: 100%
+
+    Standard-map trajectories colored by their recurrence time entropy for three values of :math:`k`.
+
+At :math:`k=0.9`, invariant curves occupy much of the phase space. At :math:`k=1.5`, the chaotic sea coexists with prominent regular islands and sticky layers. At :math:`k=3.6`, the chaotic component is larger while smaller regular structures remain. Within each panel, low RTE values identify trajectories with a narrow recurrence-time distribution and high values identify trajectories with a broader distribution.
+
+Finite-time RTE
+^^^^^^^^^^^^^^^
+
+Use :py:meth:`finite_time_recurrence_time_entropy <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.finite_time_recurrence_time_entropy>` to follow changes along one trajectory. The method divides ``total_time`` into consecutive non-overlapping windows of length ``finite_time`` and returns one RTE value per complete window. Any remainder shorter than ``finite_time`` is not used.
+
+.. code-block:: python
+
+    finite_rte, phase_space_points = system.finite_time_recurrence_time_entropy(
+        u=[0.05, 0.05],
+        total_time=100_000,
+        finite_time=200,
+        parameters=[1.5],
+        return_points=True,
+        threshold_mode="std",
+        threshold=0.1,
+    )
+
+When ``return_points=True``, ``phase_space_points[i]`` is the state at the beginning of the window that produced ``finite_rte[i]``. A multimodal finite-time RTE distribution can reveal transitions between the chaotic sea and sticky layers, but the locations of its modes depend on the window length and threshold settings.
