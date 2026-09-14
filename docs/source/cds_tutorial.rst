@@ -9,7 +9,6 @@ This tutorial is also available as a Jupyter notebook. You can view it directly 
    :maxdepth: 1
    :caption: Contents
 
-   cds_import_and_setup
    cds_creating_ds
    cds_trajectories
    cds_chaotic_indicators

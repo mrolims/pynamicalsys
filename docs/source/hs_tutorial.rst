@@ -9,7 +9,6 @@ This tutorial is also available as a Jupyter notebook. You can view it directly 
    :maxdepth: 1
    :caption: Contents
 
-   hs_import_and_setup
    hs_creating_hs
    hs_trajectories
 ..    hs_chaotic_indicators

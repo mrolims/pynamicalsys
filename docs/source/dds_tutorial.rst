@@ -9,7 +9,6 @@ This tutorial is also available as a Jupyter notebook. You can view it directly 
    :maxdepth: 1
    :caption: Contents
 
-   dds_import_and_setup
    dds_creating_ds
    dds_trajectories
    dds_bifurcation_diagram
