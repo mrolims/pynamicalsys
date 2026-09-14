@@ -9,6 +9,10 @@ sys.path.insert(
 
 from pynamicalsys import __version__
 
+# Show the homepage notice only for the Read the Docs development version.
+if os.environ.get("READTHEDOCS_VERSION") == "latest":
+    tags.add("development_docs")
+
 project = "pynamicalsys"
 copyright = "2025, Matheus Rolim Sales and pynamicalsys authors"
 author = "Matheus Rolim Sales"
