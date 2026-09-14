@@ -1,312 +1,269 @@
 Creating a Hamiltonian system
 -----------------------------
 
-The :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class allows you to create a discrete dynamical system object. You can use built-in systems or define your own continuous dynamical system.
+The :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class represents systems written in generalized coordinates :math:`\mathbf{q}` and momenta :math:`\mathbf{p}`. You can select a built-in model or provide functions for a custom separable or general Hamiltonian.
 
-Using built-in systems
+Using a built-in model
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To check available built-in systems, you can use the :py:meth:`available_models <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.available_models>` method:
+Import the class as ``hs`` and call :py:meth:`available_models <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.available_models>` to see the built-in models:
 
 .. code-block:: python
 
-    available_models = HamiltonianSystem.available_models()
-    print(available_models)
+    from pynamicalsys import HamiltonianSystem as hs
+
+    for model in hs.available_models():
+        print(model)
 
 .. code-block:: text
 
-    ['henon heiles']
+    henon heiles
 
-For example, you can create the two degrees of freedom Hénon-Heiles object, given by the Hamiltonian function
+The built-in Hénon-Heiles model has two degrees of freedom and Hamiltonian
 
 .. math::
 
-    \begin{align*}
-        H(x, y, p_x, p_y) = \frac{1}{2}(p_x^2 + p_y^2) + \frac{1}{2}(x^2 + y^2) + x^2y - \frac{y^3}{3},
-    \end{align*}
-    
-using:
+    H(x,y,p_x,p_y) = \frac{p_x^2+p_y^2}{2} + \frac{x^2+y^2}{2} + x^2y - \frac{y^3}{3}.
+
+Create the system and inspect its metadata with the ``info`` property:
 
 .. code-block:: python
 
-    ds = HamiltonianSystem(model="henon heiles")
-
-and then all the methods available for the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class can be used to run simulations and analyze the system.
-
-Creating custom separable Hamiltonian systems
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-A separable Hamiltonian system is a system where the kinetic energy depends only on the momenta and the potential energy depends only on the coordinates, i,e., :math:`H(\mathbf{q}, \mathbf{q}) = T(\mathbf{p}) + V(\mathbf{q})`. For this type of Hamiltonian, the available integrators are the 2nd order velocity Verlet and the 4th order Yoshida. By default, the class uses the 4th order Yosida. You can select a differnt integrator by calling the :py:meth:`integrator <pynamicalsys.core.hamiltonian_system.HamiltonianSystem.integrator>` method:
-
-.. code-block::python
-    ds.integrator("vv2", time_step=0.001)
-    ds.integrator("svy4", time_step=0.001)
-
-To list all the available integrators, use the :py:meth:`available_integrators <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.available_integrators>`
-
-.. code-block:: python
-    HamiltonianSystem.available_integrators()
+    system = hs(model="henon heiles")
+    print(system.info["degrees of freedom"])
+    print(system.info["parameters"])
 
 .. code-block:: text
 
-    ['vv2', 'svy4', 'imp']
+    2
+    []
 
-You can also create your own separable Hamiltonian system by defining a function that calculates the gradient of the kinetic and potential energy. For example, for the Hénon-Heiles system, whose Hamiltonian is separable, we have
+The coordinate and momentum vectors are ordered as ``q = [x, y]`` and ``p = [px, py]``. This model has no adjustable parameters.
 
-.. math::
-    \begin{equation*}
-        \frac{\partial T}{\partial \mathbf{p}} =
-        \begin{pmatrix}
-            p_x \\[0.3em]
-            p_y
-        \end{pmatrix},
-        \qquad
-        \frac{\partial V}{\partial\mathbf{q}} =
-        \begin{pmatrix}
-            x + 2xy \\[0.3em]
-            y + x^2 - y^2
-        \end{pmatrix}.
-    \end{equation*}
+Choosing a custom representation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-We then define functions that take the generalized coordinates and the parameters and generalized momenta and parameters:
+A separable Hamiltonian has the form :math:`H(\mathbf{q},\mathbf{p}) = T(\mathbf{p}) + V(\mathbf{q})`. Define ``grad_T`` and ``grad_V`` to use the explicit ``svy4`` or ``vv2`` integrator. Add ``hess_T`` and ``hess_V`` when tangent-space calculations are needed.
+
+A general Hamiltonian can depend on coordinates and momenta in a way that cannot be separated. Define ``eom`` and ``hess_H`` for this representation. The class then uses the implicit midpoint integrator, ``imp``.
+
+The available integrators can be listed directly:
 
 .. code-block:: python
-    
+
+    for integrator in hs.available_integrators():
+        print(integrator)
+
+.. code-block:: text
+
+    svy4
+    vv2
+    imp
+
+Creating Hénon-Heiles as a separable system
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Hénon-Heiles Hamiltonian separates into kinetic and potential energies:
+
+.. math::
+
+    H(\mathbf{q},\mathbf{p}) = T(\mathbf{p}) + V(\mathbf{q}) = \frac{p_x^2+p_y^2}{2} + \frac{x^2+y^2}{2} + x^2y - \frac{y^3}{3}.
+
+The gradients are
+
+.. math::
+
+    \nabla_{\mathbf{q}}V = \begin{pmatrix}x+2xy \\ y+x^2-y^2\end{pmatrix}, \qquad \nabla_{\mathbf{p}}T = \begin{pmatrix}p_x \\ p_y\end{pmatrix}.
+
+The corresponding Hessians are
+
+.. math::
+
+    \nabla_{\mathbf{q}}^2V = \begin{pmatrix}1+2y & 2x \\ 2x & 1-2y\end{pmatrix}, \qquad \nabla_{\mathbf{p}}^2T = \begin{pmatrix}1 & 0 \\ 0 & 1\end{pmatrix}.
+
+Define one function for each gradient and Hessian. Every function receives the relevant state vector and a parameter array, even though Hénon-Heiles has no adjustable parameters:
+
+.. code-block:: python
+
+    import numpy as np
     from numba import njit
-    
-    @njit
-    def henon_heiles_grad_T(p, parameters=None):
-        return np.array([p[0], p[1]])
-    
-    @njit
-    def henon_heiles_grad_V(q, parameters=None):
-        q0, q1 = q[0], q[1]
-        dV_dq0 = q0 * (1.0 + 2.0 * q1)
-        dV_dq1 = q1 + q0 * q0 - q1 * q1
-        return np.array([dV_dq0, dV_dq1])    
+    from pynamicalsys import HamiltonianSystem as hs
 
-Note that we use :code:`@njit` to compile the function for performance. Most methods inside the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class are decoreted with :code:`@njit`. Therefore, it is absolute necessary that all custom mapping function be decoreted with it as well. You can then create a Hamiltonian system object with this custom function:
+    @njit
+    def henon_heiles_grad_V(q, parameters):
+        x, y = q
+        return np.array([x + 2.0 * x * y, y + x**2 - y**2])
+
+    @njit
+    def henon_heiles_grad_T(p, parameters):
+        px, py = p
+        return np.array([px, py])
+
+    @njit
+    def henon_heiles_hess_V(q, parameters):
+        x, y = q
+        return np.array(
+            [
+                [1.0 + 2.0 * y, 2.0 * x],
+                [2.0 * x, 1.0 - 2.0 * y],
+            ]
+        )
+
+    @njit
+    def henon_heiles_hess_T(p, parameters):
+        return np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0],
+            ]
+        )
+
+The ``@njit`` decorator compiles the functions for use by the package's Numba-accelerated numerical routines. Keep the functions limited to operations supported by Numba.
+
+Create the custom system with two degrees of freedom and no parameters:
 
 .. code-block:: python
 
-    ds = hs(
+    system = hs(
         grad_T=henon_heiles_grad_T,
         grad_V=henon_heiles_grad_V,
-        degrees_of_freedom=2,
-        number_of_parameters=0,
-    )
-
-An alternative is to inform the list of parameters instead of the number of them. Since the Hénon-Heiles system has no parameter, we can pass an empty list to the `parameters` argument
-
-.. code-block:: python
-
-    ds = hs(
-        grad_T=henon_heiles_grad_T,
-        grad_V=henon_heiles_grad_V,
+        hess_T=henon_heiles_hess_T,
+        hess_V=henon_heiles_hess_V,
         degrees_of_freedom=2,
         parameters=[],
     )
-    print(ds.get_parameters())
 
-.. code-block:: text
-    []
+The separable representation selects ``svy4`` by default. Use :py:meth:`integrator <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.integrator>` to choose ``vv2`` or change the integration step. The gradient functions are sufficient for trajectories, while the Hessians are required for tangent-space calculations.
 
-After creating the object, the parameters passed to the constructor are stored internally and used by default by all methods of the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` instance. In this configuration, every method call that does not explicitly specify parameters will use the internally stored value ([]). You can permanently modify these stored parameters using the
-:py:meth:`set_parameters <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.set_parameters>` method:
+Creating a general Hamiltonian system
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For a general Hamiltonian, provide the equations of motion and the full Hessian with respect to :math:`\mathbf{z}=(\mathbf{q},\mathbf{p})`. Consider the two-resonance Hamiltonian introduced by `Walker and Ford <https://doi.org/10.1103/PhysRev.188.416>`_:
+
+.. math::
+
+    \begin{aligned}
+        H(\boldsymbol{\theta},\mathbf{J}) ={}& J_1+J_2-J_1^2-3J_1J_2+J_2^2 \\
+        &+\alpha J_1J_2\cos\phi_{22}+\beta J_1J_2^{3/2}\cos\phi_{23},
+    \end{aligned}
+
+where :math:`\boldsymbol{\theta}=(\theta_1,\theta_2)` are the angle variables, :math:`\mathbf{J}=(J_1,J_2)` are the action variables, :math:`\phi_{22}=2\theta_1-2\theta_2`, and :math:`\phi_{23}=2\theta_1-3\theta_2`. In the ``HamiltonianSystem`` interface, pass the angles as ``q`` and the actions as ``p``. The parameters are :math:`\alpha` and :math:`\beta`.
+
+The terms containing :math:`J_i\cos\phi` couple the action and angle variables, so this Hamiltonian cannot be written as :math:`T(\mathbf{J})+V(\boldsymbol{\theta})`. The ``svy4`` and ``vv2`` methods split the evolution into separate kinetic and potential steps and therefore cannot integrate this system. It must use the implicit midpoint method, ``imp``.
+
+Hamilton's equations,
+
+.. math::
+
+    \dot{\theta}_i=\frac{\partial H}{\partial J_i}, \qquad \dot{J}_i=-\frac{\partial H}{\partial\theta_i},
+
+give
+
+.. math::
+
+    \begin{aligned}
+        \dot{\theta}_1 &= 1-2J_1-3J_2+\alpha J_2\cos\phi_{22}+\beta J_2^{3/2}\cos\phi_{23}, \\
+        \dot{\theta}_2 &= 1-3J_1+2J_2+\alpha J_1\cos\phi_{22}+\frac{3}{2}\beta J_1\sqrt{J_2}\cos\phi_{23}, \\
+        \dot{J}_1 &= 2\alpha J_1J_2\sin\phi_{22}+2\beta J_1J_2^{3/2}\sin\phi_{23}, \\
+        \dot{J}_2 &= -2\alpha J_1J_2\sin\phi_{22}-3\beta J_1J_2^{3/2}\sin\phi_{23}.
+    \end{aligned}
+
+For :math:`\mathbf{z}=(\theta_1,\theta_2,J_1,J_2)`, the nonzero entries of the symmetric Hessian are
+
+.. math::
+
+    \begin{aligned}
+        H_{\theta_1\theta_1} &= -4\alpha J_1J_2\cos\phi_{22}-4\beta J_1J_2^{3/2}\cos\phi_{23}, \\
+        H_{\theta_2\theta_2} &= -4\alpha J_1J_2\cos\phi_{22}-9\beta J_1J_2^{3/2}\cos\phi_{23}, \\
+        H_{\theta_1\theta_2} &= 4\alpha J_1J_2\cos\phi_{22}+6\beta J_1J_2^{3/2}\cos\phi_{23}, \\
+        H_{\theta_1J_1} &= -2\alpha J_2\sin\phi_{22}-2\beta J_2^{3/2}\sin\phi_{23}, \\
+        H_{\theta_1J_2} &= -2\alpha J_1\sin\phi_{22}-3\beta J_1\sqrt{J_2}\sin\phi_{23}, \\
+        H_{\theta_2J_1} &= 2\alpha J_2\sin\phi_{22}+3\beta J_2^{3/2}\sin\phi_{23}, \\
+        H_{\theta_2J_2} &= 2\alpha J_1\sin\phi_{22}+\frac{9}{2}\beta J_1\sqrt{J_2}\sin\phi_{23}, \\
+        H_{J_1J_1} &= -2, \\
+        H_{J_1J_2} &= -3+\alpha\cos\phi_{22}+\frac{3}{2}\beta\sqrt{J_2}\cos\phi_{23}, \\
+        H_{J_2J_2} &= 2+\frac{3}{4}\beta\frac{J_1}{\sqrt{J_2}}\cos\phi_{23}.
+    \end{aligned}
+
+Define ``eom`` to return ``(qdot, pdot)`` in that order, then assemble the symmetric Hessian:
 
 .. code-block:: python
 
-    ds.set_parameters([4.0])  # ds.set_parameters(4.0) works as well for single values
-
-This updates the parameters at the object level, so all subsequent method calls will use [4.0] by default.
-Note that for the Hénon–Heiles system this would result in an error, since the system does not take any parameters.
-Nevertheless, setting parameters in this way is valid for any Hamiltonian system that depends on a nonzero number of parameters. Finally, all methods of :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` also accept a parameters argument. When this argument is provided, it temporarily overrides the internally stored parameters for that specific method call only. The parameters stored in the object remain unchanged.
-
-.. note::
-
-   In other words:
-
-   - ``set_parameters(...)`` → persistent change (updates the system's internal parameters)
-   - ``parameters=...`` in a method call → temporary, local override (applies only to that call)
-
-Creating custom general Hamiltonian systems
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-In the general case, the system is defined directly from the full Hamiltonian :math:`H(\mathbf{q}, \mathbf{p})`. The user must provide functions that compute the Hamiltonian equations of motion, given by Hamilton’s equations, as well as the Hessian of :math:`H` with respect to the phase-space variables :math:`\mathbf{z} = (\mathbf{q}, \mathbf{p})`.
-
-As an example, let's consider the following Hamiltonian, from the classical work of `Walker and Ford <https://doi.org/10.1103/PhysRev.188.416>`_:
-
-.. math::
-    \begin{align*}
-        H(J_1, J_2, \theta_1, \theta_2) &= J_1 + J_2 - J_1^2 - 3J_1J_2 + J_2^2 + \\
-        &+ \alpha J_1J_2 \cos(2\theta_1 - 2\theta_2) + \\
-        &+ \beta J_1J_2^{3/2}\cos(2\theta_1 - 3\theta_2),
-    \end{align*}
-
-where :math:`\boldsymbol{\theta}=(\theta_1,\theta_2)` are the angles, :math:`\mathbf{J}=(J_1,J_2)` are the actions, and :math:`\alpha` and :math:`\beta` are the system parameters. The corresponding equations of motion follow from Hamilton's equations,
-
-.. math::
-
-    \dot{\theta}_i=\frac{\partial H}{\partial J_i}, \qquad \dot{J}_i=-\frac{\partial H}{\partial \theta_i},
-
-yielding
-
-.. math::
-
-    \begin{align*}
-        \dot{\theta}_1 &= 1 - 2J_1 - 3J_2 + \alpha J_2\cos(2\theta_1 - 2\theta_2) + \beta J_2^{3/2}\cos(2\theta_1 - 3\theta_2), \\
-        \dot{\theta}_2 &= 1 - 3J_1 + 2J_2 + \alpha J_1\cos(2\theta_1 - 2\theta_2) +\frac{3}{2}\beta J_1\sqrt{J_2}\cos(2\theta_1 - 3\theta_2), \\
-        \dot{J}_1 &= 2\alpha J_1J_2\sin(2\theta_1 - 2\theta_2) + 2\beta J_1J_2^{3/2}\sin(2\theta_1 - 3\theta_2), \\
-        \dot{J}_2 &= -2\alpha J_1J_2\sin(2\theta_1 - 2\theta_2) - 3\beta J_1J_2^{3/2}\sin(2\theta_1 - 3\theta_2).
-    \end{align*}
-
-The Hessian of the Hamiltonian with respect to the phase-space variables :math:`(\theta_1, \theta_2, J_1, J_2)` is
-
-.. math::
-    \begin{equation*}
-        \nabla^2 H =\left(\frac{\partial^2 H}{\partial z_i \partial z_j}\right), \qquad \mathbf{z} = (\theta_1, \theta_2, J_1, J_2).
-    \end{equation*}
-
-Its nonzero entries are
-
-.. math::
-    \begin{align*}
-        \frac{\partial^2 H}{\partial \theta_1^2} &= -4\alpha J_1J_2\cos(2\theta_1 - 2\theta_2) - 4\beta J_1J_2^{3/2}\cos(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial \theta_2^2} &= -4\alpha J_1J_2\cos(2\theta_1 - 2\theta_2) - 9\beta J_1J_2^{3/2}\cos(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial \theta_1 \partial \theta_2} &= 4\alpha J_1J_2\cos(2\theta_1 - 2\theta_2) + 6\beta J_1J_2^{3/2}\cos(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial \theta_1 \partial J_1} &= -2\alpha J_2\sin(2\theta_1 - 2\theta_2) - 2\beta J_2^{3/2}\sin(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial \theta_1 \partial J_2} &= -2\alpha J_1\sin(2\theta_1 - 2\theta_2) - 3\beta J_1\sqrt{J_2}\sin(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial \theta_2 \partial J_1} &= 2\alpha J_2\sin(2\theta_1 - 2\theta_2) + 3\beta J_2^{3/2}\sin(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial \theta_2 \partial J_2} &= 2\alpha J_1\sin(2\theta_1 - 2\theta_2) + \frac{9}{2}\beta J_1\sqrt{J_2}\sin(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial J_1^2} &= -2, \\
-        \frac{\partial^2 H}{\partial J_1 \partial J_2} &= -3 + \alpha\cos(2\theta_1 - 2\theta_2) + \frac{3}{2}\beta\sqrt{J_2}\cos(2\theta_1 - 3\theta_2), \\
-        \frac{\partial^2 H}{\partial J_2^2} &= 2 + \frac{3}{4}\beta\frac{J_1}{\sqrt{J_2}}\cos(2\theta_1 - 3\theta_2).
-    \end{align*}
-
-We use these equations then to define the custom functions:
-
-.. code-block:: python
-
-    from numba import njit
     import numpy as np
+    from numba import njit
+    from pynamicalsys import HamiltonianSystem as hs
 
     @njit
-    def two_res_eom(q, p, parameters):
-        """
-        Equations of motion for the two-resonance Hamiltonian [1]
-            H = J1 + J2 - J1^2 - 3*J1*J2 + J2^2
-                + alpha*J1*J2*cos(2*theta1 - 2*theta2)
-                + beta*J1*J2^1.5*cos(2*theta1 - 3*theta2).
-        Returns (dq/dt, dp/dt) = (dH/dp, -dH/dq).
-        parameters[0] = alpha, parameters[1] = beta.
+    def walker_ford_eom(q, p, parameters):
+        theta1, theta2 = q
+        J1, J2 = p
+        alpha, beta = parameters
 
-        [1] G. H. Walker and J. Ford, Amplitude Instability and Ergodic Behavior for
-        Conservative Nonlinear Oscillator Systems, Phys. Rev. 188, 416 (1969)
-        """
-        theta1 = q[0]
-        theta2 = q[1]
-        J1 = p[0]
-        J2 = p[1]
-
-        alpha = parameters[0]
-        beta = parameters[1]
-
-        J2_12 = np.sqrt(J2)
-        J2_32 = J2 * J2_12
-
+        sqrt_J2 = np.sqrt(J2)
+        J2_32 = J2 * sqrt_J2
         phase_22 = 2.0 * theta1 - 2.0 * theta2
         phase_23 = 2.0 * theta1 - 3.0 * theta2
-        c22 = np.cos(phase_22)
-        c23 = np.cos(phase_23)
-        s22 = np.sin(phase_22)
-        s23 = np.sin(phase_23)
+        cos_22 = np.cos(phase_22)
+        cos_23 = np.cos(phase_23)
+        sin_22 = np.sin(phase_22)
+        sin_23 = np.sin(phase_23)
 
         qdot = np.empty(2)
         pdot = np.empty(2)
-
-        qdot[0] = 1.0 - 2.0 * J1 - 3.0 * J2 + alpha * J2 * c22 + beta * J2_32 * c23
-        qdot[1] = (
-            1.0 - 3.0 * J1 + 2.0 * J2 + alpha * J1 * c22 + 1.5 * beta * J1 * J2_12 * c23
-        )
-        pdot[0] = 2.0 * alpha * J1 * J2 * s22 + 2.0 * beta * J1 * J2_32 * s23
-        pdot[1] = -2.0 * alpha * J1 * J2 * s22 - 3.0 * beta * J1 * J2_32 * s23
-
+        qdot[0] = 1.0 - 2.0 * J1 - 3.0 * J2 + alpha * J2 * cos_22 + beta * J2_32 * cos_23
+        qdot[1] = 1.0 - 3.0 * J1 + 2.0 * J2 + alpha * J1 * cos_22 + 1.5 * beta * J1 * sqrt_J2 * cos_23
+        pdot[0] = 2.0 * alpha * J1 * J2 * sin_22 + 2.0 * beta * J1 * J2_32 * sin_23
+        pdot[1] = -2.0 * alpha * J1 * J2 * sin_22 - 3.0 * beta * J1 * J2_32 * sin_23
         return qdot, pdot
 
-
     @njit
-    def two_res_hess_H(q, p, parameters):
-        """
-        Full Hessian of the two-resonance Hamiltonian H(q, p) w.r.t. the
-        combined state z = (theta1, theta2, J1, J2), shape (4, 4).
-        parameters[0] = alpha, parameters[1] = beta.
-        """
-        theta1 = q[0]
-        theta2 = q[1]
-        J1 = p[0]
-        J2 = p[1]
+    def walker_ford_hess_H(q, p, parameters):
+        theta1, theta2 = q
+        J1, J2 = p
+        alpha, beta = parameters
 
-        alpha = parameters[0]
-        beta = parameters[1]
-
-        J2_12 = np.sqrt(J2)
-        J2_32 = J2 * J2_12
-
+        sqrt_J2 = np.sqrt(J2)
+        J2_32 = J2 * sqrt_J2
         phase_22 = 2.0 * theta1 - 2.0 * theta2
         phase_23 = 2.0 * theta1 - 3.0 * theta2
-        c22 = np.cos(phase_22)
-        s22 = np.sin(phase_22)
-        c23 = np.cos(phase_23)
-        s23 = np.sin(phase_23)
+        cos_22 = np.cos(phase_22)
+        cos_23 = np.cos(phase_23)
+        sin_22 = np.sin(phase_22)
+        sin_23 = np.sin(phase_23)
 
-        common22 = alpha * J1 * J2
-        common23 = beta * J1 * J2_32
-
-        d2H_dtheta1_2 = -4.0 * common22 * c22 - 4.0 * common23 * c23
-        d2H_dtheta2_2 = -4.0 * common22 * c22 - 9.0 * common23 * c23
-        d2H_dtheta1_dtheta2 = 4.0 * common22 * c22 + 6.0 * common23 * c23
-
-        d2H_dtheta1_dJ1 = -2.0 * alpha * J2 * s22 - 2.0 * beta * J2_32 * s23
-        d2H_dtheta2_dJ1 = 2.0 * alpha * J2 * s22 + 3.0 * beta * J2_32 * s23
-
-        d2H_dtheta1_dJ2 = -2.0 * alpha * J1 * s22 - 3.0 * beta * J1 * J2_12 * s23
-        d2H_dtheta2_dJ2 = 2.0 * alpha * J1 * s22 + 4.5 * beta * J1 * J2_12 * s23
-
-        d2H_dJ1_2 = -2.0
-        d2H_dJ2_2 = 2.0 + beta * J1 * (0.75 / J2_12) * c23
-        d2H_dJ1_dJ2 = -3.0 + alpha * c22 + 1.5 * beta * J2_12 * c23
-
+        common_22 = alpha * J1 * J2
+        common_23 = beta * J1 * J2_32
         H = np.zeros((4, 4))
 
-        H[0, 0] = d2H_dtheta1_2
-        H[0, 1] = d2H_dtheta1_dtheta2
-        H[0, 2] = d2H_dtheta1_dJ1
-        H[0, 3] = d2H_dtheta1_dJ2
+        H[0, 0] = -4.0 * common_22 * cos_22 - 4.0 * common_23 * cos_23
+        H[1, 1] = -4.0 * common_22 * cos_22 - 9.0 * common_23 * cos_23
+        H[0, 1] = 4.0 * common_22 * cos_22 + 6.0 * common_23 * cos_23
+        H[1, 0] = H[0, 1]
 
-        H[1, 0] = d2H_dtheta1_dtheta2
-        H[1, 1] = d2H_dtheta2_2
-        H[1, 2] = d2H_dtheta2_dJ1
-        H[1, 3] = d2H_dtheta2_dJ2
+        H[0, 2] = -2.0 * alpha * J2 * sin_22 - 2.0 * beta * J2_32 * sin_23
+        H[2, 0] = H[0, 2]
+        H[0, 3] = -2.0 * alpha * J1 * sin_22 - 3.0 * beta * J1 * sqrt_J2 * sin_23
+        H[3, 0] = H[0, 3]
+        H[1, 2] = 2.0 * alpha * J2 * sin_22 + 3.0 * beta * J2_32 * sin_23
+        H[2, 1] = H[1, 2]
+        H[1, 3] = 2.0 * alpha * J1 * sin_22 + 4.5 * beta * J1 * sqrt_J2 * sin_23
+        H[3, 1] = H[1, 3]
 
-        H[2, 0] = d2H_dtheta1_dJ1
-        H[2, 1] = d2H_dtheta2_dJ1
-        H[2, 2] = d2H_dJ1_2
-        H[2, 3] = d2H_dJ1_dJ2
-
-        H[3, 0] = d2H_dtheta1_dJ2
-        H[3, 1] = d2H_dtheta2_dJ2
-        H[3, 2] = d2H_dJ1_dJ2
-        H[3, 3] = d2H_dJ2_2
-
+        H[2, 2] = -2.0
+        H[2, 3] = -3.0 + alpha * cos_22 + 1.5 * beta * sqrt_J2 * cos_23
+        H[3, 2] = H[2, 3]
+        H[3, 3] = 2.0 + 0.75 * beta * J1 * cos_23 / sqrt_J2
         return H
 
-The Hamiltonian system object is then created by instancianting the :py:class:`HamiltonianSystem <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem>` class using the `eom` and `hess_H` parameters:
-
-.. code-block:: python
-
-    ds = HamiltonianSystem(
-        eom=two_res_eom,
-        hess_H=two_res_hess_H,
+    system = hs(
+        eom=walker_ford_eom,
+        hess_H=walker_ford_hess_H,
         degrees_of_freedom=2,
         parameters=[0.02, 0.02],
     )
+
+This construction selects ``imp`` automatically. The functions require :math:`J_2>0` because the Hamiltonian and Hessian contain :math:`\sqrt{J_2}` and :math:`1/\sqrt{J_2}`.
+
+The later trajectory tutorial uses this distinction when comparing the available integrators. The explicit ``svy4`` and ``vv2`` methods apply to the separable Hénon-Heiles construction, while ``imp`` applies to the general Walker-Ford construction.
+
+The ``info`` property describes built-in models. The package cannot infer descriptive metadata or equations from custom functions.
