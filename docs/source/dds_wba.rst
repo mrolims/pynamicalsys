@@ -1,162 +1,155 @@
 Weighted Birkhoff average
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The weighted Birkhoff average is a powerful tool to classify the dynamics as regular or chaotic in a discrete dynamical system :math:`\mathbf{x}_{n + 1} = \mathbf{M}(\mathbf{x}_n) = \mathbf{M}^n(\mathbf{x}_0)`. It is defined as a weighted average of a function :math:`f` over the time evolution of the system. The weights are given by an exponential bump function :math:`g`. The weighted Birkhoff average is defined as:
+The weighted Birkhoff average (WBA) was introduced by `Das et al. (2016) <https://doi.org/10.1209/0295-5075/114/40005>`_ to accelerate the convergence of time averages on quasiperiodic trajectories. Its numerical properties and applications were developed further by `Das et al. (2017) <https://doi.org/10.1088/1361-6544/aa84c2>`_, while the superconvergence result was established by `Das and Yorke (2018) <https://doi.org/10.1088/1361-6544/aa99a0>`_.
+
+For a discrete dynamical system :math:`\mathbf{x}_{n+1}=\mathbf{M}(\mathbf{x}_n)` and a smooth observable :math:`h`, the ordinary Birkhoff average over :math:`N` iterations is
 
 .. math::
 
-   \begin{equation}
-        W\!B_N(f)({\bf x}_0) = \sum_{n=0}^{N-1} w_{n,N} f \circ {\bf M}^n({\bf x}_0),
-    \end{equation}
+    B_N(h)(\mathbf{x}_0)=\frac{1}{N}\sum_{n=0}^{N-1}h\!\left(\mathbf{M}^n(\mathbf{x}_0)\right).
 
-where 
+The WBA replaces the uniform weights by a smooth bump that suppresses contributions near both ends of the trajectory:
 
 .. math::
 
-   \begin{equation}   
-      w_{n,N} = \frac{g(n/N)}{\sum_{n=0}^{N-1} g(n/N)},
-   \end{equation}
+    \mathrm{WB}_N(h)(\mathbf{x}_0)=\sum_{n=0}^{N-1}w_{n,N}h\!\left(\mathbf{M}^n(\mathbf{x}_0)\right),
 
-with the exponential bump function defined as:
+where
 
 .. math::
 
-   \begin{equation}
-        g(z) = \begin{cases}
-              \exp\{-{\lbrack z(1-z)\rbrack}^{-1} \} & \text{if $0 < z < 1$} \\
-              0 & \text{otherwise}
-           \end{cases}
-    \end{equation}
+    w_{n,N}=\frac{g(n/N)}{\displaystyle\sum_{j=0}^{N-1}g(j/N)},
 
-The convergence of the weighted Birkhoff average can be measured by calculating the number of zeros after the decimal point in the difference between :math:`W\!B_N(f)({\bf x}_0)` and :math:`W\!B_{N}(f)({\bf x}_{N})`. The larget the number of zeros, the faster the convergence. The number of zeros is defined as:
+and
 
 .. math::
 
-   \begin{equation}
-        {\mathrm{dig}} = - \log_{10} \left\vert W\!B_N(f)({\bf x}_0) - W\!B_N(f)({\bf x}_{N}) \right\vert.
-    \end{equation}
+    g(t)=
+    \begin{cases}
+        \exp\!\left[-\dfrac{1}{t(1-t)}\right], & 0<t<1, \\
+        0, & \text{otherwise}.
+    \end{cases}
 
-The weighted Birkhoff average, in contrast to the standard Birkhoff average, only improves the convergence of the average for regular orbits. Therefore, a high value of dig, which indicates a fast convergence, is a strong indicator for regular dynamics. A low value of dig, which indicates a slow convergence, is a strong indicator for chaotic dynamics.
+For a sufficiently smooth quasiperiodic trajectory with a Diophantine rotation vector, a smooth map, and a smooth observable, the error decreases faster than any inverse power of :math:`N`. More precisely, for every positive integer :math:`m`, there is a constant :math:`C_m` such that
 
-The following code snippet shows how to calculate the number of digits of the weighted Birkhoff average convergence using the :py:meth:`dig <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>` method from the :py:class:`DiscreteDynamicalSystem <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem>` class for the standard map with three different functions.
+.. math::
+
+    \left|\mathrm{WB}_N(h)(\mathbf{x}_0)-\int h\,\mathrm{d}\mu\right|\leq C_mN^{-m}.
+
+This accelerated convergence does not generally occur for chaotic trajectories. The difference between two consecutive WBA windows can therefore be used to distinguish quasiperiodic and chaotic dynamics.
+
+The dig indicator
+^^^^^^^^^^^^^^^^^
+
+The :math:`\mathrm{dig}` indicator compares two consecutive windows of length :math:`N`, as proposed for orbit classification by `Sander and Meiss (2020) <https://doi.org/10.1016/j.physd.2020.132569>`_:
+
+.. math::
+
+    \mathrm{dig}=-\log_{10}\left|\mathrm{WB}_N(h)(\mathbf{x}_0)-\mathrm{WB}_N(h)(\mathbf{x}_N)\right|.
+
+A large value means that the two averages agree to many decimal digits and is characteristic of a well-resolved quasiperiodic trajectory. A small value indicates slow convergence and is characteristic of a chaotic trajectory, although sticky chaotic trajectories may require much longer windows before they are identified. Small values should not be interpreted as a ranking of how chaotic different trajectories are.
+
+The separation between regular and chaotic values depends on the system, observable, window length, and numerical precision. For example, `Sales et al. (2022) <https://doi.org/10.1016/j.physleta.2022.127991>`_ found two modes near :math:`\mathrm{dig}=14` and :math:`\mathrm{dig}=3.5` for a particular standard-map computation and used :math:`11.25` as an empirical threshold. That value is specific to that calculation and is not a universal cutoff.
+
+In :py:meth:`dig <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>`, ``total_time`` covers both consecutive windows. Without a transient, each window has length ``total_time // 2``. If ``transient_time`` is supplied, it is discarded first and the remaining iterations are divided between the two windows. An odd ``total_time`` is increased by one internally.
+
+Classifying the standard map
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following example samples initial conditions for the standard map and evaluates :math:`\mathrm{dig}` with the default observable :math:`h(x,y)=\cos(2\pi x)`:
 
 .. code-block:: python
 
-    from pynamicalsys import DiscreteDynamicalSystem as dds
     import numpy as np
+    import matplotlib.pyplot as plt
+    from pynamicalsys import DiscreteDynamicalSystem as dds, PlotStyler
 
-    # Create the discrete dynamical system object 
-    ds = dds(model="standard map")
+    system = dds(model="standard map")
+    system.set_parameters([1.5])
 
-    # Create the random initial conditions
-    num_ic = 250
-    x_range = (0, 1)  # x range for initial conditions
-    y_range = (0, 1)  # y range for initial conditions
-    np.random.seed(0)  # Set the seed for reproducibility
-    x_ic = np.random.uniform(x_range[0], x_range[1], num_ic)
-    y_ic = np.random.uniform(y_range[0], y_range[1], num_ic)
-    u = np.column_stack((x_ic, y_ic))  # Initial conditions array with shape (num_ic, d)
+    rng = np.random.default_rng(1312)
+    num_initial_conditions = 200
+    initial_states = rng.uniform(0.0, 1.0, size=(num_initial_conditions, 2))
+    total_time = 20_000
 
-    # Parameter for the standard map
-    k = 1.5
-    ds.set_parameters(k)
-
-    # Total iteration time
-    total_time = 10000
-
-    digs = []
-    # Calculate dig using the default function: f(x) = cos(2 * pi * x)
-    digs.append(
+    digs = np.array(
         [
-            ds.dig(u[i], total_time)
-            for i in range(num_ic)
+            system.dig(
+                u=initial_state,
+                total_time=total_time,
+            )
+            for initial_state in initial_states
         ]
     )
-    digs[0] = np.array(digs[0])
 
-    # Calculate dig using a custom function: f(x) = sin(2 * pi * x)
-    digs.append([
-        ds.dig(
-            u[i],
-            total_time,
-            func=lambda x: np.sin(2 * np.pi * x[:, 0]),
-        )
-        for i in range(num_ic)
-    ])
-    digs[1] = np.array(digs[1])
+    trajectory_time = 10_000
+    trajectories = system.trajectory(
+        u=initial_states,
+        total_time=trajectory_time,
+    ).reshape(num_initial_conditions, trajectory_time, 2)
 
-    # Calculate dig using another custom function: f(x, y) = sin(2 * pi * (x + y))
-    digs.append([
-        ds.dig(
-            u[i],
-            total_time,
-            func=lambda x: np.sin(2 * np.pi * (x[:, 0] + x[:, 1])),
-        )
-        for i in range(num_ic)
-    ])
-    digs[2] = np.array(digs[2])
-
-    # Also calculate the trajectories for each initial condition
-    trajectories = ds.trajectory(u, k, total_time)
-    trajectories_reshaped = trajectories.reshape(num_ic, total_time, 2)
-
-We can visualize the results by plotting the number of digits for each initial condition. The following code snippet shows how to create a scatter plot of the number of digits for each initial condition.
+Plot every trajectory with the color assigned by the :math:`\mathrm{dig}` value of its initial condition, together with the distribution of finite values. The shorter ``trajectory_time`` controls only the phase-space visualization and does not change the WBA windows used for the classification:
 
 .. code-block:: python
 
-    from pynamicalsys import PlotStyler
-    import matplotlib.pyplot as plt
+    finite_digs = digs[np.isfinite(digs)]
+    trajectory_digs = np.repeat(digs, trajectory_time)
 
-    # Set the plot style
-    ps = PlotStyler(fontsize=24)
+    ps = PlotStyler()
     ps.apply_style()
-
-    # Create the figure and axes
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5), sharey=True, sharex=True)
-
-    # Set the x padding for the axes 
-    [ps.set_tick_padding(ax[i], pad_x = 8) for i in range(3)]
-
-    # Plot the number of digits for each initial condition
-    hms = []
-    for j in range(len(digs)):
-        for i in range(num_ic):
-            hms.append(ax[j].scatter(
-                trajectories_reshaped[i, :, 0],
-                trajectories_reshaped[i, :, 1],
-                c=digs[j][i] * np.ones(total_time),
-                s=0.05,
-                edgecolor="none",
-                cmap="nipy_spectral",
-                vmin=0,
-                vmax=digs[j][digs[j] != np.inf].max(),
-            ))
-
-    # Create the colorbars and set the labels and limits
-    funcs_labels = [r"$f(x) = \cos(2\pi x)$",
-                    r"$f(x) = \sin(2\pi x)$",
-                    r"$f(x) = \sin(2\pi (x + y))$"]
-    for i in range(len(digs)):
-        plt.colorbar(
-            hms[i],
-            ax=ax[i],
-            label=rf"dig with {funcs_labels[i]}",
-            location="top",
-            aspect=40,
-            pad=0.01,
-        )
-    ax[0].set_xlim(0, 1)
-    ax[0].set_ylim(0, 1)
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+    points = ax[0].scatter(
+        trajectories[:, :, 0].ravel(),
+        trajectories[:, :, 1].ravel(),
+        c=trajectory_digs,
+        s=0.1,
+        edgecolor="none",
+        cmap="nipy_spectral",
+        vmin=0,
+        vmax=16,
+    )
+    ax[0].set_xlim(0.0, 1.0)
+    ax[0].set_ylim(0.0, 1.0)
     ax[0].set_xlabel("$x$")
     ax[0].set_ylabel("$y$")
-    ax[1].set_xlabel("$x$")
-    ax[2].set_xlabel("$x$")
-
-    plt.tight_layout(pad=0.05)
+    fig.colorbar(points, ax=ax[0], label=r"$\mathrm{dig}$")
+    ax[1].hist(
+        finite_digs,
+        bins=50,
+        density=True,
+        color="darkviolet",
+        edgecolor="black",
+        linewidth=0.75,
+    )
+    ax[1].set_xlabel(r"$\mathrm{dig}$")
+    ax[1].set_ylabel("Density")
+    fig.tight_layout()
     plt.show()
 
-.. figure:: images/standard_map_dig.png
-   :align: center
-   :width: 100%
-   
-   dig for the standard map using three different functions.
+.. figure:: images/standard_map_wba.png
+    :align: center
+    :width: 100%
+
+    Standard-map trajectories colored by their weighted-Birkhoff classification and the corresponding distribution of :math:`\mathrm{dig}` values.
+
+The high-value mode is associated with regular islands, while the low-value mode is associated with the chaotic sea. Points near island boundaries may be sticky, so increasing ``total_time`` is an important robustness check.
+
+Choosing an observable
+^^^^^^^^^^^^^^^^^^^^^^
+
+The observable must accept a two-dimensional trajectory array and return a one-dimensional NumPy array containing one value for each state. It should be smooth and nonconstant on the region being studied. For example, the default observable can be replaced by :math:`h(x,y)=\sin[2\pi(x+y)]`:
+
+.. code-block:: python
+
+    observable = lambda trajectory: np.sin(
+        2.0 * np.pi * (trajectory[:, 0] + trajectory[:, 1])
+    )
+
+    custom_dig = system.dig(
+        u=initial_states[0],
+        total_time=total_time,
+        func=observable,
+    )
+
+The observable is not unique, but a nearly constant or symmetry-degenerate choice can conceal the distinction of interest. When the classification is important, compare more than one smooth observable and increase the window length to confirm that the conclusion is stable.
