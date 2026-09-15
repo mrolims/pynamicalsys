@@ -116,7 +116,7 @@ Use ``ContinuousDynamicalSystem`` with :math:`\sigma = 10`, :math:`\rho = 28`, a
 
     The same Lorenz trajectory shown as a time series and a projection onto the x-z plane.
 
-Each row of the output contains ``[time, x, y, z]``. With these settings, the array has shape ``(10001, 4)``, including the initial state at time zero. The left plot shows when changes occur, while the right plot shows the trajectory's structure in state space.
+Each row of the output contains ``[time, x, y, z]``. With these settings, the array has shape ``(10000, 4)``. The initial state at time zero is not included because each row is stored after an integration step. The left plot shows when changes occur, while the right plot shows the trajectory's structure in state space.
 
 The parameter order can be checked with ``system.info["parameters"]``. A smaller integration step can help assess numerical convergence, but it also requires more work. See the :doc:`continuous-system tutorial <cds_tutorial>` for adaptive integration, multiple initial conditions, and further analysis.
 

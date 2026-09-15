@@ -1,428 +1,150 @@
 Generating trajectories
 -----------------------
 
-To generate trajectories for a continuous dynamical system, we use the :py:meth:`trajectory <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.trajectory>` method of the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class. This method allows us to specify the initial condition, parameter values, and total time for the simulation. Currently, it is only possible to choose between two different integrators: the traditional 4th order Runge-Kutta (RK4) method with fixed time step and the 4th/5th order Runge-Kutta (RK45) with adaptive time step.
+Use :py:meth:`trajectory <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.trajectory>` to integrate a continuous dynamical system from one initial state or an ensemble of initial states. The ``total_time`` argument is the final integration time in the system's time units.
 
 Choosing the integrator
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-To choose the integrator, we use the :py:meth:`integrator <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.integrator>` method of the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class. To use the RK4 method, we need to specify the time step. By default, it is set to :math:`10^{-2}`:
+Call :py:meth:`available_integrators <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.available_integrators>` to list the implemented methods:
 
 .. code-block:: python
 
     from pynamicalsys import ContinuousDynamicalSystem as cds
 
-    ds = cds(model="lorenz system")
-    ds.integrator("rk4", time_step=0.005)
+    for integrator in cds.available_integrators():
+        print(integrator)
 
-For the RK45 method, we need to specify the absolute and relative tolerance. The smaller their values, the more accurate is the solution. However, the CPU time is also increased. By default, `atol` and `rtol` are set to :math:`10^{-6}` and :math:`10^{-3}`, respectively.
+.. code-block:: text
 
-.. code-block:: python
+    rk4
+    rk45
 
-    ds.integrator("rk45", atol=1e-8, rtol=1e-6)
-
-
-
-Single initial condition
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Let's now generate a trajectory for the Lorenz system using these two integrators. We first import all the necessary modules to simulate and visualize the trajectories and we instanciate the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class
+The ``rk4`` integrator uses a fixed time step. A smaller step can improve accuracy, but it also increases the number of evaluations:
 
 .. code-block:: python
 
-    from pynamicalsys import ContinuousDynamicalSystem as cds
+    system = cds(model="lorenz system")
+    system.integrator("rk4", time_step=0.01)
+
+The ``rk45`` integrator adjusts its time step according to absolute and relative error tolerances. Smaller tolerances generally produce a more accurate solution at a greater computational cost:
+
+.. code-block:: python
+
+    system.integrator("rk45", atol=1e-8, rtol=1e-6)
+
+The selected integrator remains active for subsequent method calls. Fixed-step output is sampled at regular times, while adaptive output generally is not. This distinction matters when a later calculation assumes uniformly spaced samples.
+
+A single trajectory
+~~~~~~~~~~~~~~~~~~~
+
+Consider the Lorenz system with :math:`\sigma=10`, :math:`\rho=28`, and :math:`\beta=8/3`. Generate a trajectory from :math:`(x_0,y_0,z_0)=(0.1,0.1,0.1)` using RK4:
+
+.. code-block:: python
+
+    import matplotlib.pyplot as plt
+    from pynamicalsys import ContinuousDynamicalSystem as cds, PlotStyler
+
+    system = cds(model="lorenz system")
+    system.set_parameters([10.0, 28.0, 8.0 / 3.0])
+    system.integrator("rk4", time_step=0.01)
+
+    initial_state = [0.1, 0.1, 0.1]
+    total_time = 100.0
+    trajectory = system.trajectory(initial_state, total_time)
+
+For a system of dimension :math:`d`, the result has shape ``(num_samples, d + 1)``. The first column contains the integration times and the remaining columns contain the state variables. Each row is stored after an integration step, so the initial state at :math:`t=0` is not included.
+
+Plot the time evolution of :math:`x` beside the projection of the trajectory onto the :math:`(x,z)` plane:
+
+.. code-block:: python
+
+    time = trajectory[:, 0]
+    x = trajectory[:, 1]
+    z = trajectory[:, 3]
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+    ax[0].plot(time, x, "k")
+    ax[0].set_xlabel("Time $t$")
+    ax[0].set_ylabel("$x(t)$")
+    ax[1].plot(x, z, "k", lw=0.5)
+    ax[1].set_xlabel("$x$")
+    ax[1].set_ylabel("$z$")
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/continuous_lorenz_trajectory.png
+    :align: center
+    :width: 100%
+
+    Time evolution and phase-space projection of the Lorenz trajectory for :math:`\sigma=10`, :math:`\rho=28`, and :math:`\beta=8/3`.
+
+Discarding a transient
+~~~~~~~~~~~~~~~~~~~~~~
+
+Early evolution may describe the approach to an attractor rather than its long-term dynamics. Pass ``transient_time`` to integrate through that interval without storing it:
+
+.. code-block:: python
+
+    total_time = 100.0
+    transient_time = 20.0
+    trajectory = system.trajectory(
+        initial_state,
+        total_time,
+        transient_time=transient_time,
+    )
+
+Here, ``total_time`` is still the final integration time. The stored trajectory therefore covers the interval after :math:`t=20` through :math:`t=100`, rather than adding 20 time units to a 100-unit recorded trajectory.
+
+An ensemble of trajectories
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Pass an array of shape ``(num_initial_conditions, system_dimension)`` to integrate several initial states with the same parameters. The method returns a list containing one trajectory array for each initial state. This also accommodates adaptive trajectories with different numbers of accepted steps.
+
+The following example follows five nearby initial states of the Lorenz system. RK4 is used so every trajectory is sampled at the same times:
+
+.. code-block:: python
 
     import numpy as np
     import matplotlib.pyplot as plt
-    import seaborn as sns
+    from pynamicalsys import ContinuousDynamicalSystem as cds, PlotStyler
 
-    ds = cds(model="lorenz system")
+    system = cds(model="lorenz system")
+    system.set_parameters([10.0, 28.0, 8.0 / 3.0])
+    system.integrator("rk4", time_step=0.01)
 
-Next, we can generate a trajectory by specifying the initial condition, parameters, and total time. The :py:meth:`trajectory <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.trajectory>` method returns a Numpy array with shape `(N, d + 1)`, where `N` is the number of iterations and `d` is the dimension of the system. The first column corresponds to the time samples at which the trajectory was calculated and the remaing columns correspond to a state variable. Using the RK4 method:
+    num_initial_conditions = 5
+    initial_conditions = np.full((num_initial_conditions, 3), 0.1)
+    initial_conditions[:, 0] += np.linspace(0.0, 4e-5, num_initial_conditions)
 
-.. code-block:: python
+    trajectories = system.trajectory(initial_conditions, total_time=30.0)
 
-    # Using the RK4 method
-    ds.integrator("rk4", time_step=0.005)
-
-    # The classical parameters that yield chaotic solutions
-    parameters = [10, 28, 8/3]
-    ds.set_parameters(parameters)
-
-    # The initial condition
-    u = [0.1, 0.1, 0.1]
-
-    # The total evolution time
-    total_time = 100
-
-    # Generate the trajectory
-    trajectory = ds.trajectory(u, total_time)
-
-    print(trajectory.shape)
-
-.. code-block:: text
-
-    (20001, 4)
-    
-
-To visualize the generated trajectory, we can use Matplotlib to plot 
-attractor. But before, let's import the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class from pynamicalsys to set the plot style:
+Plotting :math:`x(t)` for each initial state shows how initially close solutions separate in the chaotic flow. The corresponding phase-space projections show the trajectories evolving on the same attractor:
 
 .. code-block:: python
 
-    from pynamicalsys import PlotStyler
+    colors = plt.cm.plasma(np.linspace(0.0, 0.85, num_initial_conditions))
 
-Then, we can apply the style and plot the trajectory:
-
-.. code-block:: python
-
-    # Apply the plot style
-    ps = PlotStyler(linewidth=0.5)
+    ps = PlotStyler()
     ps.apply_style()
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+    for trajectory, color in zip(trajectories, colors):
+        ax[0].plot(trajectory[:, 0], trajectory[:, 1], color=color, lw=0.8)
+        ax[1].plot(trajectory[:, 1], trajectory[:, 3], color=color, lw=0.5)
 
-    # Plot the x and z coordinates
-    plt.plot(trajectory[:, 1], trajectory[:, 3], "k-")
-
-    # Set the labels
-    plt.xlabel("$x$")
-    plt.ylabel("$z$")
-
-    plt.show()
-
-.. figure:: images/lorenz_rk4.png
-   :align: center
-   :width: 100%
-   
-   The Lorenz attractor for :math:`\sigma = 10`, :math:`\rho = 28`, and :math:`\beta = 8/3` using the RK4 integrator.
-
-And using the RK45 method:
-
-.. code-block:: python
-
-    # Using the RK45 method
-    ds.integrator("rk45", atol=1e-8, rtol=1e-8)
-
-    # The classical parameters that yield chaotic solutions
-    parameters = [10, 28, 8/3]
-    ds.set_parameters(parameters)
-
-    # The initial condition
-    u = [0.1, 0.1, 0.1]
-
-    # The total evolution time
-    total_time = 100
-
-    # Generate the trajectory
-    trajectory = ds.trajectory(u, total_time)
-
-    print(trajectory.shape)
-
-.. code-block:: text
-
-    (10319, 4)
-
-The RK45 generates a trajectory with fewer points, however, it is extremely accurate:
-
-.. code-block:: python
-
-    # Apply the plot style
-    ps = PlotStyler(linewidth=0.5)
-    ps.apply_style()
-
-    # Plot the x and z coordinates
-    plt.plot(trajectory[:, 1], trajectory[:, 3], "k-")
-
-    # Set the labels
-    plt.xlabel("$x$")
-    plt.ylabel("$z$")
-
-    plt.show()
-
-.. figure:: images/lorenz_rk45.png
-   :align: center
-   :width: 100%
-   
-   The Lorenz attractor for :math:`\sigma = 10`, :math:`\rho = 28`, and :math:`\beta = 8/3` using the RK45 integrator.
-
-Multiple initial conditions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To generate trajectories for multiple initial conditions, we can use the :py:meth:`trajectory <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.trajectory>` method and simply pass a list of initial conditions with shape `(M, d)`, where `M` is the number of initial conditions and `d` is the system's dimension. The method will return a list with `M` Numpy arrays of shape `(N, d + 1)`, where `N` is the number of iterations. In other words, each initial condition will generate its own trajectory.
-
-Let's then generate trajectories for 5 randomly chosen initial conditions in the region :math:`(x, y, z) \in [0.1, 0.1 + 10^{-5}]^3`:
-
-.. code-block:: python
-    
-    # Set the integrator
-    ds.integrator("rk45", atol=1e-8, rtol=1e-8)
-
-    # Set the random seed for reproducibility
-    np.random.seed(13)
-
-    # Generate the random initial conditions
-    num_ic = 5
-    u = np.random.uniform(0.1, 0.1 + 1e-5, (num_ic, 3))
-
-    # Parameter values and total time    
-    parameters = [10, 28, 8/3]
-    ds.set_parameters(parameters)
-    total_time = 100
-    
-    # Generate trajectories for each initial condition
-    trajectories = ds.trajectory(u, total_time)
-    
-    print(len(trajectories))
-
-.. code-block:: text
-    
-    5
-
-To visualize the results, we can plot each trajectory in a loop. We will use the :py:class:`PlotStyler <pynamicalsys.core.plot_styler.PlotStyler>` class to set the plot style and customize the appearance of the trajectories and we will use Seaborn to generate a color palette for the trajectories:
-
-.. code-block:: python
-
-    # Apply the plot style
-    ps = PlotStyler(markersize=0.1, markeredgewidth=0)
-    ps.apply_style()
-
-    # Each trajectory is plotted with a different color
-    colors = sns.color_palette("hls", num_ic)
-
-    # Plot each trajectory
-    for i in range(num_ic):
-        plt.plot(trajectories[i][:, 1], trajectories[i][:, 3], "-", color=colors[i])
-
-    # Set the labels
-    plt.xlabel("$x$")
-    plt.ylabel("$z$")
-
-    plt.show()
-
-.. figure:: images/lorenz_rk45_multi.png
-   :align: center
-   :width: 100%
-   
-   The Lorenz attractor for :math:`\sigma = 10`, :math:`\rho = 28`, and :math:`\beta = 8/3` using the RK45 integrator considering 5 different initial conditions.
-
-This plot shows the trajectories of the system starting from a extremely close region and diverging over time.
-
-Stroboscopic map
-~~~~~~~~~~~~~~~~
-
-A stroboscopic map is a way to simplify and visualize the behavior of a dynamical system by looking at it only at specific, regularly spaced times. Instead of following a continuous trajectory, we record the system’s state every fixed time interval (for example, every period of an external driving force). Plotting only these sampled points reveals underlying patterns and structures that can be hidden in the full continuous motion.
-
-This idea is closely related to the Poincaré section, which takes a “slice” of the system’s phase space by recording the state only when it crosses a particular surface. While a Poincaré section samples the system when it reaches a certain location, a stroboscopic map samples it at specific times. Both methods reduce the continuous dynamics to a discrete set of points, making it easier to study periodic, quasi-periodic, or chaotic behavior.
-
-We can construct stroboscopic maps using the :py:meth:`stroboscopic_map <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.stroboscopic_map>` method. As we have mentioned, a stroboscopic map is particularly useful when studying forced system. Let's consider then the well-known Duffing oscillator:
-
-.. math::
-    \ddot{x} + \delta\dot{x} -\alpha x + \beta x^3 = \gamma\cos(\omega),
-
-where :math:`\delta` is the damping coefficient, :math:`\alpha` and :math:`\beta` are the coefficients of the linear and nonlinear restoring forces, respectively, and :math:`\gamma` and :math:`\omega` denote the amplitude and frequency of the external driving force. We choose :math:`\delta = 0.2`, :math:`\alpha = \beta = 1`, :math:`\gamma = 0.425`, and :math:`\omega = 1.1`. As for our initial condition, we choose :math:`(x_0, \dot{x}_0) = (1, 0)`. We can then generate the stroboscopic map at every period of the driving force :math:`T = 2\pi/\omega`:
-
-.. code-block:: python
-    
-    # Instantiate the Duffing oscillator model
-    ds = cds(model="duffing")
-
-    # Define the system parameters:
-    # δ (damping), α (linear stiffness), β (nonlinear stiffness),
-    # γ (forcing amplitude), and ω (forcing frequency)
-    delta, alpha, beta, gamma, omega = 0.2, 1, 1, 0.425, 1.1
-    parameters = [delta, alpha, beta, gamma, omega]
-    ds.set_parameters(parameters)
-
-    # Initial condition for the system [x, ẋ]
-    u0 = [1, 0]
-
-    # Number of points to collect for the stroboscopic map
-    num_samples = 50000
-
-    # Time to discard before recording (transient)
-    transient_time = 2000
-
-    # Total simulation time
-    total_time = 4000
-
-    # Sampling time corresponding to one period of the external forcing
-    T = 2 * np.pi / omega
-
-    # Generate the full trajectory of the system
-    trajectory = ds.trajectory(
-        u0,
-        total_time,
-        transient_time=transient_time
-    )
-
-    # Generate the stroboscopic map by sampling the trajectory every T
-    sm = ds.stroboscopic_map(
-        u0,
-        num_samples,
-        sampling_time=T,
-        transient_time=transient_time
-    )
-
-Note that differently than the trajectory case, now we must inform the number of periods we want to follow, i.e., the number of points in the stroboscopic map. The transient time, though, still is in dynamical time units. We can then visualize the stroboscopic map and compare it with the full trajectory:
-
-.. code-block:: python
-
-    # Set the plotting style using PlotStyler with custom parameters:
-    # larger font size, thinner lines, smaller markers
-    ps = PlotStyler(
-        fontsize=18,
-        linewidth=0.5,
-        markersize=0.25,
-        markeredgewidth=0
-    )
-    ps.apply_style()  # Apply the chosen style to Matplotlib
-
-    # Create a figure with two side-by-side subplots sharing the same axes
-    fig, ax = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(10, 3))
-
-    # Plot the continuous trajectory of the Duffing system (x vs. ẋ) on the first subplot
-    ax[0].plot(trajectory[:, 1], trajectory[:, 2], "k-")
-
-    # Plot the stroboscopic map points (x vs. ẋ) on the second subplot
-    ax[1].plot(sm[:, 1], sm[:, 2], "ko")
-
-    # Set axis labels for both subplots
-    ax[0].set_xlabel("$x$")
+    ax[0].set_xlabel("Time $t$")
+    ax[0].set_ylabel("$x(t)$")
     ax[1].set_xlabel("$x$")
-    ax[0].set_ylabel(r"$\dot{x}$")
-
-    # Adjust spacing between subplots for a cleaner layout
-    plt.tight_layout(pad=0.2)
-
-    # Save the figure to file with high resolution
-    plt.savefig(f"{path_figures}/duffing_stroboscopic_map.png", dpi=400)
-
-.. figure:: images/duffing_stroboscopic_map.png
-   :align: center
-   :width: 100%
-   
-   The Duffing attractor and the corresponding stroboscopic map for :math:`\delta = 0.2`, :math:`\alpha = \beta = 1`, :math:`\gamma = 0.425`, and :math:`\omega = 1.1`.
-
-Hamiltonian system example
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Now, let's consider a Hamiltonian system: the two degrees of freedom Hénon-Heiles system. The Hamiltonian function of this system is
-
-.. math::
-
-    H(p_x, p_y, x, y) = \frac{p_x^2 + p_y^2 + x^2 + y^2}{2} + x^2y - \frac{y^3}{3}
-
-where :math:`x` and :math:`y` are the coordinates and :math:`p_x` and :math:`p_y` are the conjugated momenta. Since the Hamiltonian function does not explicitly depend on time, it is a constant of motion and it equals the total mechanical energy of the system. The equations of motion are given by Hamilton's equation:
-
-.. math::
-
-    \begin{align*}
-        \dot{x} &= \frac{\partial H}{\partial p_x} = p_x,\\
-        \dot{y} &= \frac{\partial H}{\partial p_y} = p_y,\\
-        \dot{p}_x &= -\frac{\partial H}{\partial x} = -x - 2xy,\\
-        \dot{p}_y &= -\frac{\partial H}{\partial y} = -y - x^2 + y^2.
-    \end{align*}
-
-Both integrators mentioned so far do not take into account the symplectic structure of phase space. Therefore, over long times, they lead to a drift in the total energy of the system. For short times, however, they provide a good approximation. Let's then calculate the energy as a function of time for the two integrators with different time steps and tolerances values:
-
-.. code-block:: python
-
-    from pynamicalsys import ContinuousDynamicalSystem as cds
-    ds = cds(model="henon heiles")
-
-    E = 1 / 8  # Total energy of the system
-    x = 0  # Define the initial condition
-    y = 0.1
-    py = 0
-    px = np.sqrt(2 * (E - x**2 * y + y**3/3) - x**2 - y**2 - py**2)
-    u = [x, y, px, py]
-
-    # Total evolution of the orbit
-    total_time = 10000
-
-    # Use four different time steps
-    time_steps = [0.1, 0.01, 0.005, 0.001]
-    energy_vs_time_rk45 = []
-    times_rk45 = []
-
-    # Calculate the energy as a function of time using the different time_steps
-    for time_step in time_steps:
-        
-        ds.integrator("rk4", time_step=time_step)
-        
-        trajectory = ds.trajectory(u, total_time)
-        
-        times_rk45.append(trajectory[:, 0])
-        energy_vs_time_rk45.append(compute_energy(trajectory))
-
-    # Use four different absolute and relative tolerances
-    atols = [1e-8, 1e-10, 1e-12, 1e-14]
-    rtols = [1e-8, 1e-10, 1e-12, 1e-14]
-    labels = ["$(10^{-8}, 10^{-8})$",
-              "$(10^{-10}, 10^{-10})$",
-              "$(10^{-12}, 10^{-12})$",
-              "$(10^{-14}, 10^{-14})$"]
-    energy_vs_time_rk45 = []
-    times_rk45 = []
-
-    # Calculate the energy as a function of time using the different tolerances
-    for j in range(len(atols)):
-        atol = atols[j]
-        rtol = rtols[j]
-        ds.integrator("rk45", rtol=rtol, atol=atol)
-        trajectory = ds.trajectory(u, total_time)
-
-        times_rk45.append(trajectory[:, 0])
-        energy_vs_time_rk45.append(compute_energy(trajectory))
-
-To check how much the energy is deviating form the initial value, we plot :math:`\left|E_0 - E(t)\right|` for the two integrators:
-
-.. code-block:: python
-
-    from pynamicalsys import PlotStyler
-
-    # Apply the plot style
-    ps = PlotStyler(fontsize=18, linewidth=1)
-    ps.apply_style()
-    colors = sns.color_palette("hls", len(atols))
-
-    # Create the figure and axes
-    fig, ax = plt.subplots(2, 1, sharex=True, sharey=True, figsize=(10, 6))
-    
-    # Plot the absolute value of the difference between the energies
-    for i in range(len(time_steps)):
-        ax[0].plot(
-            times_rk4[i],
-            abs(E - energy_vs_time_rk4[i]),
-            label=f"$h = {time_steps[i]}$",
-            color=colors[i],
-        )
-        
-
-    for i in range(len(atols)):
-        ax[1].plot(
-            times_rk45[i],
-            abs(E - energy_vs_time_rk45[i]),
-            color=colors[i],
-            label=f"(atol, rtol) = {labels[i]}",
-        )
-    
-    # Set the legend, scales, labels and limits
-    ax[0].legend(loc="upper left", ncol=2, frameon=False)
-    ax[1].legend(loc="upper left", ncol=2, frameon=False)
-    ax[0].set_xscale("log")
-    ax[0].set_yscale("log")
-    ax[0].set_ylabel(r"$\left |E_0 - E(t) \right|$")
-    ax[1].set_ylabel(r"$\left |E_0 - E(t)\right|$")
-    ax[1].set_xlabel("$t$")
-    ax[0].set_xlim(0.1, total_time)
-    ax[1].set_ylim(1e-16, 1e-2)
-    
+    ax[1].set_ylabel("$z$")
+    fig.tight_layout()
     plt.show()
 
-.. figure:: images/henon_heiles_energy.png
-   :align: center
-   :width: 100%
-   
-   The variation in the energy for the two integrations with different precisions.
+.. figure:: images/continuous_lorenz_ensemble.png
+    :align: center
+    :width: 100%
 
-For small times the deviation does remain small, however it grows over time. Additionally, the absolute tolerance seems to be more important in this case than the relative tolerance. Nevertheless, when working with Hamiltonian systems, one should consider the possibility of working with symplectic integrators. This type of numerical integrators will be included on future versions of **pynamicalsys**.
+    Time evolution and phase-space projections of five Lorenz trajectories whose initial states differ only in their :math:`x` coordinate.
+
+The same ``parameters`` argument described in :doc:`cds_creating_ds` can be passed directly to ``trajectory`` to override the stored parameter values for one call.
