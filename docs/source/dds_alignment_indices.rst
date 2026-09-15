@@ -281,14 +281,6 @@ its determinant is :math:`\prod_{i=1}^{k}\sigma_i^2`. Therefore
 
 This exact identity and the common decay rate for discrete and continuous chaotic systems are derived in `Sales, Leonel, and Antonopoulos (2026) <https://doi.org/10.1016/j.chaos.2026.117884>`_. GALI and LDI are mathematically identical for the same normalized deviation vectors, while their numerical implementations differ. GALI uses a determinant or QR factorization, and LDI uses a singular value decomposition.
 
-SALI is also closely connected to the two-vector case. If :math:`s=\mathrm{SALI}` for two unit deviation vectors, then
-
-.. math::
-
-    \mathrm{GALI}_2=s\sqrt{1-\frac{s^2}{4}},
-
-so :math:`\mathrm{GALI}_2\sim\mathrm{SALI}` as the vectors align and :math:`s\to0`.
-
 Benchmarking the formulations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
