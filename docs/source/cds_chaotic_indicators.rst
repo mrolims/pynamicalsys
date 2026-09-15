@@ -1,7 +1,7 @@
 Chaotic indicators
 ------------------
 
-In this section, we are going to explore some of the most commonly used chaotic indicators that can help us indentify chaotic behavior in a continuous-time dynamical system.
+Chaotic indicators quantify instability, alignment, and recurrence properties along continuous trajectories. This section begins with the Lyapunov spectrum and then introduces complementary diagnostics based on the evolution of deviation vectors.
 
 .. toctree::
    :maxdepth: 1
@@ -9,4 +9,3 @@ In this section, we are going to explore some of the most commonly used chaotic 
 
    cds_lyapunov
    cds_ldi
-

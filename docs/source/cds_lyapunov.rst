@@ -1,150 +1,152 @@
 Lyapunov exponents
-~~~~~~~~~~~~~~~~~~
+------------------
 
-For continuous-time dynamical systems, the Lyapunov exponents are computed by integrating simultaneaously the equations of motion and the variational equations. Given a :math:`d`-dimensional continuous-time dynamical system described by the following differential equation :math:`\dot{\mathbf{x}} = \mathbf{f}(\mathbf{x})`, where :math:`\mathbf{x}\in\mathbb{R}^d`, let :math:`\mathbf{J}(\mathbf{x}, t) = \mathbf{Df}(\mathbf{x}, t)` be the Jacobian matrix of the vector field :math:`\mathbf{f}` evaluated at the point :math:`\mathbf{x}` at the instant of time :math:`t`.
-
-Let :math:`\mathbf{v}_0 \equiv \mathbf{v}(0)` be a deviation vector representing a small displacement from the initial condition :math:`\mathbf{x}_0 \equiv \mathbf{x}(0)`. The time evolution of :math:`\mathbf{v}_0` under the linearized dynamics is given by the variational equation
+Lyapunov exponents quantify the average exponential growth or contraction of infinitesimal perturbations along a trajectory. For a continuous dynamical system :math:`\dot{\mathbf{x}}=\mathbf{f}(t,\mathbf{x})`, a deviation vector :math:`\mathbf{v}` evolves according to the variational equation
 
 .. math::
 
-    \frac{d\mathbf{v}(t)}{dt} = J(\mathbf{x}(t), t)\mathbf{v}(t).
+    \dot{\mathbf{v}}=\mathbf{J}(t,\mathbf{x})\mathbf{v},
 
-Let :math:`A(t)\in\mathbb{R}^{d\times d}` be a matrix whose columns are the deviation vectors. We follow the evolution of the deviation vectors along the trajectory and reorthonormalize them using a QR decomposition: :math:`A(t) = Q(t) R(t)`, where :math:`Q(t)` is an orthogonal matrix and :math:`R(t)` is an upper triangular matrix. The Lyapunov exponents are then computed from the averages of the logarithm of the diagonal elements of the matrix :math:`R(t)`, :math:`|r_{ii}(t)|`:
+where :math:`\mathbf{J}` is the Jacobian of the vector field. A positive largest exponent indicates sensitive dependence on initial conditions, a negative exponent indicates contraction along its associated direction, and an exponent equal to zero corresponds to neutral evolution. A typical chaotic autonomous flow has one positive exponent, one zero exponent along the flow direction, and at least one negative exponent.
 
-.. math::
-
-   \lambda_i = \lim_{t\rightarrow\infty}\frac{1}{t}\sum_{\tau = 0}^t\log|r_{ii}(\tau)|.
-
-The Lyapunov exponents can be calculated using the :py:meth:`lyapunov <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.lyapunov>` method from the :py:class:`ContinuousDynamicalSystem <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem>` class.
-
-To illustrate the Lyapunov exponents calculation, let's consider the Rössler system:
+The :py:meth:`lyapunov <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.lyapunov>` method integrates the state and its deviation vectors together. The vectors are repeatedly orthonormalized, and the logarithmic growth factors are accumulated to estimate
 
 .. math::
 
-   \begin{align*}
-        \dot{x} &= -y - z,\\
-        \dot{y} &= x + ay,\\
-        \dot{z} &= b + z(x - c),
-   \end{align*}
+    \lambda_i=\lim_{t\rightarrow\infty}\frac{1}{t}\sum_j\log\left|R_{ii}^{(j)}\right|,
 
-where :math:`a`, :math:`b`, and :math:`c` are the parameters of the system. Let's first visualize the Rössler attractor:
+where :math:`R_{ii}^{(j)}` is a diagonal element of the triangular factor obtained at the :math:`j`-th QR decomposition. This is the standard algorithm introduced for numerical Lyapunov-spectrum calculations by Shimada and Nagashima and by Benettin et al.
+
+The calculation requires the Jacobian. The built-in systems used here already provide one. A custom system must be created with a Jacobian whose signature is ``jacobian(time, state, parameters)``, as described in :doc:`cds_creating_ds`.
+
+The Lyapunov spectrum of the Rössler system
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Consider the Rössler system
+
+.. math::
+
+    \begin{aligned}
+        \dot{x} &= -y-z,\\
+        \dot{y} &= x+ay,\\
+        \dot{z} &= b+z(x-c).
+    \end{aligned}
+
+Use :math:`a=0.15`, :math:`b=0.2`, and :math:`c=10`, which produce a chaotic attractor:
 
 .. code-block:: python
 
-    from pynamicalsys import ContinuousDynamicalSystem as cds
-    from pynamicalsys import PlotStyler
+    import numpy as np
     import matplotlib.pyplot as plt
+    from pynamicalsys import ContinuousDynamicalSystem as cds, PlotStyler
 
-    ds = cds(model="rossler system")
-    ds.integrator("rk45", atol=1e-15, rtol=1e-15)
+    system = cds(model="rossler system")
+    system.set_parameters([0.15, 0.2, 10.0])
+    system.integrator("rk45", atol=1e-12, rtol=1e-10)
 
-    # Parameters of the system
-    a, b, c = 0.15, 0.20, 10
-    parameters = [a, b, c]
-    ds.set_parameters(parameters)
+    initial_state = [0.1, 0.1, 0.1]
+    transient_time = 1_000.0
+    total_time = 10_000.0
 
-    # Initial conditions
-    u = [0.1, 0.1, 0.1]
-
-    # Total and transient time
-    total_time = 2000
-    transient_time = 1000
-
-    # Calculate the trajectory
-    trajectory = ds.trajectory(u, total_time, parameters=parameters, transient_time=transient_time)
-    
-    # Set the plot style
-    ps = PlotStyler(fontsize=18, linewidth=0.1)
-    ps.apply_style()
-
-    # Create the 3D figure and axis
-    fig, ax = plt.subplots(subplot_kw={'projection': '3d'}, figsize=(5, 4))
-    
-    # Plot the trajectory
-    ax.plot(trajectory[:, 1], trajectory[:, 2], trajectory[:, 3], label='Trajectory', color="k")
-    
-    # Set the labels and view angle
-    ax.set_xlabel("$x$")
-    ax.set_ylabel("$y$")
-    ax.set_zlabel("$z$")
-    ax.view_init(elev=30, azim=-140)
-
-    plt.show()
-
-.. figure:: images/rossler_attractor.png
-   :align: center
-   :width: 100%
-
-   The Rössler attractor for :math:`a = 0.15`, :math:`b = 0.20`, and :math:`c = 10`.
-
-Now, for the Lyapunov exponents:
+Request the full three-dimensional spectrum and retain its convergence history:
 
 .. code-block:: python
 
-    total_time = 10000
-    lyapunov_exponents = ds.lyapunov(
-        u,
+    lyapunov_history = system.lyapunov(
+        initial_state,
         total_time,
         transient_time=transient_time,
-        log_base=2,
-    )
-    print(lyapunov_exponents)
-
-.. code-block:: text 
-
-    [1.27122925e-01  3.05263459e-04 -1.41384990e+01]
-
-It is also possible to return the whole history of all Lyapunov exponents:
-
-.. code-block:: python
-    
-    # Using return_history=True
-    lyapunov_exponents = ds.lyapunov(
-        u,
-        total_time,
-        parameters=parameters,
-        transient_time=transient_time,
+        num_exponents=3,
         return_history=True,
     )
-    
-    # Set the plot style
-    ps = PlotStyler(fontsize=18, linewidth=0.75)
+
+With ``return_history=True``, the first column contains time and the remaining columns contain :math:`\lambda_1`, :math:`\lambda_2`, and :math:`\lambda_3`. The averages begin after ``transient_time``. The ``total_time`` argument remains the final integration time, so the exponents in this example are accumulated from :math:`t=1000` to :math:`t=10000`.
+
+The magnitude of :math:`\lambda_3` is much larger than the magnitudes of :math:`\lambda_1` and :math:`\lambda_2`, so plotting the three raw values on one linear axis would compress the two exponents near zero. The ``rescale`` array leaves :math:`\lambda_1` and :math:`\lambda_2` unchanged and multiplies :math:`\lambda_3` by :math:`0.05` only for visualization. This places the convergence of all three curves on a readable scale without modifying ``lyapunov_history`` or the reported numerical values:
+
+.. code-block:: python
+
+    time = lyapunov_history[:, 0]
+    exponents = lyapunov_history[:, 1:]
+    colors = ["darkgreen", "darkorange", "navy"]
+
+    ps = PlotStyler()
     ps.apply_style()
-
-    # Create the figure and axes
-    fig, ax = plt.subplots(1, 2, figsize=(10, 3), sharex=True)
-    
-    # Plot each Lyapunov exponent with a different color
-    colors = ["green", "gold", "blue"]
-    for i in range(3):
-        ax[0].plot(
-            lyapunov_exponents[:, 0],
-            lyapunov_exponents[:, i + 1],
-            color=colors[i],
+    fig, ax = plt.subplots(figsize=(10, 4), sharex=True)
+    rescale = np.array([1, 1, 0.05])
+    for index, color in enumerate(colors):
+        ax.plot(
+            time,
+            rescale[index] * exponents[:, index],
+            color=color,
+            label=rf"$\lambda_{index + 1}$",
         )
 
-        ax[1].plot(
-            lyapunov_exponents[:, 0],
-            lyapunov_exponents[:, i + 1],
-            color=colors[i],
-            label=rf"$\lambda_{i + 1}$",
-        )
-    
-    # Set the legend, limits, and labels
-    ax[1].legend(frameon=False, ncol=3)
-    ax[0].set_ylim(-11, 1)
-    ax[1].set_ylim(1e-5, 1e0)
-    ax[0].set_xlim(transient_time, total_time)
-    ax[1].set_yscale("log")
-
-    ax[0].set_ylabel("Lyapunov exponents")
-    ax[0].set_xlabel("Time")
-    ax[1].set_xlabel("Time")
-
+    ax.set_xlabel("Time $t$")
+    ax.set_ylabel("Lyapunov exponents")
+    ax.set_xlim(transient_time, total_time)
+    ax.set_ylim(-0.7, 0.2)
+    ax.legend(loc="center right", frameon=False)
+    fig.tight_layout()
     plt.show()
 
-.. figure:: images/rossler_lyapunov.png
-   :align: center
-   :width: 100%
-   
-   The Lyapunov exponents history for the Rössler system.
+.. figure:: images/continuous_rossler_lyapunov.png
+    :align: center
+    :width: 100%
+
+    Convergence of the three Lyapunov exponents of the chaotic Rössler system, with :math:`\lambda_3` multiplied by :math:`0.05` in the plot.
+
+Final values and the largest exponent
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The final row of ``lyapunov_history`` provides the spectrum at the end of the calculation:
+
+.. code-block:: python
+
+    lyapunov_exponents = lyapunov_history[-1, 1:]
+    lyapunov_exponents
+
+.. code-block:: text
+
+    array([ 8.93298015e-02, -3.20038186e-05, -9.79973203e+00])
+
+When only the largest exponent is needed, set ``num_exponents=1`` and leave ``return_history=False``. This uses the dedicated single-vector calculation and returns a scalar:
+
+.. code-block:: python
+
+    largest_exponent = system.lyapunov(
+        initial_state,
+        total_time,
+        transient_time=transient_time,
+        num_exponents=1,
+    )
+    largest_exponent
+
+.. code-block:: text
+
+    np.float64(0.09039300684638307)
+
+Set ``num_exponents`` between one and the dimension of the system. If it is omitted, the complete spectrum is calculated. Without a stored history, a request for more than one exponent returns a one-dimensional array.
+
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``method``
+    ``"QR"`` uses the package's modified Gram-Schmidt implementation and is the default. ``"QR_HH"`` uses ``numpy.linalg.qr`` with Householder reflections. This option applies when more than one exponent is calculated.
+
+``log_base``
+    The default value is :math:`e`, so the exponents are measured using natural logarithms. Set ``log_base=2`` to express the rates in bits per unit time. Changing the base rescales the numerical values but does not change their signs.
+
+``seed``
+    The seed initializes the deviation vectors. For a sufficiently converged calculation, the estimated exponents should not depend materially on this initial orientation.
+
+``endpoint``
+    The default ``True`` includes the endpoint of the requested interval. Set it to ``False`` when the integration must stop strictly before that endpoint.
+
+Reliable estimates require a sufficiently long accumulation interval and appropriate integrator settings. Compare results obtained with longer integration times, smaller fixed steps, or tighter adaptive tolerances before drawing conclusions from small exponents.
+
+References
+~~~~~~~~~~
+
+- I. Shimada and T. Nagashima, `A Numerical Approach to Ergodic Problem of Dissipative Dynamical Systems <https://doi.org/10.1143/PTP.61.1605>`_, Progress of Theoretical Physics 61, 1605-1616 (1979).
+- G. Benettin, L. Galgani, A. Giorgilli, and J.-M. Strelcyn, `Lyapunov Characteristic Exponents for Smooth Dynamical Systems and for Hamiltonian Systems, Part 1: Theory <https://doi.org/10.1007/BF02128236>`_, Meccanica 15, 9-20 (1980).
