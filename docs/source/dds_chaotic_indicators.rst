@@ -8,6 +8,7 @@ Different trajectories of the same discrete dynamical system can exhibit periodi
    :caption: Contents
 
    dds_lyapunov
+   dds_clv
    dds_alignment_indices
    dds_wba
    dds_rte
