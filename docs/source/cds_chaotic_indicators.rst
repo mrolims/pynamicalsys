@@ -9,4 +9,4 @@ Chaotic indicators quantify instability, alignment, and recurrence properties al
 
    cds_lyapunov
    cds_clv
-   cds_ldi
+   cds_alignment_indices
