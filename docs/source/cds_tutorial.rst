@@ -12,4 +12,5 @@ This tutorial is also available as a Jupyter notebook. You can view it directly 
    cds_creating_ds
    cds_trajectories
    cds_reduced_maps
+   cds_basins
    cds_chaotic_indicators
