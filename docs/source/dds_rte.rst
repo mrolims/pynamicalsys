@@ -21,7 +21,7 @@ The recurrence time entropy (RTE) is the Shannon entropy of this distribution:
 
     \mathrm{RTE}=-\sum_{v=v_{\min}}^{v_{\max}}p_w(v)\ln p_w(v).
 
-The entropy of a recurrence-period distribution was introduced by `Little et al. (2007) <https://doi.org/10.1186/1475-925X-6-23>`_. Its formulation from the white vertical lines of recurrence plots and its use for detecting stickiness were developed by `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_.
+The entropy of a recurrence-period distribution was introduced by `Little et al. (2007) <https://doi.org/10.1186/1475-925X-6-23>`_. `Zou et al. (2007) <https://doi.org/10.1063/1.2785159>`_ estimated recurrence times from the white vertical lines of recurrence plots, and `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_ used the resulting entropy to detect stickiness and weak chaos in area-preserving maps.
 
 Interpreting RTE
 ^^^^^^^^^^^^^^^^
@@ -215,6 +215,7 @@ References
 
     - J\.-P\. Eckmann, S\. O\. Kamphorst, and D\. Ruelle, `Recurrence plots of dynamical systems <https://doi.org/10.1209/0295-5075/4/9/004>`_, Europhysics Letters 4, 973-977 (1987).
     - M\. A\. Little, P\. E\. McSharry, S\. J\. Roberts, D\. A\. E\. Costello, and I\. M\. Moroz, `Exploiting nonlinear recurrence and fractal scaling properties for voice disorder detection <https://doi.org/10.1186/1475-925X-6-23>`_, BioMedical Engineering OnLine 6, 23 (2007).
+    - Y\. Zou, M\. Thiel, M\. C\. Romano, and J\. Kurths, `Characterization of stickiness by means of recurrence <https://doi.org/10.1063/1.2785159>`_, Chaos 17, 043101 (2007).
     - M\. R\. Sales, M\. Mugnaine, J\. D\. Szezech Jr., R\. L\. Viana, I\. L\. Caldas, N\. Marwan, and J\. Kurths, `Stickiness and recurrence plots: An entropy-based approach <https://doi.org/10.1063/5.0140613>`_, Chaos 33, 033140 (2023).
     - N\. B\. Slater, `The distribution of the integers N for which {θN} \< φ <https://doi.org/10.1017/S0305004100026086>`_, Mathematical Proceedings of the Cambridge Philosophical Society 46, 525-534 (1950).
     - N\. B\. Slater, `Gaps and steps for the sequence nθ mod 1 <https://doi.org/10.1017/S0305004100042195>`_, Mathematical Proceedings of the Cambridge Philosophical Society 63, 1115-1123 (1967).
