@@ -7,24 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
+
+## [v1.7.0] - 2026-09-16
+
 ### Added
 
 - `find_periodic_orbit` can now refine a single initial guess with **Newton's
-  method**, selected by passing a 1D initial guess instead of a grid. The
-  existing grid and symmetry-line searches are unchanged and still restricted
-  to two dimensions, but the Newton solver works in **any number of
-  dimensions**: one-dimensional maps such as the logistic map, and
-  four-dimensional ones such as the 4D symplectic map, previously raised an
-  error and are now supported. It is also far more accurate at elliptic orbits,
-  where the searches stall. At the elliptic fixed point of the standard map it
-  reaches round-off rather than about `1e-09`.
-
-  Two options apply to this solver. `periods` gives the wrapping period of each
-  coordinate, for maps defined on a torus, so that an orbit winding around the
-  domain is not mistaken for a large error. `prime_period` turns a solution
-  whose period is a proper divisor of the one requested into an error; such
-  points genuinely solve `F^p(u) = u`, since a fixed point is also a period-2
-  point, so they are returned by default.
+  method**, selected by passing a 1D initial guess instead of a grid. Unlike the
+  grid and symmetry-line searches, which are limited to two dimensions, it works
+  in **any number of dimensions**, so one-dimensional maps such as the logistic
+  map and four-dimensional ones such as the 4D symplectic map are now supported,
+  and it is far more accurate at elliptic orbits, where the searches stall. Two
+  options apply: `periods`, the wrapping period of each coordinate for maps on a
+  torus, and `prime_period`, which rejects a solution whose period is a proper
+  divisor of the one requested (off by default).
 - All built-in dynamical system classes now include the governing equations
   in the `.info` property, which returns a dictionary describing the current
   model. The equation is available in LaTeX form via `.info["equation"]` and
@@ -36,45 +33,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Choosing a recurrence threshold from a **fixed recurrence rate** now uses a
-  small, constant amount of memory instead of an amount growing with the square
-  of the series length. It previously built the whole matrix of pairwise
-  distances just to take one quantile from it, which needed about 610 MB for a
-  4000-point series and around 5 GB for 10000 points, far more than the
-  recurrence matrix itself. It now needs about 2 MB whatever the length, and is
-  also considerably faster: 0.05 s instead of 2.6 s for 4000 points, and 1.3 s
-  for 20000 points, which previously would not have fitted in memory at all.
-  The threshold returned is unchanged.
-- IPython is no longer required. Installing **pynamicalsys** no longer pulls
-  it in, and it now works with any IPython version. Without IPython,
+- Choosing a recurrence threshold from a **fixed recurrence rate** now uses far
+  less memory and is considerably faster, so long series that previously ran out
+  of memory now work. The threshold returned is unchanged.
+- IPython is no longer required, and any version now works. Without it,
   `.info["equation"]` returns the LaTeX source as a plain string instead of a
-  rendered equation; everything else is unchanged. Install
-  `pynamicalsys[notebook]` to get rendered output back.
-- The minimum supported Python version is now correctly declared as 3.10.
-  **pynamicalsys** already required 3.10, but advertised 3.8, so installing on
-  3.8 or 3.9 appeared to succeed and then failed on import. `pip` now reports
-  the incompatibility up front.
+  rendered equation; install `pynamicalsys[notebook]` to restore rendered
+  output.
+- The minimum supported Python version is now correctly declared as 3.10. It was
+  already required, but the package advertised 3.8, so installs on 3.8 or 3.9
+  appeared to succeed and then failed on import; `pip` now reports the
+  incompatibility up front.
 
 ### Fixed
 
 - Recurrence matrices built with `metric="euclidean"` used the **Manhattan**
-  distance, and `metric="manhattan"` used the **Euclidean** distance. The two
-  were swapped wherever a recurrence matrix is built, which affects recurrence
-  plots, recurrence time entropy and `TimeSeriesMetrics`. With a fixed
-  recurrence rate the effect was worse still, because the threshold was chosen
-  using the metric you asked for while the matrix was built with the other one.
-  Results obtained with either of these two metrics will change. The default
-  `"supremum"` metric was always correct and is unaffected.
-- The Jacobian of the **Lozi map** had the wrong sign on its `dx'/dx` entry:
-  the map is `x' = 1 - a|x| + y`, so the derivative is `-a sign(x)`, not
-  `+a sign(x)`. Any quantity computed from the linearised dynamics of this
-  model was affected, including eigenvalues and eigenvectors of periodic
-  orbits, stability classification, invariant manifolds, covariant Lyapunov
-  vectors, and the finite-time SALI, LDI and GALI indicators. The averaged
-  Lyapunov exponents were largely unaffected, which is why this went
-  unnoticed: the incorrect Jacobian at `x` equals the correct one at `-x`, so
-  the long-time averages over a nearly symmetric attractor came out close to
-  the right values.
+  distance and `metric="manhattan"` used the **Euclidean** distance, wherever a
+  recurrence matrix is built, which affects recurrence plots, recurrence time
+  entropy and `TimeSeriesMetrics`. Results obtained with either of these two
+  metrics will change; the default `"supremum"` metric was always correct and is
+  unaffected.
+- The Jacobian of the **Lozi map** had the wrong sign on its `dx'/dx` entry
+  (the map is `x' = 1 - a|x| + y`, so the derivative is `-a sign(x)`). Any
+  quantity computed from the linearised dynamics of this model was affected,
+  including eigenvalues and eigenvectors of periodic orbits, stability
+  classification, invariant manifolds, covariant Lyapunov vectors, and the
+  finite-time SALI, LDI and GALI indicators. The averaged Lyapunov exponents
+  were largely unaffected.
 - The backward mapping of the **4D symplectic map** was not the inverse of the
   forward mapping, with an O(1) round-trip error. Computations that iterate
   the map backwards, such as the stable branches of invariant manifolds, gave
@@ -85,7 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for systems built from custom functions, as documented, instead of an
   unhelpful `KeyError`.
 
-[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.6.0...HEAD
+[v1.7.0]: https://github.com/mrolims/pynamicalsys/compare/v1.6.0...v1.7.0
 
 ## [v1.6.0] - 2026-07-01
 
