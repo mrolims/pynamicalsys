@@ -267,3 +267,10 @@ This construction selects ``imp`` automatically. The functions require :math:`J_
 The later trajectory tutorial uses this distinction when comparing the available integrators. The explicit ``svy4`` and ``vv2`` methods apply to the separable Hénon-Heiles construction, while ``imp`` applies to the general Walker-Ford construction.
 
 The ``info`` property describes built-in models. The package cannot infer descriptive metadata or equations from custom functions.
+
+References
+~~~~~~~~~~
+
+.. container:: references-list
+
+    - G\. H\. Walker and J\. Ford, `Amplitude instability and ergodic behavior for conservative nonlinear oscillator systems <https://doi.org/10.1103/PhysRev.188.416>`_, Physical Review 188, 416-432 (1969).
