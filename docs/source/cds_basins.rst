@@ -108,4 +108,6 @@ For an autonomous flow, set ``map_type="PS"`` and provide ``section_index``, ``s
 References
 ~~~~~~~~~~
 
-- M. Rolim Sales et al., `pynamicalsys: A Python toolkit for the analysis of dynamical systems <https://doi.org/10.1016/j.chaos.2025.117269>`_, Chaos, Solitons and Fractals 201, 117269 (2025).
+.. container:: references-list
+
+    - M\. Rolim Sales, L\. C\. de Souza, D\. Borin, M\. Mugnaine, J\. D\. Szezech Jr., R\. L\. Viana, I\. L\. Caldas, E\. D\. Leonel, and C\. G\. Antonopoulos, `pynamicalsys: A Python toolkit for the analysis of dynamical systems <https://doi.org/10.1016/j.chaos.2025.117269>`_, Chaos, Solitons and Fractals 201, 117269 (2025).

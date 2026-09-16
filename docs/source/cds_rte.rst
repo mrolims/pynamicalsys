@@ -1,7 +1,7 @@
 Recurrence time entropy
 -----------------------
 
-The :py:meth:`recurrence_time_entropy <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.recurrence_time_entropy>` method measures the diversity of recurrence times in a reduced map. It identifies nearby pairs of points using a distance threshold :math:`\varepsilon`, then calculates the Shannon entropy of white vertical-line lengths in the recurrence matrix. Recurrence plots were introduced by `Eckmann, Kamphorst, and Ruelle (1987) <https://doi.org/10.1209/0295-5075/4/9/004>`_. The entropy of a recurrence-period distribution was introduced by `Little et al. (2007) <https://doi.org/10.1186/1475-925X-6-23>`_, and the white-line formulation was developed by `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_.
+The :py:meth:`recurrence_time_entropy <pynamicalsys.core.continuous_dynamical_systems.ContinuousDynamicalSystem.recurrence_time_entropy>` method measures the diversity of recurrence times in a reduced map. It identifies nearby pairs of points using a distance threshold :math:`\varepsilon`, then calculates the Shannon entropy of white vertical-line lengths in the recurrence matrix. Recurrence plots were introduced by `Eckmann et al. (1987) <https://doi.org/10.1209/0295-5075/4/9/004>`_. The entropy of a recurrence-period distribution was introduced by `Little et al. (2007) <https://doi.org/10.1186/1475-925X-6-23>`_, and the white-line formulation was developed by `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_.
 
 This tutorial uses a periodic and a chaotic Rössler trajectory to show two practical ways to choose :math:`\varepsilon`. Each explicit call returns both the recurrence matrix and the RTE calculated from that matrix. All four calls use the same maxima-map definition and analysis settings.
 
@@ -168,7 +168,9 @@ A recurrence matrix for :math:`N` reduced-map points contains :math:`N^2` entrie
 References
 ~~~~~~~~~~
 
-- O. E. Rössler, `An equation for continuous chaos <https://doi.org/10.1016/0375-9601(76)90101-8>`_, Physics Letters A 57, 397-398 (1976).
-- J.-P. Eckmann, S. O. Kamphorst, and D. Ruelle, `Recurrence plots of dynamical systems <https://doi.org/10.1209/0295-5075/4/9/004>`_, Europhysics Letters 4, 973-977 (1987).
-- M. A. Little, P. E. McSharry, S. J. Roberts, D. A. E. Costello, and I. M. Moroz, `Exploiting nonlinear recurrence and fractal scaling properties for voice disorder detection <https://doi.org/10.1186/1475-925X-6-23>`_, BioMedical Engineering OnLine 6, 23 (2007).
-- M. R. Sales, M. Mugnaine, J. D. Szezech Jr., and R. L. Viana, `Recurrence-based characterization of stickiness in the phase space of Hamiltonian systems <https://doi.org/10.1063/5.0140613>`_, Chaos 33, 033140 (2023).
+.. container:: references-list
+
+    - O\. E\. Rössler, `An equation for continuous chaos <https://doi.org/10.1016/0375-9601(76)90101-8>`_, Physics Letters A 57, 397-398 (1976).
+    - J\.-P\. Eckmann, S\. O\. Kamphorst, and D\. Ruelle, `Recurrence plots of dynamical systems <https://doi.org/10.1209/0295-5075/4/9/004>`_, Europhysics Letters 4, 973-977 (1987).
+    - M\. A\. Little, P\. E\. McSharry, S\. J\. Roberts, D\. A\. E\. Costello, and I\. M\. Moroz, `Exploiting nonlinear recurrence and fractal scaling properties for voice disorder detection <https://doi.org/10.1186/1475-925X-6-23>`_, BioMedical Engineering OnLine 6, 23 (2007).
+    - M\. R\. Sales, M\. Mugnaine, J\. D\. Szezech Jr., R\. L\. Viana, I\. L\. Caldas, N\. Marwan, and J\. Kurths, `Stickiness and recurrence plots: An entropy-based approach <https://doi.org/10.1063/5.0140613>`_, Chaos 33, 033140 (2023).

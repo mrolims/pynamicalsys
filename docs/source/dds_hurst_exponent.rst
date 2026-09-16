@@ -153,3 +153,11 @@ Use :py:meth:`finite_time_hurst_exponent <pynamicalsys.core.discrete_dynamical_s
     )
 
 When ``return_points=True``, ``phase_space_points[i]`` is the final state of the window that produced ``finite_hurst[i]``. Each row of ``finite_hurst`` contains the coordinate-wise estimates for that window. A multimodal finite-time distribution can reveal visits to dynamically distinct regions, but the locations and separation of its modes depend on the window length and fitted range.
+
+References
+^^^^^^^^^^
+
+.. container:: references-list
+
+    - H\. E\. Hurst, `Long-term storage capacity of reservoirs <https://doi.org/10.1061/TACEAT.0006518>`_, Transactions of the American Society of Civil Engineers 116, 770-799 (1951).
+    - D\. Borin, `Hurst exponent: a method for characterizing dynamical traps <https://doi.org/10.1103/PhysRevE.110.064227>`_, Physical Review E 110, 064227 (2024).

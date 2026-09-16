@@ -1,7 +1,7 @@
 Recurrence time entropy
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-A recurrence plot records when a trajectory returns close to a state that it visited previously. This representation was introduced by `Eckmann, Kamphorst, and Ruelle (1987) <https://doi.org/10.1209/0295-5075/4/9/004>`_. For a trajectory :math:`\{\mathbf{x}_i\}_{i=1}^{N}`, the recurrence matrix is
+A recurrence plot records when a trajectory returns close to a state that it visited previously. This representation was introduced by `Eckmann et al. (1987) <https://doi.org/10.1209/0295-5075/4/9/004>`_. For a trajectory :math:`\{\mathbf{x}_i\}_{i=1}^{N}`, the recurrence matrix is
 
 .. math::
 
@@ -26,7 +26,7 @@ The entropy of a recurrence-period distribution was introduced by `Little et al.
 Interpreting RTE
 ^^^^^^^^^^^^^^^^
 
-The interpretation is motivated by `Slater's theorem <https://doi.org/10.1017/S0305004100026086>`_. An irrational rotation on a circle has at most three return times to a connected interval, with the third equal to the sum of the other two. Consequently, periodic motion has a single recurrence time and :math:`\mathrm{RTE}=0`, while quasiperiodic motion generally produces a small number of recurrence times and a low RTE. Chaotic motion has a broader recurrence-time distribution and typically produces a larger RTE.
+The interpretation is motivated by `Slater's theorem <https://doi.org/10.1017/S0305004100042195>`_. An irrational rotation on a circle has at most three return times to a connected interval, with the third equal to the sum of the other two. Consequently, periodic motion has a single recurrence time and :math:`\mathrm{RTE}=0`, while quasiperiodic motion generally produces a small number of recurrence times and a low RTE. Chaotic motion has a broader recurrence-time distribution and typically produces a larger RTE.
 
 For mixed phase spaces, sticky chaotic trajectories temporarily resemble quasiperiodic motion near regular islands. Their RTE can therefore be lower than that of trajectories moving through the chaotic sea but higher than that of regular trajectories. `Sales et al. (2023) <https://doi.org/10.1063/5.0140613>`_ showed that RTE is strongly positively correlated with the largest Lyapunov exponent for the standard map and that the finite-time RTE distribution can resolve different hierarchical levels of islands around islands.
 
@@ -207,3 +207,14 @@ Use :py:meth:`finite_time_recurrence_time_entropy <pynamicalsys.core.discrete_dy
     )
 
 When ``return_points=True``, ``phase_space_points[i]`` is the state at the beginning of the window that produced ``finite_rte[i]``. A multimodal finite-time RTE distribution can reveal transitions between the chaotic sea and sticky layers, but the locations of its modes depend on the window length and threshold settings.
+
+References
+^^^^^^^^^^
+
+.. container:: references-list
+
+    - J\.-P\. Eckmann, S\. O\. Kamphorst, and D\. Ruelle, `Recurrence plots of dynamical systems <https://doi.org/10.1209/0295-5075/4/9/004>`_, Europhysics Letters 4, 973-977 (1987).
+    - M\. A\. Little, P\. E\. McSharry, S\. J\. Roberts, D\. A\. E\. Costello, and I\. M\. Moroz, `Exploiting nonlinear recurrence and fractal scaling properties for voice disorder detection <https://doi.org/10.1186/1475-925X-6-23>`_, BioMedical Engineering OnLine 6, 23 (2007).
+    - M\. R\. Sales, M\. Mugnaine, J\. D\. Szezech Jr., R\. L\. Viana, I\. L\. Caldas, N\. Marwan, and J\. Kurths, `Stickiness and recurrence plots: An entropy-based approach <https://doi.org/10.1063/5.0140613>`_, Chaos 33, 033140 (2023).
+    - N\. B\. Slater, `The distribution of the integers N for which {θN} \< φ <https://doi.org/10.1017/S0305004100026086>`_, Mathematical Proceedings of the Cambridge Philosophical Society 46, 525-534 (1950).
+    - N\. B\. Slater, `Gaps and steps for the sequence nθ mod 1 <https://doi.org/10.1017/S0305004100042195>`_, Mathematical Proceedings of the Cambridge Philosophical Society 63, 1115-1123 (1967).

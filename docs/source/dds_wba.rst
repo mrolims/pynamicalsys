@@ -153,3 +153,14 @@ The observable must accept a two-dimensional trajectory array and return a one-d
     )
 
 The observable is not unique, but a nearly constant or symmetry-degenerate choice can conceal the distinction of interest. When the classification is important, compare more than one smooth observable and increase the window length to confirm that the conclusion is stable.
+
+References
+^^^^^^^^^^
+
+.. container:: references-list
+
+    - S\. Das, C\. B\. Dock, Y\. Saiki, M\. Salgado-Flores, E\. Sander, J\. Wu, and J\. A\. Yorke, `Measuring quasiperiodicity <https://doi.org/10.1209/0295-5075/114/40005>`_, Europhysics Letters 114, 40005 (2016).
+    - S\. Das, Y\. Saiki, E\. Sander, and J\. A\. Yorke, `Quantitative quasiperiodicity <https://doi.org/10.1088/1361-6544/aa84c2>`_, Nonlinearity 30, 4111-4140 (2017).
+    - S\. Das and J\. A\. Yorke, `Super convergence of ergodic averages for quasiperiodic orbits <https://doi.org/10.1088/1361-6544/aa99a0>`_, Nonlinearity 31, 491-501 (2018).
+    - E\. Sander and J\. D\. Meiss, `Birkhoff averages and rotational invariant circles for area-preserving maps <https://doi.org/10.1016/j.physd.2020.132569>`_, Physica D 411, 132569 (2020).
+    - M\. R\. Sales, M\. Mugnaine, R\. L\. Viana, I\. L\. Caldas, and J\. D\. Szezech Jr., `Unpredictability in Hamiltonian systems with a hierarchical phase space <https://doi.org/10.1016/j.physleta.2022.127991>`_, Physics Letters A 431, 127991 (2022).

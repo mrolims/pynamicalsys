@@ -1,7 +1,7 @@
 Alignment indices
 ~~~~~~~~~~~~~~~~~
 
-The Smaller Alignment Index (SALI), Generalized Alignment Index (GALI), and Linear Dependence Index (LDI) follow the evolution of normalized deviation vectors under the tangent dynamics. They measure how these vectors become aligned and provide closely related ways to distinguish regular and chaotic motion. SALI was introduced by `Skokos (2001) <https://doi.org/10.1088/0305-4470/34/47/309>`_, GALI by `Skokos, Bountis, and Antonopoulos (2007) <https://doi.org/10.1016/j.physd.2007.04.004>`_, and LDI by `Antonopoulos and Bountis (2006) <https://arxiv.org/abs/0711.0360>`_.
+The Smaller Alignment Index (SALI), Generalized Alignment Index (GALI), and Linear Dependence Index (LDI) follow the evolution of normalized deviation vectors under the tangent dynamics. They measure how these vectors become aligned and provide closely related ways to distinguish regular and chaotic motion. SALI was introduced by `Skokos (2001) <https://doi.org/10.1088/0305-4470/34/47/309>`_, GALI by `Skokos et al. (2007) <https://doi.org/10.1016/j.physd.2007.04.004>`_, and LDI by `Antonopoulos and Bountis (2006) <https://arxiv.org/abs/0711.0360>`_.
 
 Smaller Alignment Index
 ^^^^^^^^^^^^^^^^^^^^^^^
@@ -18,7 +18,7 @@ The two norms detect alignment in the same or opposite directions. Along a chaot
 
     \mathrm{SALI}(n)\propto\exp\left[-(\lambda_1-\lambda_2)n\right].
 
-The second exponent must be included whether it is positive, zero, or negative. This discrete-time result and its relation to the continuous-time expression are derived by `Sales, Leonel, and Antonopoulos (2026) <https://doi.org/10.1016/j.chaos.2026.117884>`_. For regular trajectories, SALI generally remains bounded away from zero when the tangent space of the invariant object has at least two independent directions. In two-dimensional maps it can also approach zero for regular trajectories, but algebraically rather than exponentially, so the decay law must be considered.
+The second exponent must be included whether it is positive, zero, or negative. This discrete-time result and its relation to the continuous-time expression are derived by `Sales et al. (2026) <https://doi.org/10.1016/j.chaos.2026.117884>`_. For regular trajectories, SALI generally remains bounded away from zero when the tangent space of the invariant object has at least two independent directions. In two-dimensional maps it can also approach zero for regular trajectories, but algebraically rather than exponentially, so the decay law must be considered.
 
 Compute SALI for two trajectories of the four-dimensional symplectic map with :py:meth:`SALI <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.SALI>`:
 
@@ -97,7 +97,7 @@ where :math:`2\leq k\leq d`. For a chaotic trajectory, its decay is governed by 
 
     \mathrm{GALI}_k(n)\propto\exp\left\{-\left[(k-1)\lambda_1-\sum_{i=2}^{k}\lambda_i\right]n\right\}.
 
-For regular trajectories, whether :math:`\mathrm{GALI}_k` remains nonzero or decays algebraically depends on :math:`k` and the dimension of the invariant torus. This geometric behavior and the decay laws were established in the original GALI paper by `Skokos, Bountis, and Antonopoulos (2007) <https://doi.org/10.1016/j.physd.2007.04.004>`_.
+For regular trajectories, whether :math:`\mathrm{GALI}_k` remains nonzero or decays algebraically depends on :math:`k` and the dimension of the invariant torus. This geometric behavior and the decay laws were established in the original GALI paper by `Skokos et al. (2007) <https://doi.org/10.1016/j.physd.2007.04.004>`_.
 
 The :py:meth:`GALI <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.GALI>` method provides three equivalent ways to compute the spanned volume:
 
@@ -279,7 +279,7 @@ its determinant is :math:`\prod_{i=1}^{k}\sigma_i^2`. Therefore
 
     \mathrm{GALI}_k(n)=\sqrt{\det\left(\mathbf{V}_n^T\mathbf{V}_n\right)}=\prod_{i=1}^{k}\sigma_i(n)=\mathrm{LDI}_k(n).
 
-This exact identity and the common decay rate for discrete and continuous chaotic systems are derived in `Sales, Leonel, and Antonopoulos (2026) <https://doi.org/10.1016/j.chaos.2026.117884>`_. GALI and LDI are mathematically identical for the same normalized deviation vectors, while their numerical implementations differ. GALI uses a determinant or QR factorization, and LDI uses a singular value decomposition.
+This exact identity and the common decay rate for discrete and continuous chaotic systems are derived in `Sales et al. (2026) <https://doi.org/10.1016/j.chaos.2026.117884>`_. GALI and LDI are mathematically identical for the same normalized deviation vectors, while their numerical implementations differ. GALI uses a determinant or QR factorization, and LDI uses a singular value decomposition.
 
 Benchmarking the formulations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -364,7 +364,9 @@ All three public methods return a scalar by default and a one-dimensional array 
 References
 ^^^^^^^^^^
 
-- C. Skokos, `Alignment indices: a new, simple method for determining the ordered or chaotic nature of orbits <https://doi.org/10.1088/0305-4470/34/47/309>`_, Journal of Physics A: Mathematical and General 34, 10029-10043 (2001).
-- C. Skokos, T. C. Bountis, and C. Antonopoulos, `Geometrical properties of local dynamics in Hamiltonian systems: The Generalized Alignment Index (GALI) method <https://doi.org/10.1016/j.physd.2007.04.004>`_, Physica D 231, 30-54 (2007).
-- C. Antonopoulos and T. Bountis, `Detecting order and chaos by the Linear Dependence Index (LDI) method <https://arxiv.org/abs/0711.0360>`_, ROMAI Journal 2, 1-13 (2006).
-- M. R. Sales, E. D. Leonel, and C. G. Antonopoulos, `On the behavior of Linear Dependence, Smaller, and Generalized Alignment Indices in discrete and continuous chaotic systems <https://doi.org/10.1016/j.chaos.2026.117884>`_, Chaos, Solitons and Fractals 205, 117884 (2026).
+.. container:: references-list
+
+    - C\. Skokos, `Alignment indices: a new, simple method for determining the ordered or chaotic nature of orbits <https://doi.org/10.1088/0305-4470/34/47/309>`_, Journal of Physics A: Mathematical and General 34, 10029-10043 (2001).
+    - C\. Skokos, T\. C\. Bountis, and C\. Antonopoulos, `Geometrical properties of local dynamics in Hamiltonian systems: The Generalized Alignment Index (GALI) method <https://doi.org/10.1016/j.physd.2007.04.004>`_, Physica D 231, 30-54 (2007).
+    - C\. Antonopoulos and T\. Bountis, `Detecting order and chaos by the Linear Dependence Index (LDI) method <https://arxiv.org/abs/0711.0360>`_, ROMAI Journal 2, 1-13 (2006).
+    - M\. R\. Sales, E\. D\. Leonel, and C\. G\. Antonopoulos, `On the behavior of Linear Dependence, Smaller, and Generalized Alignment Indices in discrete and continuous chaotic systems <https://doi.org/10.1016/j.chaos.2026.117884>`_, Chaos, Solitons and Fractals 205, 117884 (2026).

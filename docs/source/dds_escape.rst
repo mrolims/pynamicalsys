@@ -16,7 +16,7 @@ In both modes, a trajectory that does not escape within ``max_time`` returns ``(
 Leaving a bounded region
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Consider the family of discrete Hamiltonian maps studied by `Borin, Livorati, and Leonel (2023) <https://doi.org/10.1016/j.chaos.2023.113965>`_, which is available as the built-in Leonel map:
+Consider the family of discrete Hamiltonian maps studied by `Borin et al. (2023) <https://doi.org/10.1016/j.chaos.2023.113965>`_, which is available as the built-in Leonel map:
 
 .. math::
 
@@ -181,7 +181,7 @@ where :math:`N_0` is the initial ensemble size and :math:`N(n)` is the number of
         survival_times.append(times)
         survival_probabilities.append(probability)
 
-Plotting the same curves on semilogarithmic and logarithmic axes helps distinguish an exponential decay from a slower tail. A straight segment on the semilogarithmic plot is consistent with exponential escape, while a straight segment on the logarithmic plot is consistent with a power law. `Borin, Livorati, and Leonel (2023) <https://doi.org/10.1016/j.chaos.2023.113965>`_ found exponential survival in a fully chaotic region of this map and a slower late-time decay when the survival region included stability islands, identifying the change as a signature of stickiness. These interpretations require a resolved scaling interval and should not be inferred from a short visual segment.
+Plotting the same curves on semilogarithmic and logarithmic axes helps distinguish an exponential decay from a slower tail. A straight segment on the semilogarithmic plot is consistent with exponential escape, while a straight segment on the logarithmic plot is consistent with a power law. `Borin et al. (2023) <https://doi.org/10.1016/j.chaos.2023.113965>`_ found exponential survival in a fully chaotic region of this map and a slower late-time decay when the survival region included stability islands, identifying the change as a signature of stickiness. These interpretations require a resolved scaling interval and should not be inferred from a short visual segment.
 
 .. code-block:: python
 
@@ -435,3 +435,13 @@ The :py:class:`BasinMetrics <pynamicalsys.core.basin_metrics.BasinMetrics>` clas
     [1.21077098 1.46661358]
 
 The first column of ``entropy_values`` contains :math:`S_b` and the second contains :math:`S_{bb}`. Both depend on the spatial partition, integration time, hole definition, and treatment of censored trajectories. The label :math:`\mathcal{B}_{\infty}` is included as a distinct outcome here, so changing ``max_time`` can change the measured basin entropies.
+
+References
+~~~~~~~~~~
+
+.. container:: references-list
+
+    - D\. Borin, A\. L\. P\. Livorati, and E\. D\. Leonel, `An investigation of the survival probability for chaotic diffusion in a family of discrete Hamiltonian mappings <https://doi.org/10.1016/j.chaos.2023.113965>`_, Chaos, Solitons and Fractals 175, 113965 (2023).
+    - J\. B\. Weiss, `Transport and mixing in traveling waves <https://doi.org/10.1063/1.858068>`_, Physics of Fluids A 3, 1379-1384 (1991).
+    - L\. C\. Souza, A\. C\. Mathias, P\. Haerter, and R\. L\. Viana, `Basin entropy and shearless barrier breakup in open non-twist Hamiltonian systems <https://doi.org/10.3390/e25081142>`_, Entropy 25, 1142 (2023).
+    - A\. Daza, A\. Wagemakers, B\. Georgeot, D\. Guéry-Odelin, and M\. A\. F\. Sanjuán, `Basin entropy: a new tool to analyze uncertainty in dynamical systems <https://doi.org/10.1038/srep31416>`_, Scientific Reports 6, 31416 (2016).

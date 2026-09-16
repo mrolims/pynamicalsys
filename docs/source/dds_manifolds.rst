@@ -334,9 +334,14 @@ corners.
    works in any dimension.
 
    Generalizing the manifold calculation to higher-dimensional maps is planned.
-   We also plan to implement the planar-map manifold tracing of D. Ciro,
-   I. L. Caldas, R. L. Viana, and T. E. Evans, *Efficient manifolds tracing for
-   planar maps*, `Chaos 28, 093106 (2018) <https://doi.org/10.1063/1.5027698>`_,
+   We also plan to implement the planar-map manifold tracing of `Ciro et al. (2018) <https://doi.org/10.1063/1.5027698>`_,
    which decomposes the manifold into primary segments traced with an adaptive
    mapping-refinement scheme, together with a normal-displacement approximation
    whose cost decreases with manifold length.
+
+References
+~~~~~~~~~~
+
+.. container:: references-list
+
+    - D\. Ciro, I\. L\. Caldas, R\. L\. Viana, and T\. E\. Evans, `Efficient manifolds tracing for planar maps <https://doi.org/10.1063/1.5027698>`_, Chaos 28, 093106 (2018).

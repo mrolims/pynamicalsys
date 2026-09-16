@@ -156,4 +156,6 @@ All three methods also accept an ensemble of initial states with shape ``(num_in
 References
 ~~~~~~~~~~
 
-- E. N. Lorenz, `Deterministic Nonperiodic Flow <https://journals.ametsoc.org/view/journals/atsc/20/2/1520-0469_1963_020_0130_dnf_2_0_co_2.xml>`_, Journal of the Atmospheric Sciences 20, 130-141 (1963).
+.. container:: references-list
+
+    - E\. N\. Lorenz, `Deterministic Nonperiodic Flow <https://journals.ametsoc.org/view/journals/atsc/20/2/1520-0469_1963_020_0130_dnf_2_0_co_2.xml>`_, Journal of the Atmospheric Sciences 20, 130-141 (1963).

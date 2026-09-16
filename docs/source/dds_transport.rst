@@ -20,7 +20,7 @@ When the action is unbounded, an ensemble of initial conditions can spread indef
 
     \mathrm{MSD}(n)=\left\langle\left(y_n-y_0\right)^2\right\rangle,
 
-where the average is taken over the ensemble. Normal diffusion satisfies :math:`\mathrm{MSD}(n)\sim 2Dn`, while anomalous diffusion follows :math:`\mathrm{MSD}(n)\sim n^\gamma` with :math:`\gamma\neq1`. Accelerator modes can produce ballistic motion with :math:`\gamma=2` and strongly influence the surrounding chaotic transport, as discussed by `Karney, Rechester, and White (1982) <https://doi.org/10.1016/0167-2789(82)90045-8>`_ and `Karney (1983) <https://doi.org/10.1016/0167-2789(83)90232-4>`_.
+where the average is taken over the ensemble. Normal diffusion satisfies :math:`\mathrm{MSD}(n)\sim 2Dn`, while anomalous diffusion follows :math:`\mathrm{MSD}(n)\sim n^\gamma` with :math:`\gamma\neq1`. Accelerator modes can produce ballistic motion with :math:`\gamma=2` and strongly influence the surrounding chaotic transport, as discussed by `Karney et al. (1982) <https://doi.org/10.1016/0167-2789(82)90045-8>`_ and `Karney (1983) <https://doi.org/10.1016/0167-2789(83)90232-4>`_.
 
 The :py:meth:`mean_squared_displacement <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.mean_squared_displacement>` method follows an ensemble and measures the displacement along the coordinate selected by ``axis``. Here, 900 initial conditions are distributed across the unit square and the action is measured with ``axis=1``:
 
@@ -74,7 +74,7 @@ Each call returns a one-dimensional array of length ``total_time``, containing t
 Diffusion coefficient
 ^^^^^^^^^^^^^^^^^^^^^
 
-For normal diffusion, the :py:meth:`diffusion_coefficient <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.diffusion_coefficient>` method estimates :math:`D` from the final ensemble displacement through the Einstein relation :math:`D\approx\mathrm{MSD}(N)/(2N)`. Analytical corrections to the random-phase approximation for the Chirikov-Taylor map were developed by `Rechester, Rosenbluth, and White (1981) <https://doi.org/10.1103/PhysRevA.23.2664>`_.
+For normal diffusion, the :py:meth:`diffusion_coefficient <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.diffusion_coefficient>` method estimates :math:`D` from the final ensemble displacement through the Einstein relation :math:`D\approx\mathrm{MSD}(N)/(2N)`. Analytical corrections to the random-phase approximation for the Chirikov-Taylor map were developed by `Rechester et al. (1981) <https://doi.org/10.1103/PhysRevA.23.2664>`_.
 
 For the normalization used by **pynamicalsys**, uncorrelated angle kicks have variance :math:`k^2/(8\pi^2)`, giving the random-phase estimate
 
