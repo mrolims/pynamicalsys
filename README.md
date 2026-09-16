@@ -4,6 +4,27 @@
 [![PyPI](https://img.shields.io/pypi/v/pynamicalsys.svg)](https://pypi.org/project/pynamicalsys/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Related Publication](#related-publication)
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Install via PyPI](#install-via-pypi)
+  - [Upgrade via PyPI](#upgrade-via-pypi)
+  - [Install from source](#install-from-source)
+  - [Verifying the installation](#verifying-the-installation)
+  - [Troubleshooting](#troubleshooting)
+- [Documentation](#documentation)
+- [Citation](#citation)
+  - [BibTeX](#bibtex)
+  - [API Style](#api-style)
+  - [Short citation style](#short-citation-style)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Disclaimer](#disclaimer)
+
 ## Overview
 
 **pynamicalsys** is designed to provide a fast, flexible, and user-friendly environment for analyzing **nonlinear dynamical systems**. It is intended for students, researchers, educators, and enthusiasts who want to explore the world of chaos and dynamical systems. Beyond standard tools like trajectory generation and Lyapunov exponents calculation, **pynamicalsys** includes advanced features such as
@@ -35,7 +56,7 @@ You can reproduce the numerical experiments, figures, and performance benchmarks
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.10 or higher
 - pip (Python package installer)
 
 ### Install via PyPI
