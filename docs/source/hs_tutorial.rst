@@ -12,4 +12,4 @@ This tutorial is also available as a Jupyter notebook. You can view it directly 
    hs_creating_hs
    hs_trajectories
    hs_poincare
-..    hs_chaotic_indicators
+   hs_chaotic_indicators
