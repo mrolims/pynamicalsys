@@ -1,7 +1,7 @@
 Chaotic indicators
 ------------------
 
-Chaotic indicators quantify instability and the geometry of the tangent dynamics along Hamiltonian trajectories. This section begins with the Lyapunov spectrum, whose symplectic pairing is characteristic of Hamiltonian systems, and continues with the covariant Lyapunov vectors and the angles between them.
+Chaotic indicators quantify instability and the geometry of the tangent dynamics along Hamiltonian trajectories. This section begins with the Lyapunov spectrum, whose symplectic pairing is characteristic of Hamiltonian systems, and continues with the covariant Lyapunov vectors and the angles between them, and with the alignment indices.
 
 .. toctree::
    :maxdepth: 1
@@ -9,3 +9,4 @@ Chaotic indicators quantify instability and the geometry of the tangent dynamics
 
    hs_lyapunov
    hs_clv
+   hs_alignment_indices
