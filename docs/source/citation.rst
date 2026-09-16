@@ -14,9 +14,9 @@ BibTeX
         volume = {201},
         pages = {117269},
         year = {2025},
-        doi = {https://doi.org/10.1016/j.chaos.2025.117269},
+        doi = {10.1016/j.chaos.2025.117269},
         url = {https://www.sciencedirect.com/science/article/pii/S0960077925012822},
-        author = {Matheus Rolim Sales and Leonardo Costa {de Souza} and Daniel Borin and Michele Mugnaine and José Danilo Szezech and Ricardo Luiz Viana and Iberê Luiz Caldas and Edson Denis Leonel and Chris G. Antonopoulos},
+        author = {Matheus Rolim Sales and Leonardo Costa {de Souza} and Daniel Borin and Michele Mugnaine and José Danilo {Szezech Jr.} and Ricardo Luiz Viana and Iberê Luiz Caldas and Edson Denis Leonel and Chris G. Antonopoulos},
     }
 
 APA style
