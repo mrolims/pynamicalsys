@@ -41,11 +41,15 @@ exclude_patterns = []
 
 html_theme = "sphinx_rtd_theme"
 
-html_logo = "images/LOGO.png"
+html_logo = "images/logo_dark.png"
 
 mathjax_path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
 html_static_path = ["_static"]
 
 html_css_files = [
     "css/custom.css",
+]
+
+html_js_files = [
+    "js/theme.js",
 ]

@@ -43,3 +43,6 @@ htmlcov/
 * 2.*
 * 3.*
 * 4.*
+
+# Logo vector source (rendered to logo_dark/light.png; kept locally, not tracked)
+docs/source/images/logo.svg

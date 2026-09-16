@@ -7,19 +7,19 @@ body,
 .wy-nav-content {
     /* background-color: #1a152b; */
     /* dark background */
-    background-color: #140E1A;
-    color: #f0f0f0;
+    background-color: #191633;
+    color: #ece8f7;
 }
 
 .rst-content {
-    color: #f0f0f0;
+    color: #ece8f7;
 }
 
 /* === SIDEBAR === */
 .wy-side-nav-search {
     /* background-color: #4b2c8a; */
     /* purple header */
-    background-color: #2a1b4f;
+    background-color: #221d40;
     color: #ffffff !important;
 }
 
@@ -70,14 +70,14 @@ body,
 
 .wy-side-nav-search input {
     /* background-color: #5c3ca2; */
-    background-color: #2a1b4f;
+    background-color: #221d40;
     color: #ffffff;
-    border: 1px solid #8666cc;
+    border: 1px solid #2fd0ff;
 }
 
 .wy-nav-side {
-    /* background: #2a1b4f; */
-    background: #231739;
+    /* background: #221d40; */
+    background: #12112a;
     color: #ffffff !important;
 }
 
@@ -92,7 +92,7 @@ body,
 }
 
 .wy-menu-vertical li.current>a {
-    background-color: #2a1b4f;
+    background-color: #221d40;
     color: #ffffff;
 }
 
@@ -122,29 +122,29 @@ body,
 }
 
 .wy-nav-side li.current li.toctree-l2 >a{
-    background: #140E1A;
+    background: #191633;
     color: #ffffff !important;
 }
 
 .wy-nav-side li.current li.toctree-l2 li.toctree-l3  >a{
-    background: #140E1A;
+    background: #191633;
     color: #ffffff !important;
 }
 
 .wy-nav-side li.current li.toctree-l2 li.toctree-l3 li.toctree-l4  >a{
-    background: #140E1A;
+    background: #191633;
     color: #ffffff !important;
 }
 
 .wy-nav-side li.current li.toctree-l2 li.toctree-l3 li.toctree-l4 li.toctree-l5 >a{
-    background: #140E1A;
+    background: #191633;
     color: #ffffff !important;
 }
 
 
 /* === SECTION HEADERS (TOCTREE CAPTIONS) === */
 .wy-menu-vertical .caption-text {
-    color: #cfaeff;
+    color: #c79bff;
     font-weight: bold;
 }
 
@@ -155,23 +155,23 @@ h3,
 h4,
 h5,
 h6 {
-    color: #e3ccff;
+    color: #ddc8ff;
 }
 
 /* === LINKS === */
 a {
-    color: #bb86fc;
+    color: #3fe3ff;
 }
 
 a:hover {
-    color: #d7a3ff;
+    color: #7ff0ff;
 }
 
 /* === INLINE CODE & CODE BLOCKS === */
 .rst-content code,
 code,
 .highlight pre {
-    background-color: #2e234a !important;
+    background-color: #221d40 !important;
     color: #fceaff !important;
     border-radius: 4px;
     padding: 0.2em 0.4em;
@@ -179,14 +179,14 @@ code,
 
 /* === CODE BLOCKS (ENTIRE CONTAINER) === */
 div.highlight {
-    background-color: #2e234a !important;
+    background-color: #221d40 !important;
 }
 
 /* === TABLES === */
 .wy-table-responsive table {
     background-color: #2b2247;
     color: #eee;
-    border: 1px solid #6e579b;
+    border: 1px solid #3a2f66;
 }
 
 th {
@@ -202,7 +202,7 @@ th {
 
 /* === FOOTER === */
 footer {
-    background: #140E1A;
+    background: #191633;
     color: #aaa;
 }
 
@@ -211,8 +211,8 @@ footer {
 .rst-content .note,
 .rst-content .seealso {
     background: #30204f;
-    border-left: 5px solid #8e24aa;
-    color: #f0f0f0;
+    border-left: 5px solid #b026ff;
+    color: #ece8f7;
 }
 
 /* === DRACULA SYNTAX COLORS FOR PYTHON === */
@@ -348,4 +348,164 @@ div.math p {
     overflow-x: auto;
     font-family: "STIX Two Math", "Latin Modern Math", Cambria, "Times New Roman", serif;
     font-size: 1.1em;
+}
+
+
+/* ===================== THEME TOGGLE BUTTON ===================== */
+#theme-toggle {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 1000;
+    background: #221d40;
+    color: #ece8f7;
+    border: 1px solid #3fe3ff;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 0.8em;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+}
+#theme-toggle:hover { background: #2b2450; }
+html[data-theme="light"] #theme-toggle {
+    background: #ffffff;
+    color: #221d33;
+    border-color: #0e8fae;
+}
+
+/* ===================== LIGHT MODE ===================== */
+html[data-theme="light"],
+html[data-theme="light"] body,
+html[data-theme="light"] .wy-body-for-nav,
+html[data-theme="light"] .wy-grid-for-nav,
+html[data-theme="light"] .wy-nav-content-wrap,
+html[data-theme="light"] .wy-nav-content {
+    background-color: #f5f4fb;
+    color: #221d33;
+}
+html[data-theme="light"] .rst-content { color: #221d33; }
+
+html[data-theme="light"] .wy-nav-side { background: #ece9f7; }
+html[data-theme="light"] .wy-side-nav-search { background-color: #e6e2f3; }
+html[data-theme="light"] .wy-side-nav-search input {
+    background-color: #ffffff;
+    color: #221d33;
+    border: 1px solid #2fb6d8;
+}
+html[data-theme="light"] .wy-menu-vertical a { color: #3a3355; }
+html[data-theme="light"] .wy-menu-vertical a:hover { background-color: #ddd6f0; color: #16121f; }
+html[data-theme="light"] .wy-menu-vertical li.current > a { background-color: #e6e2f3; color: #16121f; }
+html[data-theme="light"] .wy-nav-side li.current li.toctree-l2 > a,
+html[data-theme="light"] .wy-nav-side li.current li.toctree-l2 li.toctree-l3 > a,
+html[data-theme="light"] .wy-nav-side li.current li.toctree-l2 li.toctree-l3 li.toctree-l4 > a,
+html[data-theme="light"] .wy-nav-side li.current li.toctree-l2 li.toctree-l3 li.toctree-l4 li.toctree-l5 > a {
+    background: #f5f4fb;
+    color: #221d33 !important;
+}
+html[data-theme="light"] .wy-menu-vertical .caption-text { color: #5a2a9e; }
+html[data-theme="light"] h1, html[data-theme="light"] h2, html[data-theme="light"] h3,
+html[data-theme="light"] h4, html[data-theme="light"] h5, html[data-theme="light"] h6 { color: #4a2288; }
+html[data-theme="light"] a { color: #0e8fae; }
+html[data-theme="light"] a:hover { color: #0b6f88; }
+html[data-theme="light"] .wy-table-responsive table {
+    background-color: #ffffff;
+    color: #221d33;
+    border: 1px solid #cfc7e6;
+}
+html[data-theme="light"] th { background-color: #e6e2f3; color: #221d33; }
+html[data-theme="light"] .wy-nav-top { background-color: #e6e2f3; color: #221d33; }
+html[data-theme="light"] footer { background: #ece9f7; color: #666; }
+html[data-theme="light"] .rst-content .admonition,
+html[data-theme="light"] .rst-content .note,
+html[data-theme="light"] .rst-content .seealso {
+    background: #efeafb;
+    border-left: 5px solid #7a2ff2;
+    color: #221d33;
+}
+/* Code blocks intentionally stay dark (Dracula) in light mode. */
+
+
+/* ============================================================= */
+/* ============ SYNTAX HIGHLIGHTING (theme-aware) ============== */
+/* ============================================================= */
+
+/* ---------- DARK: Aura ---------- */
+.rst-content code,
+code,
+.highlight pre {
+    background-color: #15141b !important;
+    color: #edecee !important;
+}
+div.highlight { background-color: #15141b !important; }
+
+.highlight .n, .highlight .p, .highlight .nn, .highlight .nv { color: #edecee; }
+.highlight .k, .highlight .kn, .highlight .kd, .highlight .kc, .highlight .kr { color: #a277ff; }
+.highlight .kt { color: #82e2ff; }
+.highlight .o, .highlight .ow { color: #a277ff; }
+.highlight .s, .highlight .s1, .highlight .s2, .highlight .sd,
+.highlight .sb, .highlight .se, .highlight .si, .highlight .sr { color: #61ffca !important; }
+.highlight .m, .highlight .mi, .highlight .mf, .highlight .mh, .highlight .il { color: #ffca85; }
+.highlight .nf { color: #ffca85; }
+.highlight .no { color: #ffca85; }
+.highlight .nc { color: #82e2ff; }
+.highlight .nb, .highlight .bp { color: #82e2ff; }
+.highlight .nd { color: #82e2ff; }
+.highlight .c, .highlight .c1, .highlight .cm, .highlight .cs { color: #6d6d6d; font-style: italic; }
+
+/* ---------- LIGHT: One Light ---------- */
+html[data-theme="light"] .rst-content code,
+html[data-theme="light"] code,
+html[data-theme="light"] .highlight pre {
+    background-color: #f6f8fa !important;
+    color: #383a42 !important;
+}
+html[data-theme="light"] div.highlight { background-color: #f6f8fa !important; }
+
+html[data-theme="light"] .highlight .n,
+html[data-theme="light"] .highlight .p,
+html[data-theme="light"] .highlight .nn,
+html[data-theme="light"] .highlight .nv { color: #383a42; }
+html[data-theme="light"] .highlight .k,
+html[data-theme="light"] .highlight .kn,
+html[data-theme="light"] .highlight .kd,
+html[data-theme="light"] .highlight .kc,
+html[data-theme="light"] .highlight .kr { color: #a626a4; }
+html[data-theme="light"] .highlight .kt { color: #c18401; }
+html[data-theme="light"] .highlight .o,
+html[data-theme="light"] .highlight .ow { color: #383a42; }
+html[data-theme="light"] .highlight .s,
+html[data-theme="light"] .highlight .s1,
+html[data-theme="light"] .highlight .s2,
+html[data-theme="light"] .highlight .sd,
+html[data-theme="light"] .highlight .sb,
+html[data-theme="light"] .highlight .se,
+html[data-theme="light"] .highlight .si,
+html[data-theme="light"] .highlight .sr { color: #50a14f !important; }
+html[data-theme="light"] .highlight .m,
+html[data-theme="light"] .highlight .mi,
+html[data-theme="light"] .highlight .mf,
+html[data-theme="light"] .highlight .mh,
+html[data-theme="light"] .highlight .il { color: #986801; }
+html[data-theme="light"] .highlight .nf { color: #4078f2; }
+html[data-theme="light"] .highlight .no { color: #986801; }
+html[data-theme="light"] .highlight .nc { color: #c18401; }
+html[data-theme="light"] .highlight .nb,
+html[data-theme="light"] .highlight .bp { color: #0184bc; }
+html[data-theme="light"] .highlight .nd { color: #4078f2; }
+html[data-theme="light"] .highlight .c,
+html[data-theme="light"] .highlight .c1,
+html[data-theme="light"] .highlight .cm,
+html[data-theme="light"] .highlight .cs { color: #a0a1a7; font-style: italic; }
+
+
+/* ---------- MATH color in light mode ---------- */
+html[data-theme="light"] .math,
+html[data-theme="light"] .math span,
+html[data-theme="light"] div.math,
+html[data-theme="light"] div.math p,
+html[data-theme="light"] mjx-container,
+html[data-theme="light"] mjx-container *,
+html[data-theme="light"] .MathJax,
+html[data-theme="light"] .MathJax * {
+    color: #221d33 !important;
 }
