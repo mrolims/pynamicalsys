@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Python 3.14 and 3.15 are now officially supported. On Python 3.15, pip
+  installs Numba 0.68 or newer, the first release with support for it.
+
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
 ## [v1.7.0] - 2026-09-16
