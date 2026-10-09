@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and from whether the rotation number is rational (Sander and Meiss, 2020).
   It returns the classification together with the rotation number and the
   number of converged digits of both averages.
+- `PlotStyler` accepts Matplotlib's short names `lw`, `ms`, `mew`, and `mec`
+  for `linewidth`, `markersize`, `markeredgewidth`, and `markeredgecolor`.
+  Passing both a name and its alias raises an error.
+- `PlotStyler.set_tick_padding` accepts an array or list of Axes, such as the
+  one returned by `plt.subplots`, and pads every Axes in it.
 
 ### Changed
 
@@ -54,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passing `mod` when a frequency map is set. Set a frequency map instead.
 - Passing to `dig` an observable that acts on an array of states of shape
   `(n, d)`. Pass a function of a single state instead.
+
+### Fixed
+
+- `PlotStyler(tick_direction_in=False)` had no effect, and ticks always pointed
+  inward. Ticks now point outward when it is `False`.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
