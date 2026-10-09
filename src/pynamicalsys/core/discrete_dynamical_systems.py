@@ -20,7 +20,9 @@ import warnings
 from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, Literal
 import numpy as np
+from numba import njit
 from numba.core.errors import NumbaExperimentalFeatureWarning
+from numba.core.registry import CPUDispatcher
 from numpy.typing import NDArray
 
 from pynamicalsys.common.recurrence_quantification_analysis import (
@@ -34,7 +36,12 @@ from pynamicalsys.common.differentiation import finite_difference_jacobian
 
 from pynamicalsys.common.display import render_latex
 
-from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t, observable_t
+from pynamicalsys.common.types import (
+    int_t,
+    numeric_like_t,
+    numeric_t,
+    state_observable_t,
+)
 
 
 from pynamicalsys.discrete_time.trajectory import (
@@ -55,7 +62,14 @@ from pynamicalsys.discrete_time.stability import (
     classify_stability,
 )
 from pynamicalsys.discrete_time.manifolds import calculate_manifolds
-from pynamicalsys.discrete_time.rotation import rotation_number
+from pynamicalsys.discrete_time.rotation import (
+    rotation_number,
+    rotation_number_average,
+    rotation_number_wba,
+    classify_orbit,
+    CHAOTIC,
+    ISLAND,
+)
 from pynamicalsys.discrete_time.escape import (
     escape_basin_and_time_entering,
     escape_time_exiting,
@@ -73,7 +87,11 @@ from pynamicalsys.discrete_time.sali import sali
 from pynamicalsys.discrete_time.ldi import ldi_k
 from pynamicalsys.discrete_time.gali import gali_k
 from pynamicalsys.discrete_time.clv import compute_clvs, clv_angles
-from pynamicalsys.discrete_time.birkhoff import dig
+from pynamicalsys.discrete_time.birkhoff import (
+    default_observable,
+    dig,
+    resolve_observable,
+)
 from pynamicalsys.discrete_time.hurst import (
     hurst_exponent_wrapped,
     finite_time_hurst_exponent,
@@ -84,11 +102,13 @@ from pynamicalsys.discrete_time.rte import RTE, rte_return_t, finite_time_RTE
 from pynamicalsys.discrete_time.models import (
     extended_standard_nontwist_map,
     extended_standard_nontwist_map_backwards,
+    extended_standard_nontwist_map_frequency,
     extended_standard_nontwist_map_jacobian,
     henon_map,
     henon_map_jacobian,
     leonel_map,
     leonel_map_backwards,
+    leonel_map_frequency,
     leonel_map_jacobian,
     logistic_map,
     logistic_map_jacobian,
@@ -101,11 +121,13 @@ from pynamicalsys.discrete_time.models import (
     standard_map_jacobian,
     standard_nontwist_map,
     standard_nontwist_map_backwards,
+    standard_nontwist_map_frequency,
     standard_nontwist_map_jacobian,
     symplectic_map_4D,
     symplectic_map_4D_backwards,
     symplectic_map_4D_jacobian,
     unbounded_standard_map,
+    unbounded_standard_map_frequency,
 )
 
 from pynamicalsys.discrete_time.transport import (
@@ -205,9 +227,11 @@ class DiscreteDynamicalSystem:
             "notes": "Canonical area-preserving map introduced by Chirikov; fundamental model for Hamiltonian chaos.",
             "has_jacobian": True,
             "has_backwards_map": True,
+            "has_frequency_map": False,
             "mapping": standard_map,
             "jacobian": standard_map_jacobian,
             "backwards_mapping": standard_map_backwards,
+            "frequency_map": None,
             "dimension": 2,
             "number_of_parameters": 1,
             "parameters": ["k"],
@@ -224,9 +248,11 @@ class DiscreteDynamicalSystem:
             "notes": "Variant of the standard map with unbounded momentum, commonly used to study diffusion.",
             "has_jacobian": False,
             "has_backwards_map": False,
+            "has_frequency_map": True,
             "mapping": unbounded_standard_map,
             "jacobian": None,
             "backwards_mapping": None,
+            "frequency_map": unbounded_standard_map_frequency,
             "dimension": 2,
             "number_of_parameters": 1,
             "parameters": ["k"],
@@ -243,9 +269,11 @@ class DiscreteDynamicalSystem:
             "notes": "Classic two-dimensional dissipative map exhibiting strange attractors.",
             "has_jacobian": True,
             "has_backwards_map": False,
+            "has_frequency_map": False,
             "mapping": henon_map,
             "jacobian": henon_map_jacobian,
             "backwards_mapping": None,
+            "frequency_map": None,
             "dimension": 2,
             "number_of_parameters": 2,
             "parameters": ["a", "b"],
@@ -262,9 +290,11 @@ class DiscreteDynamicalSystem:
             "notes": "Piecewise-linear analogue of the Hénon map with chaotic dynamics.",
             "has_jacobian": True,
             "has_backwards_map": False,
+            "has_frequency_map": False,
             "mapping": lozi_map,
             "jacobian": lozi_map_jacobian,
             "backwards_mapping": None,
+            "frequency_map": None,
             "dimension": 2,
             "number_of_parameters": 2,
             "parameters": ["a", "b"],
@@ -281,9 +311,11 @@ class DiscreteDynamicalSystem:
             "notes": "Two-dimensional neuron model capable of reproducing bursting and spiking behavior.",
             "has_jacobian": True,
             "has_backwards_map": False,
+            "has_frequency_map": False,
             "mapping": rulkov_map,
             "jacobian": rulkov_map_jacobian,
             "backwards_mapping": None,
+            "frequency_map": None,
             "dimension": 2,
             "number_of_parameters": 3,
             "parameters": ["alpha", "sigma", "mu"],
@@ -295,9 +327,11 @@ class DiscreteDynamicalSystem:
             "notes": "Canonical one-dimensional nonlinear map exhibiting the period-doubling route to chaos.",
             "has_jacobian": True,
             "has_backwards_map": False,
+            "has_frequency_map": False,
             "mapping": logistic_map,
             "jacobian": logistic_map_jacobian,
             "backwards_mapping": None,
+            "frequency_map": None,
             "dimension": 1,
             "number_of_parameters": 1,
             "parameters": ["r"],
@@ -314,9 +348,11 @@ class DiscreteDynamicalSystem:
             "notes": "Area-preserving map that violates the twist condition and is widely used to study shearless transport barriers.",
             "has_jacobian": True,
             "has_backwards_map": True,
+            "has_frequency_map": True,
             "mapping": standard_nontwist_map,
             "jacobian": standard_nontwist_map_jacobian,
             "backwards_mapping": standard_nontwist_map_backwards,
+            "frequency_map": standard_nontwist_map_frequency,
             "dimension": 2,
             "number_of_parameters": 2,
             "parameters": ["a", "b"],
@@ -333,9 +369,11 @@ class DiscreteDynamicalSystem:
             "notes": "Generalization of the standard nontwist map including an additional harmonic perturbation.",
             "has_jacobian": True,
             "has_backwards_map": True,
+            "has_frequency_map": True,
             "mapping": extended_standard_nontwist_map,
             "jacobian": extended_standard_nontwist_map_jacobian,
             "backwards_mapping": extended_standard_nontwist_map_backwards,
+            "frequency_map": extended_standard_nontwist_map_frequency,
             "dimension": 2,
             "number_of_parameters": 4,
             "parameters": ["a", "b", "c", "m"],
@@ -352,9 +390,11 @@ class DiscreteDynamicalSystem:
             "notes": "Area-preserving map proposed by Leonel for studying Fermi acceleration.",
             "has_jacobian": True,
             "has_backwards_map": True,
+            "has_frequency_map": True,
             "mapping": leonel_map,
             "jacobian": leonel_map_jacobian,
             "backwards_mapping": leonel_map_backwards,
+            "frequency_map": leonel_map_frequency,
             "dimension": 2,
             "number_of_parameters": 2,
             "parameters": ["eps", "gamma"],
@@ -375,9 +415,11 @@ class DiscreteDynamicalSystem:
             "notes": "Four-dimensional symplectic map consisting of two coupled standard maps.",
             "has_jacobian": True,
             "has_backwards_map": True,
+            "has_frequency_map": False,
             "mapping": symplectic_map_4D,
             "jacobian": symplectic_map_4D_jacobian,
             "backwards_mapping": symplectic_map_4D_backwards,
+            "frequency_map": None,
             "dimension": 4,
             "number_of_parameters": 3,
             "parameters": ["eps1", "eps2", "xi"],
@@ -393,6 +435,7 @@ class DiscreteDynamicalSystem:
         system_dimension: Optional[int_t] = None,
         parameters: Optional[Sequence] = None,
         number_of_parameters: Optional[int_t] = None,
+        frequency_map: Optional[Callable] = None,
     ) -> None:
         """Initialize the discrete dynamical system with either a predefined model or custom mappings.
 
@@ -412,6 +455,13 @@ class DiscreteDynamicalSystem:
             The parameters of the system. If provided, automatically defines the number of parameters.
         number_of_parameters : int, optional
             Number of parameters of the system. Used only when parameters is not provided.
+        frequency_map : callable, optional
+            Frequency map with signature Omega(u, parameters) -> float. It returns
+            the unwrapped advance of an angle variable, in turns, in the
+            iteration that starts at ``u``, and is used by ``rotation_number``
+            and ``classify_orbit``. Built-in models on a cylinder or annulus
+            provide one, which this argument overrides. See
+            :py:meth:`set_frequency_map`.
 
         Raises
         ------
@@ -441,6 +491,7 @@ class DiscreteDynamicalSystem:
         self.__number_of_parameters: int
         self.__parameters: NDArray[np.float64] | None
         self.__model: str | None
+        self.__frequency_map: Optional[Callable]
 
         warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
@@ -476,6 +527,10 @@ class DiscreteDynamicalSystem:
 
             if backwards_mapping is not None:  # Allow override of default backwards map
                 self.__backwards_mapping = backwards_mapping
+
+            self.__frequency_map = model_info["frequency_map"]
+            if frequency_map is not None:  # Allow override of default frequency map
+                self.set_frequency_map(frequency_map)
 
         elif (
             mapping is not None
@@ -522,6 +577,10 @@ class DiscreteDynamicalSystem:
                 self.__backwards_mapping
             ):
                 raise TypeError("Custom backwards mapping must be callable or None")
+
+            self.__frequency_map = None
+            if frequency_map is not None:
+                self.set_frequency_map(frequency_map)
 
         else:
             raise ValueError(
@@ -597,6 +656,64 @@ class DiscreteDynamicalSystem:
             The parameter vector currently stored in the system.
         """
         return self.__parameters
+
+    def set_frequency_map(self, frequency_map: Optional[Callable]) -> None:
+        """
+        Set the frequency map used to compute rotation numbers.
+
+        The frequency map gives the unwrapped advance of an angle variable in
+        one iteration. If the iteration takes the state ``u_n`` to ``u_{n+1}``
+        and ``theta`` is the angle on the universal cover (not reduced modulo
+        its period), then
+
+        ``Omega(u_n, parameters) = theta_{n+1} - theta_n``,
+
+        measured in turns, that is, in units of the period of the angle. The
+        rotation number is the average of ``Omega`` along the orbit, so it
+        is also measured in turns per iteration and can be compared directly
+        with rationals ``p / q``. This is the convention of Sander and Meiss
+        (2020).
+
+        The frequency map is used by :py:meth:`rotation_number` and
+        :py:meth:`classify_orbit`. It requires a system with an angle
+        variable, such as a map on a cylinder or an annulus. On a torus, where
+        the other coordinate is also an angle, the advance is defined only
+        modulo one turn, so a continuous frequency map does not exist in
+        general; for the standard map, use the ``unbounded standard map``.
+
+        Parameters
+        ----------
+        frequency_map : callable or None
+            Function with signature ``Omega(u, parameters) -> float``. It is
+            compiled with Numba if it is not compiled already. ``None`` removes
+            the current frequency map.
+
+        Raises
+        ------
+        TypeError
+            If ``frequency_map`` is neither callable nor ``None``.
+
+        Examples
+        --------
+        For the standard map, ``x_{n+1} = x_n + y_{n+1}`` with
+        ``y_{n+1} = y_n + k sin(2 pi x_n) / (2 pi)``, and ``x`` has period one:
+
+        >>> def frequency(u, parameters):
+        ...     k = parameters[0]
+        ...     return u[1] + k * np.sin(2 * np.pi * u[0]) / (2 * np.pi)
+        >>> system.set_frequency_map(frequency)
+        """
+        if frequency_map is None:
+            self.__frequency_map = None
+            return
+
+        if not callable(frequency_map):
+            raise TypeError("frequency_map must be callable or None")
+
+        if not isinstance(frequency_map, CPUDispatcher):
+            frequency_map = njit(frequency_map)
+
+        self.__frequency_map = frequency_map
 
     def step(
         self,
@@ -1732,31 +1849,56 @@ class DiscreteDynamicalSystem:
         u: numeric_like_t,
         total_time: int_t,
         parameters: numeric_like_t | None = None,
-        mod: numeric_t = 1.0,
+        mod: numeric_t | None = None,
+        method: Literal["wba", "average"] | None = None,
+        threshold: numeric_t = 9.0,
     ) -> float:
         """
         Compute the rotation number of a trajectory.
 
-        The rotation number is estimated as the time average of the wrapped
-        increment of the first coordinate modulo ``mod``.
+        The rotation number is the average advance of an angle variable per
+        iteration, the average of the frequency map along the orbit (see
+        :py:meth:`set_frequency_map`). It is measured in turns per iteration
+        and is not reduced modulo one, so distinct integer values, such as
+        those of accelerator modes, are kept apart. Two methods are available:
+
+        - ``"wba"`` (default): the frequency map is averaged with the weighted
+          Birkhoff average over two consecutive windows of ``total_time``
+          iterations each (Sander and Meiss, 2020). If the two averages agree
+          in at least ``threshold`` digits, the rotation number has converged
+          and their mean is returned. Otherwise, the orbit is considered
+          chaotic and NaN is returned.
+        - ``"average"``: plain time average of the frequency map over
+          ``total_time`` iterations. It always returns a value, but it
+          converges only as ``1 / total_time`` on regular orbits and does not
+          distinguish chaotic from regular orbits.
 
         Parameters
         ----------
         u : numeric_like_t
             Initial condition of shape ``(system_dimension,)``.
         total_time : int_t
-            Number of iterations used in the average.
+            Number of iterations used in the average. With ``method="wba"``,
+            this is the length of each window, so the trajectory is iterated
+            ``2 * total_time`` times.
         parameters : numeric_like_t | None, optional
-            System parameters passed to the mapping function. If ``None``, the
-            stored system parameters are used.
-        mod : numeric_t, optional
-            Period used to wrap the increment of the first coordinate.
-            Must be positive. The default is ``1.0``.
+            System parameters passed to the mapping and frequency map. If
+            ``None``, the stored system parameters are used.
+        mod : numeric_t | None, optional
+            Deprecated. Used only when no frequency map is set (see Notes),
+            and ignored otherwise.
+        method : {"wba", "average"} | None, optional
+            Averaging method. If ``None`` (default), ``"wba"`` is used.
+        threshold : numeric_t, optional
+            Minimum number of digits in which the two weighted Birkhoff averages
+            must agree for the rotation number to be considered converged.
+            Used only with ``method="wba"``. The default is ``9.0``.
 
         Returns
         -------
         float
-            Estimated rotation number.
+            Estimated rotation number, in turns per iteration. With
+            ``method="wba"``, NaN if it has not converged.
 
         Raises
         ------
@@ -1764,18 +1906,44 @@ class DiscreteDynamicalSystem:
             - If the system dimension is less than 1.
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
-            - If ``total_time`` is not positive.
-            - If ``mod`` is not positive.
+            - If ``total_time`` is not positive, or is less than 2 with
+              ``method="wba"``.
+            - If ``method`` is not ``"wba"``, ``"average"``, or ``None``.
+            - If ``method="wba"`` and no frequency map is set.
+            - If ``threshold`` or ``mod`` is not positive.
         TypeError
             - If ``u`` is not a scalar or array-like numeric object.
             - If ``parameters`` is not a scalar or array-like numeric object.
             - If ``total_time`` is not an integer.
-            - If ``mod`` is not a real number.
+            - If ``threshold`` or ``mod`` is not a real number.
+
+        Warns
+        -----
+        DeprecationWarning
+            - If no frequency map is set. The rotation number is then computed,
+              as in previous versions, as the plain time average of the
+              increment of the first coordinate wrapped modulo ``mod``
+              (default ``1.0``). This will stop working in a future version.
+            - If ``mod`` is passed while a frequency map is set.
 
         Notes
         -----
-        This wrapper validates the inputs and forwards the computation to the
-        low-level ``rotation_number`` routine.
+        On a regular orbit, the weighted Birkhoff average converges faster than
+        any power of ``total_time``, while on a chaotic orbit it converges as
+        slowly as the plain average. The agreement between the two windows
+        therefore separates both cases. On an island chain of period ``q``, the
+        rotation number converges to a rational ``p / q``. Use
+        :py:meth:`classify_orbit` to separate island chains from rotational
+        invariant circles.
+
+        Examples
+        --------
+        >>> system = DiscreteDynamicalSystem(model="unbounded standard map")
+        >>> system.set_parameters([0.7])
+        >>> omega = system.rotation_number([0.15, 0.30], 10000)
+        >>> omega_avg = system.rotation_number(
+        ...     [0.15, 0.30], 20000, method="average"
+        ... )
         """
         if self.__system_dimension < 1:
             raise ValueError(
@@ -1793,15 +1961,267 @@ class DiscreteDynamicalSystem:
         )
 
         validate_positive(total_time, "total_time", Integral)
-        validate_positive(mod, "mod", Real)
 
-        return rotation_number(
-            u=u_arr,
-            parameters=parameters_arr,
-            total_time=total_time,
-            mapping=self.__mapping,
-            mod=mod,
+        if method not in (None, "wba", "average"):
+            raise ValueError(f"method must be 'wba' or 'average', got {method!r}.")
+
+        if self.__frequency_map is None:
+            if method == "wba":
+                raise ValueError(
+                    "method='wba' requires a frequency map. Set one with "
+                    "set_frequency_map() or the frequency_map argument of the "
+                    "constructor."
+                )
+
+            warnings.warn(
+                "Computing the rotation number without a frequency map is "
+                "deprecated and will stop working in a future version. Set a "
+                "frequency map with set_frequency_map() or the frequency_map "
+                "argument of the constructor; rotation_number then uses the "
+                "weighted Birkhoff average by default.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+            if mod is None:
+                mod = 1.0
+            validate_positive(mod, "mod", Real)
+
+            return rotation_number(
+                u=u_arr,
+                parameters=parameters_arr,
+                total_time=total_time,
+                mapping=self.__mapping,
+                mod=mod,
+            )
+
+        if mod is not None:
+            warnings.warn(
+                "mod is ignored when a frequency map is set and is deprecated. "
+                "The rotation number is the average of the frequency map, in "
+                "turns per iteration.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        if method == "average":
+            return float(
+                rotation_number_average(
+                    u_arr,
+                    parameters_arr,
+                    total_time,
+                    self.__mapping,
+                    self.__frequency_map,
+                )
+            )
+
+        if total_time < 2:
+            raise ValueError("total_time must be at least 2 with method='wba'.")
+        validate_positive(threshold, "threshold", Real)
+
+        omega, dig_omega = rotation_number_wba(
+            u_arr, parameters_arr, total_time, self.__mapping, self.__frequency_map
         )
+
+        if not dig_omega >= threshold:
+            return float("nan")
+
+        return float(omega)
+
+    def classify_orbit(
+        self,
+        u: numeric_like_t,
+        total_time: int_t,
+        parameters: numeric_like_t | None = None,
+        func: state_observable_t | None = None,
+        period: numeric_t = 1.0,
+        omega_threshold: numeric_t = 9.0,
+        dig_threshold: numeric_t = 5.5,
+        tol: numeric_t = 8.0,
+        dev_threshold: numeric_t = 0.3375,
+    ) -> dict[str, str | float]:
+        """
+        Classify an orbit as chaotic, in an island chain, or on a rotational
+        invariant circle.
+
+        The classification follows Sander and Meiss (2020). Two weighted
+        Birkhoff averages are computed over two consecutive windows of
+        ``total_time`` iterations: one of the observable ``func``, whose
+        convergence ``dig`` separates regular from chaotic orbits, and one of
+        the frequency map (see :py:meth:`set_frequency_map`), which gives the
+        rotation number ``omega`` and its convergence ``dig_omega``.
+
+        A regular orbit lies in an island chain if ``omega`` is a rational
+        with a small denominator and on a rotational invariant circle if it is
+        irrational. Rationality is decided numerically: with
+        ``delta = 10**(-tol)``, let ``q_min`` be the smallest denominator of a
+        rational within ``delta`` of ``omega``. For a typical irrational
+        number, ``log10(q_min)`` is close to ``tol / 2``.
+
+        The orbit is classified as follows:
+
+        - If ``dig >= dig_threshold``, the orbit is regular. It lies on a
+          rotational circle if ``|log10(q_min) - tol / 2| < dev_threshold`` and
+          in an island chain otherwise.
+        - If ``dig < dig_threshold``, the orbit lies in an island chain if
+          ``dig_omega >= omega_threshold`` and
+          ``log10(q_min) < tol / 2 - dev_threshold``, which covers island
+          orbits on which the average of the observable converges slowly.
+          Otherwise, the orbit is chaotic.
+
+        Parameters
+        ----------
+        u : numeric_like_t
+            Initial condition of shape ``(system_dimension,)``.
+        total_time : int_t
+            Length of each of the two windows. The trajectory is iterated
+            ``2 * total_time`` times. Must be at least 2.
+        parameters : numeric_like_t | None, optional
+            System parameters passed to the mapping and frequency map. If
+            ``None``, the stored system parameters are used.
+        func : state_observable_t | None, optional
+            Observable used to separate regular from chaotic orbits. It takes a
+            single state of shape ``(system_dimension,)`` and returns a real
+            number. It should be smooth and nonconstant. If ``None``
+            (default), the observable is ``cos(2 pi u[0] / period)``.
+        period : numeric_t, optional
+            Period of the angle ``u[0]`` used by the default observable, for
+            example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
+            in radians. Ignored when ``func`` is given. The default is ``1.0``.
+        omega_threshold : numeric_t, optional
+            Minimum ``dig_omega`` for the rotation number to be considered
+            converged. The default is ``9.0``.
+        dig_threshold : numeric_t, optional
+            Minimum ``dig`` for the orbit to be regular. The default is ``5.5``,
+            the value used by Sander and Meiss (2020).
+        tol : numeric_t, optional
+            Exponent of the tolerance ``delta = 10**(-tol)`` used to find
+            ``q_min``. Must lie in ``(0, 15]``. The default is ``8.0``.
+        dev_threshold : numeric_t, optional
+            Maximum deviation ``|log10(q_min) - tol / 2|`` for a regular orbit
+            to lie on a rotational circle. Must be positive. The default,
+            ``0.3375``, is the value used by Sander and Meiss (2020).
+
+        Returns
+        -------
+        dict[str, str | float]
+            Dictionary with keys
+
+            - ``"classification"`` : ``"chaotic"``, ``"island"``, or ``"circle"``
+            - ``"rotation_number"`` : rotation number in turns per iteration,
+              or NaN if the orbit is chaotic
+            - ``"dig"`` : number of digits in which the two weighted Birkhoff
+              averages of the observable agree
+            - ``"dig_omega"`` : number of digits in which the two weighted
+              Birkhoff averages of the rotation number agree
+
+        Raises
+        ------
+        ValueError
+            - If the system dimension is less than 1.
+            - If no frequency map is set.
+            - If ``u`` is not compatible with the system dimension.
+            - If ``parameters`` does not match the expected number of parameters.
+            - If ``total_time`` is less than 2.
+            - If ``func`` does not return a real number for a single state.
+            - If ``omega_threshold``, ``dig_threshold``, ``dev_threshold``, or
+              ``period`` is not positive.
+            - If ``tol`` is not in ``(0, 15]``.
+        TypeError
+            - If ``u`` is not a scalar or array-like numeric object.
+            - If ``parameters`` is not a scalar or array-like numeric object.
+            - If ``total_time`` is not an integer.
+            - If ``func`` is not callable.
+            - If ``omega_threshold``, ``dig_threshold``, ``tol``, or
+              ``dev_threshold`` is not a real number.
+
+        Notes
+        -----
+        Orbits in an island chain encircle a periodic orbit, so their rotation
+        number averages to that of the periodic orbit, a rational number. The
+        default ``dev_threshold`` is conservative: about 19% of randomly chosen
+        irrationals are classified as rationals, so some rotational circles are
+        reported as islands, while island orbits are rarely reported as
+        circles. ``tol`` must be compatible with the accuracy of the rotation
+        number, which is set by ``omega_threshold``.
+
+        The default observable assumes that the first coordinate, ``u[0]``,
+        is an angle with period ``period``. For other systems, pass ``func``.
+        ``func`` is compiled with Numba when possible. Otherwise, it is
+        evaluated as a plain Python function, which is slower.
+
+        Examples
+        --------
+        >>> system = DiscreteDynamicalSystem(model="unbounded standard map")
+        >>> system.set_parameters([0.7])
+        >>> result = system.classify_orbit([0.15, 0.30], 10000)
+        >>> result["classification"], result["rotation_number"]
+        """
+        if self.__system_dimension < 1:
+            raise ValueError(
+                f"classify_orbit requires system_dimension >= 1, got {self.__system_dimension}."
+            )
+
+        if self.__frequency_map is None:
+            raise ValueError(
+                "classify_orbit requires a frequency map. Set one with "
+                "set_frequency_map() or the frequency_map argument of the "
+                "constructor."
+            )
+
+        u_arr: NDArray[np.float64] = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+
+        if parameters is None and self.__parameters is not None:
+            parameters = self.__parameters
+        parameters_arr: NDArray[np.float64] = validate_parameters(
+            parameters, self.__number_of_parameters
+        )
+
+        validate_positive(total_time, "total_time", Integral)
+        if total_time < 2:
+            raise ValueError("total_time must be at least 2.")
+        validate_positive(omega_threshold, "omega_threshold", Real)
+        validate_positive(dig_threshold, "dig_threshold", Real)
+        validate_positive(tol, "tol", Real)
+        if tol > 15:
+            raise ValueError(f"tol must be in (0, 15], got {tol}.")
+        validate_positive(dev_threshold, "dev_threshold", Real)
+
+        if func is None:
+            validate_positive(period, "period", Real)
+            func = default_observable(float(period))
+
+        observable, form = resolve_observable(func, u_arr, allow_legacy=False)
+
+        orbit_class, omega, dig_h, dig_omega = classify_orbit(
+            u_arr,
+            parameters_arr,
+            total_time,
+            self.__mapping,
+            self.__frequency_map,
+            observable,
+            form,
+            omega_threshold,
+            dig_threshold,
+            tol,
+            dev_threshold,
+        )
+
+        if orbit_class == CHAOTIC:
+            label = "chaotic"
+        elif orbit_class == ISLAND:
+            label = "island"
+        else:
+            label = "circle"
+
+        return {
+            "classification": label,
+            "rotation_number": float(omega),
+            "dig": float(dig_h),
+            "dig_omega": float(dig_omega),
+        }
 
     def escape_analysis(
         self,
@@ -2430,15 +2850,16 @@ class DiscreteDynamicalSystem:
         u: numeric_like_t,
         total_time: int_t,
         parameters: numeric_like_t | None = None,
-        func: observable_t = lambda x: np.cos(2 * np.pi * x[:, 0]),
+        func: state_observable_t | None = None,
         transient_time: int_t | None = None,
+        period: numeric_t = 1.0,
     ) -> float:
         """
         Compute the number of correct decimal digits in the convergence of a
         weighted Birkhoff average.
 
         This diagnostic compares weighted Birkhoff averages computed over two
-        consecutive halves of the trajectory. Larger values indicate better
+        consecutive windows of the trajectory, each of length ``total_time``. Larger values indicate better
         convergence of the observable average and are typically associated with
         more regular dynamics.
 
@@ -2447,37 +2868,40 @@ class DiscreteDynamicalSystem:
         u : numeric_like_t
             Initial condition of shape `(system_dimension,)`.
         total_time : int_t
-            Total number of iterations used in the computation.
-            If an odd value is provided, it is increased by one internally so that
-            the trajectory can be split into two equal halves.
+            Length of each of the two consecutive windows. The trajectory is
+            iterated ``2 * total_time`` times after the transient. Must be at
+            least 2.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
-        func : observable_t, optional
-            Observable function applied to the generated trajectory.
-            It must accept a 2D array of shape `(n, system_dimension)` and return
-            either:
-            - a 1D array of shape `(n,)`, or
-            - a scalar value.
-            The default observable is `cos(2π x_0)`.
+        func : state_observable_t | None, optional
+            Observable evaluated along the trajectory. It takes a single state
+            of shape ``(system_dimension,)`` and returns a real number. It
+            should be smooth and nonconstant. If ``None`` (default), the
+            observable is ``cos(2 pi u[0] / period)``.
         transient_time : int_t | None, optional
             Number of initial iterations discarded before the computation.
+        period : numeric_t, optional
+            Period of the angle ``u[0]`` used by the default observable, for
+            example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
+            in radians. Ignored when ``func`` is given. The default is ``1.0``.
 
         Returns
         -------
         float
             Weighted-Birkhoff convergence indicator defined as
             `-log10(|WB_0 - WB_1|)`, where `WB_0` and `WB_1` are the weighted
-            Birkhoff averages over the first and second halves of the trajectory.
+            Birkhoff averages over the first and second windows.
 
         Raises
         ------
         ValueError
             - If `u` is not compatible with the system dimension.
             - If `parameters` does not match the expected number of parameters.
-            - If `total_time` is negative.
-            - If `transient_time` is invalid.
-            - If `func` does not return either a scalar or a 1D array.
+            - If `total_time` is less than 2.
+            - If `transient_time` is negative.
+            - If `period` is not positive.
+            - If `func` does not return a real number for a single state.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
@@ -2485,22 +2909,35 @@ class DiscreteDynamicalSystem:
             - If `transient_time` is not an integer.
             - If `func` is not callable.
 
+        Warns
+        -----
+        DeprecationWarning
+            If ``func`` acts on an array of states of shape
+            ``(n, system_dimension)`` and returns an array of shape ``(n,)``,
+            the form accepted in previous versions. This will stop working in
+            a future version; pass a function of a single state instead.
+
         Notes
         -----
+        The default observable assumes that the first coordinate, ``u[0]``,
+        is an angle with period ``period``. For other systems, pass ``func``.
+
         The computation uses a weighted Birkhoff average on two consecutive
         trajectory segments of equal length. The observable is evaluated on the
-        generated trajectory after the transient, if any.
+        generated trajectory after the transient, if any. It is compiled with
+        Numba when possible. Otherwise, it is evaluated as a plain Python
+        function, which is slower.
 
         Examples
         --------
-        >>> x_obs = lambda X: np.cos(X[:, 0])
+        >>> x_obs = lambda u: np.cos(2 * np.pi * u[0])
         >>> value = system.dig(u0, 1000, parameters=params, func=x_obs)
 
         >>> value = system.dig(
         ...     u0,
         ...     1000,
         ...     parameters=params,
-        ...     func=lambda X: np.sin(X[:, 0] + X[:, 1]),
+        ...     func=lambda u: np.sin(2 * np.pi * (u[0] + u[1])),
         ... )
 
         >>> value = system.dig(
@@ -2521,34 +2958,25 @@ class DiscreteDynamicalSystem:
             parameters, self.__number_of_parameters
         )
 
-        validate_non_negative(total_time, "total_time", Integral)
-        validate_transient_time(transient_time, total_time, Integral)
+        validate_positive(total_time, "total_time", Integral)
+        if total_time < 2:
+            raise ValueError("total_time must be at least 2.")
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Integral)
 
-        if total_time % 2 != 0:
-            total_time += 1
+        if func is None:
+            validate_positive(period, "period", Real)
+            func = default_observable(float(period))
 
-        if not callable(func):
-            raise TypeError("func must be callable")
+        observable, form = resolve_observable(func, u_arr, allow_legacy=True)
 
-        test_input = np.array([u_arr], dtype=np.float64)
-        test_output = func(test_input)
-
-        if not isinstance(test_output, np.ndarray):
-            raise ValueError("func must return a NumPy array")
-
-        if test_output.ndim != 1:
-            raise ValueError("func must return a 1D array")
-
-        if test_output.shape[0] != test_input.shape[0]:
-            raise ValueError(
-                "func must return a 1D array with one value for each input state"
-            )
         return dig(
             u=u_arr,
             parameters=parameters_arr,
             total_time=total_time,
             mapping=self.__mapping,
-            func=func,
+            func=observable,
+            form=form,
             transient_time=transient_time,
         )
 
