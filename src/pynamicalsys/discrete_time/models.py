@@ -87,6 +87,20 @@ def standard_map_jacobian(
     )
 
 
+@njit
+def unbounded_standard_map_frequency(
+    u: NDArray[np.float64], parameters: Union[NDArray[np.float64], Sequence[float]]
+) -> float:
+    if len(parameters) == 1:
+        k = parameters[0]
+        gamma = 0
+    else:
+        k, gamma = parameters
+
+    x, y = u
+    return (1 - gamma) * y + k * np.sin(2 * np.pi * x) / (2 * np.pi)
+
+
 # ! ----------------------------- !
 # ! --- Standard nontwist map --- !
 # ! ----------------------------- !
@@ -141,6 +155,17 @@ def standard_nontwist_map_jacobian(
     J[1, 1] = dy_newdy
 
     return J
+
+
+@njit
+def standard_nontwist_map_frequency(
+    u: NDArray[np.float64], parameters: Union[NDArray[np.float64], Sequence[float]]
+) -> float:
+    a, b = parameters
+    x, y = u
+    y_new = y - b * np.sin(2 * np.pi * x)
+
+    return a * (1 - y_new**2)
 
 
 # ! -------------------------------------- !
@@ -199,6 +224,17 @@ def extended_standard_nontwist_map_jacobian(
     return J
 
 
+@njit
+def extended_standard_nontwist_map_frequency(
+    u: NDArray[np.float64], parameters: Union[NDArray[np.float64], Sequence[float]]
+) -> float:
+    a, b, c, m = parameters
+    x, y = u
+    y_new = y - b * np.sin(2 * np.pi * x) - c * np.sin(2 * np.pi * m * x)
+
+    return a * (1 - y_new**2)
+
+
 # ! ------------------ !
 # ! --- Leonel map --- !
 # ! ------------------ !
@@ -251,6 +287,17 @@ def leonel_map_jacobian(
     J[1, 1] = dy_newdy
 
     return J
+
+
+@njit
+def leonel_map_frequency(
+    u: NDArray[np.float64], parameters: Union[NDArray[np.float64], Sequence[float]]
+) -> float:
+    eps, gamma = parameters
+    x, y = u
+    y_new = y + eps * np.sin(x)
+
+    return 1 / abs(y_new) ** gamma / (2 * np.pi)
 
 
 # ! ------------------------- !
