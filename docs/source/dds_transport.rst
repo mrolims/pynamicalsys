@@ -3,13 +3,131 @@ Transport and diffusion
 
 Transport describes how trajectories move through phase space and how an ensemble of initial conditions spreads. In an area-preserving map, invariant curves can block global motion and chaotic trajectories can remain trapped near regular islands for long intervals. The resulting spreading need not follow the linear growth expected for normal diffusion. The standard map has long served as a fundamental model for studying these mechanisms, as reviewed by `Chirikov (1979) <https://doi.org/10.1016/0370-1573(79)90023-1>`_.
 
-Two versions of the standard map are used on this page. The bounded ``standard map`` is used to examine recurrence times. The ``unbounded standard map`` keeps the angle modulo one but allows the action to grow without bounds, making it suitable for measuring diffusion.
+Two versions of the standard map are used on this page. The bounded ``standard map`` is used to examine recurrence times. The ``unbounded standard map`` keeps the angle modulo one but allows the action to grow without bounds, making it suitable for measuring rotation numbers and diffusion. The ``standard nontwist map`` illustrates rotation numbers in maps that violate the twist condition.
 
 .. code-block:: python
 
     import numpy as np
     import matplotlib.pyplot as plt
     from pynamicalsys import DiscreteDynamicalSystem as dds, PlotStyler
+
+Rotation number
+~~~~~~~~~~~~~~~
+
+On a cylinder, with an angle :math:`x` and an action :math:`y`, the rotation number of an orbit is the average advance of the angle per iteration. It is written in terms of the frequency map :math:`\Omega`, which gives the advance of the angle, measured in turns on the universal cover, in the iteration that starts at :math:`\mathbf{x}_n=(x_n,y_n)`. Since :math:`x_N-x_0=\sum_{n=0}^{N-1}\Omega(\mathbf{x}_n)`, the rotation number is the time average
+
+.. math::
+
+    \omega=\lim_{N\to\infty}\frac{1}{N}\sum_{n=0}^{N-1}\Omega(\mathbf{x}_n).
+
+For the unbounded standard map, :math:`x_{n+1}=x_n+y_{n+1}` with :math:`y_{n+1}=y_n+k\sin(2\pi x_n)/(2\pi)`, so :math:`\Omega(x,y)=y+k\sin(2\pi x)/(2\pi)`. On a rotational invariant circle, the dynamics is conjugate to a rigid rotation and :math:`\omega` is irrational. An orbit in a chain of :math:`q` islands encircles a periodic orbit of period :math:`q`, and its rotation number averages to that of the periodic orbit, a rational :math:`p/q`. On a chaotic orbit, the time average converges slowly or not at all.
+
+The :py:meth:`rotation_number <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.rotation_number>` method requires a frequency map. The ``unbounded standard map``, ``standard nontwist map``, ``extended standard nontwist map``, and ``leonel map`` models provide one, and any other map can be given one with :py:meth:`set_frequency_map <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.set_frequency_map>` or the ``frequency_map`` argument of the constructor. The bounded ``standard map`` does not provide one: there, :math:`y` is also an angle, so the advance of :math:`x` is defined only modulo one turn and no continuous frequency map exists. The rotation number is not reduced modulo one, so orbits whose angles advance by different integer numbers of turns, such as accelerator modes, have different rotation numbers.
+
+By default, the rotation number is computed with the :doc:`weighted Birkhoff average <dds_wba>`, as proposed by `Sander and Meiss (2020) <https://doi.org/10.1016/j.physd.2020.132569>`_. The frequency map is averaged over two consecutive windows of ``total_time`` iterations each, and the rotation number is the mean of the two averages, :math:`\omega=(\omega_0+\omega_1)/2`. On a regular orbit, both averages converge faster than any power of ``total_time``, so they agree in many digits, while on a chaotic orbit they converge as slowly as a plain time average. The number of digits in which they agree,
+
+.. math::
+
+    \mathrm{dig}_\omega=-\log_{10}\left|\omega_0-\omega_1\right|,
+
+therefore separates both cases. If :math:`\mathrm{dig}_\omega` is at least ``threshold``, which is 9 by default, the rotation number is returned. Otherwise, the orbit is considered chaotic and NaN is returned. With ``method="average"``, the plain time average over ``total_time`` iterations is returned instead. It always returns a value, but it converges only as :math:`1/N` on regular orbits and does not distinguish regular from chaotic orbits. The same averages also separate island chains from rotational invariant circles, as shown in the :doc:`weighted Birkhoff average <dds_wba>` guide.
+
+The following example computes the rotation number of the unbounded standard map with :math:`k=0.9` along the line :math:`x_0=0.5`, which crosses the centers of the main island chains:
+
+.. code-block:: python
+
+    system = dds(model="unbounded standard map")
+    system.set_parameters([0.9])
+
+    x0 = 0.5
+    actions = np.linspace(0.0, 2.0, 2000)
+    total_time = 10_000
+
+    omega = np.array([system.rotation_number([x0, y0], total_time) for y0 in actions])
+
+Plot the rotation number as a function of the initial action. Chaotic orbits return NaN and are left out:
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(actions, omega, "ko", markersize=2, mew=0)
+    ax.set_xlabel("Initial action $y_0$")
+    ax.set_ylabel(r"Rotation number $\omega$")
+    fig.tight_layout()
+    plt.savefig(
+        f"{path_figures}/standard_map_rotation_number.png", dpi=400, bbox_inches="tight"
+    )
+
+.. figure:: images/standard_map_rotation_number.png
+    :align: center
+    :width: 80%
+
+    Rotation number of the unbounded standard map with :math:`k=0.9` along the line :math:`x_0=0.5`. Gaps correspond to chaotic orbits.
+
+The rotation number increases with the action. Each island chain crossed by the line produces a plateau at a rational value, and between the plateaus the rotational circles and smaller island chains fill in intermediate values. Since the map is invariant under :math:`y\mapsto y+1` and the angle then advances by one additional turn per iteration, :math:`\omega(x_0,y_0+1)=\omega(x_0,y_0)+1`, and the profile on :math:`[1,2]` repeats that on :math:`[0,1]` shifted by one.
+
+Nontwist maps
+^^^^^^^^^^^^^
+
+The standard map satisfies the twist condition: the rotation number of the rotational circles changes monotonically with the action. Nontwist maps violate this condition. A well-studied example is the standard nontwist map of `del-Castillo-Negrete et al. (1996) <https://doi.org/10.1016/0167-2789(95)00257-X>`_,
+
+.. math::
+
+    \begin{aligned}
+        y_{n+1}&=y_n-b\sin(2\pi x_n),\\
+        x_{n+1}&=x_n+a\left(1-y_{n+1}^2\right)\pmod{1},
+    \end{aligned}
+
+whose frequency map is :math:`\Omega(x,y)=a\left[1-\left(y-b\sin(2\pi x)\right)^2\right]`. The rotation number now has an extremum as a function of the action. The rotational circle at which it is attained is the shearless curve, and rotation numbers near the extremum are attained twice, once on each side of the shearless curve.
+
+The same procedure is applied to the standard nontwist map with :math:`a=0.53` and :math:`b=0.45`, along the line :math:`x_0=0.5`. For these parameters, `Mugnaine et al. (2024) <https://doi.org/10.1103/PhysRevE.110.044201>`_ showed that the shearless curve exists between two period-two twin island chains:
+
+.. code-block:: python
+
+    system = dds(model="standard nontwist map")
+    system.set_parameters([0.53, 0.45])
+
+    x0 = 0.5
+    actions = np.linspace(-0.5, 0.5, 5000)
+
+    omega = np.array([system.rotation_number([x0, y0], total_time) for y0 in actions])
+
+The maximum of the profile is small compared with the range of the plot, so an inset magnifies it:
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(actions, omega, "ko", markersize=2, mew=0)
+    ax.set_xlabel("Initial action $y_0$")
+    ax.set_ylabel(r"Rotation number $\omega$")
+
+    window = (actions > 0.0) & (actions < 0.045) & (omega > 0.5)
+    axins = ax.inset_axes([0.3, 0.12, 0.4, 0.45])
+    axins.plot(actions[window], omega[window], "ko", markersize=2, mew=0)
+    axins.set_xlim(0.0, 0.045)
+    margin = 0.1 * (omega[window].max() - omega[window].min())
+    axins.set_ylim(omega[window].min() - margin, omega[window].max() + margin)
+    axins.tick_params(labelsize=10)
+    ax.indicate_inset_zoom(axins, edgecolor="k")
+
+    fig.tight_layout()
+    plt.savefig(
+        f"{path_figures}/standard_nontwist_map_rotation_number.png",
+        dpi=400,
+        bbox_inches="tight",
+    )
+
+.. figure:: images/standard_nontwist_map_rotation_number.png
+    :align: center
+    :width: 80%
+
+    Rotation number of the standard nontwist map with :math:`a=0.53` and :math:`b=0.45` along the line :math:`x_0=0.5`. The inset magnifies the neighborhood of the shearless curve.
+
+Most initial conditions on this line lie in the two period-two twin island chains, with :math:`\omega=1/2`, one on each side of the shearless curve. Between them, the inset shows the rotational circles around the shearless curve. Their rotation number rises to a maximum, attained on the shearless curve, and decreases again, so the profile is nonmonotonic.
 
 Diffusion of an ensemble
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -176,4 +294,7 @@ References
     - A\. B\. Rechester, M\. N\. Rosenbluth, and R\. B\. White, `Fourier-space paths applied to the calculation of diffusion for the Chirikov-Taylor model <https://doi.org/10.1103/PhysRevA.23.2664>`_, Physical Review A 23, 2664-2672 (1981).
     - C\. F\. F\. Karney, A\. B\. Rechester, and R\. B\. White, `Effect of noise on the standard mapping <https://doi.org/10.1016/0167-2789(82)90045-8>`_, Physica D 4, 425-438 (1982).
     - C\. F\. F\. Karney, `Long-time correlations in the stochastic regime <https://doi.org/10.1016/0167-2789(83)90232-4>`_, Physica D 8, 360-380 (1983).
+    - D\. del-Castillo-Negrete, J\. M\. Greene, and P\. J\. Morrison, `Area preserving nontwist maps: periodic orbits and transition to chaos <https://doi.org/10.1016/0167-2789(95)00257-X>`_, Physica D 91, 1-23 (1996).
     - B\. V\. Chirikov and D\. L\. Shepelyansky, `Asymptotic statistics of Poincaré recurrences in Hamiltonian systems with divided phase space <https://doi.org/10.1103/PhysRevLett.82.528>`_, Physical Review Letters 82, 528-531 (1999).
+    - E\. Sander and J\. D\. Meiss, `Birkhoff averages and rotational invariant circles for area-preserving maps <https://doi.org/10.1016/j.physd.2020.132569>`_, Physica D 411, 132569 (2020).
+    - M\. Mugnaine, J\. D\. Szezech Jr\., R\. L\. Viana, I\. L\. Caldas, and P\. J\. Morrison, `Shearless effective barriers to chaotic transport induced by even twin islands in nontwist systems <https://doi.org/10.1103/PhysRevE.110.044201>`_, Physical Review E 110, 044201 (2024).
