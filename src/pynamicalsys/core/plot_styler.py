@@ -15,9 +15,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+from typing import Any, Iterable, Optional, Union
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from typing import Optional
+import numpy as np
+from matplotlib.axes import Axes
+
+
+def _resolve_alias(name: str, value: Any, alias: str, alias_value: Any, default: Any) -> Any:
+    """Return the value of a parameter that can also be given by an alias."""
+    if value is not None and alias_value is not None:
+        raise TypeError(f"Got both '{name}' and '{alias}', which are aliases of one another")
+    if alias_value is not None:
+        return alias_value
+    if value is not None:
+        return value
+    return default
 
 
 class PlotStyler:
@@ -31,32 +45,47 @@ class PlotStyler:
     Parameters
     ----------
     fontsize : int, default=20
-        Base font size for labels, titles, and text.
+        Base font size for labels, titles, and text. Tick labels use ``fontsize - 3``.
     legend_fontsize : int, default=14
         Font size for the legend.
     axes_linewidth : float, default=1.3
         Width of the axes borders.
     font_family : str, default="STIXGeneral"
         Font family used for text and math rendering.
-    line_width : float, default=2.0
-        Default line width for plot lines.
-    markersize : float, default=6.0
-        Default marker size for lines with markers.
-    markeredgewidth : float, default=1.0
-        Edge width for plot markers.
-    markeredgecolor : str, default="black"
-        Edge color for plot markers.
     tick_direction_in : bool, default=True
-        Whether ticks point inward (`True`) or outward (`False`).
-    minor_ticks_visible : bool, default=True
+        Whether ticks point inward (``True``) or outward (``False``).
+    minor_ticks_visible : bool, default=False
         Whether minor ticks are visible.
+    linewidth : float, default=1.0
+        Default line width for plot lines. Alias: ``lw``.
+    markersize : float, default=5.0
+        Default marker size for lines with markers. Alias: ``ms``.
+    markeredgewidth : float, default=1.0
+        Edge width for plot markers. Alias: ``mew``.
+    markeredgecolor : str, default="black"
+        Edge color for plot markers. Alias: ``mec``.
+    ticks_on_all_sides : bool, default=True
+        Whether ticks are also drawn on the top and right axes.
+    lw, ms, mew, mec : optional
+        Aliases of ``linewidth``, ``markersize``, ``markeredgewidth``, and
+        ``markeredgecolor``, as in Matplotlib. They are keyword-only.
+
+    Raises
+    ------
+    TypeError
+        If a parameter and its alias are both given.
 
     Methods
     -------
     apply_style()
         Applies the defined styling parameters globally using Matplotlib's rcParams.
     set_tick_padding(ax, pad_x=None, pad_y=None)
-        Sets custom padding between axis ticks and labels for a given Axes object.
+        Sets custom padding between axis ticks and labels for one or several Axes.
+
+    Examples
+    --------
+    >>> ps = PlotStyler(fontsize=15, lw=1.5, ms=2, mew=0)
+    >>> ps.apply_style()
     """
 
     def __init__(
@@ -67,28 +96,40 @@ class PlotStyler:
         font_family: str = "STIXGeneral",
         tick_direction_in: bool = True,
         minor_ticks_visible: bool = False,
-        linewidth: float = 1.0,
-        markersize: float = 5.0,
-        markeredgewidth: float = 1.0,
-        markeredgecolor: str = "black",
+        linewidth: Optional[float] = None,
+        markersize: Optional[float] = None,
+        markeredgewidth: Optional[float] = None,
+        markeredgecolor: Optional[str] = None,
         ticks_on_all_sides: bool = True,
+        *,
+        lw: Optional[float] = None,
+        ms: Optional[float] = None,
+        mew: Optional[float] = None,
+        mec: Optional[str] = None,
     ) -> None:
         self.fontsize = fontsize
         self.legend_fontsize = legend_fontsize
         self.axes_linewidth = axes_linewidth
         self.font_family = font_family
         self.tick_labelsize = fontsize - 3
-        self.tick_direction_in = (tick_direction_in,)
+        self.tick_direction_in = tick_direction_in
         self.minor_ticks_visible = minor_ticks_visible
-        self.linewidth = linewidth
-        self.markersize = markersize
-        self.markeredgewidth = markeredgewidth
-        self.markeredgecolor = markeredgecolor
+        self.linewidth = _resolve_alias("linewidth", linewidth, "lw", lw, 1.0)
+        self.markersize = _resolve_alias("markersize", markersize, "ms", ms, 5.0)
+        self.markeredgewidth = _resolve_alias(
+            "markeredgewidth", markeredgewidth, "mew", mew, 1.0
+        )
+        self.markeredgecolor = _resolve_alias(
+            "markeredgecolor", markeredgecolor, "mec", mec, "black"
+        )
         self.ticks_on_all_sides = ticks_on_all_sides
 
     def apply_style(self) -> None:
         """
         Apply global matplotlib styling.
+
+        All Matplotlib rcParams are first reset to their defaults, so settings
+        made before this call are discarded.
         """
         self._reset_style()  # Reset any previous styles
         plt.clf()
@@ -125,24 +166,35 @@ class PlotStyler:
         plt.rcParams["lines.markeredgecolor"] = self.markeredgecolor
 
     def set_tick_padding(
-        self, ax: plt.Axes, pad_x: Optional[int] = None, pad_y: Optional[int] = None
+        self,
+        ax: Union[Axes, Iterable[Axes], np.ndarray],
+        pad_x: Optional[int] = None,
+        pad_y: Optional[int] = None,
     ) -> None:
         """
-        Set custom tick padding for a single Axes.
+        Set custom tick padding for one or several Axes.
 
         Parameters
         ----------
-        ax : matplotlib Axes
-            The axes object to modify.
+        ax : matplotlib Axes or array-like of Axes
+            The axes to modify. It can be a single Axes or any array-like of
+            Axes, such as the array returned by ``plt.subplots``, in which case
+            the padding is applied to every Axes.
         pad_x : int, optional
             Padding for x-axis major ticks.
         pad_y : int, optional
             Padding for y-axis major ticks.
+
+        Examples
+        --------
+        >>> fig, ax = plt.subplots(2, 2)
+        >>> ps.set_tick_padding(ax, pad_x=8, pad_y=6)
         """
-        if pad_x is not None:
-            ax.tick_params(axis="x", which="major", pad=pad_x)
-        if pad_y is not None:
-            ax.tick_params(axis="y", which="major", pad=pad_y)
+        for axis in np.asarray(ax, dtype=object).ravel():
+            if pad_x is not None:
+                axis.tick_params(axis="x", which="major", pad=pad_x)
+            if pad_y is not None:
+                axis.tick_params(axis="y", which="major", pad=pad_y)
 
     def _reset_style(self) -> None:
         """
