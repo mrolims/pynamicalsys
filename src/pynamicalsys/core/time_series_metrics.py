@@ -160,7 +160,7 @@ class TimeSeriesMetrics:
         )
 
         if compute_white_vert_distr:
-            distr = white_vertline_distr(recmat)[config.lmin :]
+            distr = white_vertline_distr(recmat, wmin=config.lmin)
 
             if return_eps:
                 return recmat, distr, eps
@@ -246,7 +246,7 @@ class TimeSeriesMetrics:
         recmat = build_recurrence_matrix(self.time_series, eps, config.metric)
 
         # Calculate the white vertical line distribution
-        P = white_vertline_distr(recmat)[config.lmin :]
+        P = white_vertline_distr(recmat, wmin=config.lmin)
         P = P[P > 0]  # Filter out zero probabilities
         P /= P.sum()  # Normalize the distribution
 

@@ -4369,8 +4369,10 @@ class DiscreteDynamicalSystem:
             Distance metric used for standard deviation calculation.
         threshold: float, default = 0.1
             Recurrence threshold(relative to data range).
-        threshold_std: bool, default = True
-            Whether to scale threshold by data standard deviation.
+        threshold_mode: {"direct", "std", "rr"}, default = "std"
+            Strategy used to determine the recurrence threshold.
+        threshold_std: bool, optional
+            Deprecated legacy option. Use `threshold_mode` instead.
 
         Returns
         -------
