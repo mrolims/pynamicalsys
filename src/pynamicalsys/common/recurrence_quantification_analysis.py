@@ -47,7 +47,7 @@ class RTEConfig:
     threshold_mode: Optional[Literal["direct", "std", "rr"]] = None
 
     # Deprecated legacy API
-    threshold_std: bool = True
+    threshold_std: Optional[bool] = None
 
     lmin: int = 1
     return_final_state: bool = False
@@ -62,7 +62,9 @@ class RTEConfig:
             raise ValueError("threshold_mode must be 'direct', 'std', or 'rr'.")
 
         if self.threshold_mode is None:
-            if self.threshold_std:
+            if self.threshold_std is None:
+                self.threshold_mode = "std"
+            elif self.threshold_std:
                 warnings.warn(
                     "`threshold_std` is deprecated and will be removed in a future "
                     "release. Use `threshold_mode='std'` instead.",
@@ -79,7 +81,7 @@ class RTEConfig:
                 )
                 self.threshold_mode = "direct"
         else:
-            if self.threshold_std is not True:
+            if self.threshold_std is not None:
                 warnings.warn(
                     "`threshold_std` is deprecated and ignored when `threshold_mode` "
                     "is explicitly provided.",
@@ -425,9 +427,9 @@ def calculate_threshold(time_series: NDArray[np.float64], config) -> float:
 
     Behavior
     --------
-    threshold_std=True  -> threshold computed from data standard deviation
-    fixed_rr=True       -> threshold computed from fixed recurrence rate
-    neither             -> threshold returned directly
+    threshold_mode="std"    -> threshold computed from data standard deviation
+    threshold_mode="rr"     -> threshold computed from fixed recurrence rate
+    threshold_mode="direct" -> threshold returned directly
     """
 
     X = _as_2d_float_array(time_series)
@@ -574,12 +576,14 @@ def white_vertline_distr(
     recmat : NDArray[np.uint8]
         A 2D binary matrix (0s and 1s) representing a recurrence matrix.
         Expected shape: (N, N) where N is the matrix dimension.
+    wmin : int, default=1
+        Minimum white vertical line length included in the distribution.
 
     Returns
     -------
     NDArray[np.float64]
-        Array where index represents line length and value represents count.
-        (Note: Index 0 is unused since minimum line length is 1)
+        Counts of white vertical lines by length. Index ``k`` holds the
+        number of lines of length ``k + wmin``.
 
     Raises
     ------
@@ -614,7 +618,7 @@ def white_vertline_distr(
                     current_length += 1
             else:
                 border_flag = True  # Mark that we've passed the border
-                if current_length > 0 and j < N - 1:
+                if current_length > 0:
                     P[current_length] += 1
                     current_length = 0
 
