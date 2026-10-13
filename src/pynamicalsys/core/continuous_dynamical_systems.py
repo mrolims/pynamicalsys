@@ -1303,8 +1303,7 @@ class ContinuousDynamicalSystem:
         Notes
         -----
         By default, the computation uses the custom QR routine based on modified
-        Gram-Schmidt. If `method="QR_HH"`, the wrapper passes `numpy.linalg.qr`
-        to the low-level routine.
+        Gram-Schmidt. If `method="QR_HH"`, `numpy.linalg.qr` is used instead.
         """
         if self.__jacobian is None:
             raise ValueError(
