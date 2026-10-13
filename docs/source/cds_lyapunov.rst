@@ -128,6 +128,57 @@ When only the largest exponent is needed, set ``num_exponents=1`` and leave ``re
 
 Set ``num_exponents`` between one and the dimension of the system. If it is omitted, the complete spectrum is calculated. Without a stored history, a request for more than one exponent returns a one-dimensional array.
 
+Parameter continuation
+~~~~~~~~~~~~~~~~~~~~~~
+
+With ``return_last_state=True``, ``lyapunov`` also returns the state of the system at the end of the integration. When the largest exponent is computed along a range of parameter values, each calculation can then start from the final state of the previous one. Only the first parameter value requires a long transient. The following ones require only a short relaxation after each small parameter change, and the calculation follows the attractor continuously as the parameter varies.
+
+The example below computes the largest exponent of the Rössler system with :math:`a = b = 0.2` as :math:`c` increases from 2 to 6, along the period-doubling route to chaos:
+
+.. code-block:: python
+
+    continuation_system = cds(model="rossler system")
+    continuation_system.integrator("rk45", atol=1e-10, rtol=1e-8)
+
+    c_values = np.linspace(2.0, 6.0, 161)
+    largest_exponents = np.empty_like(c_values)
+
+    state = [0.1, 0.1, 0.1]
+    for index, c in enumerate(c_values):
+        if index == 0:
+            transient, accumulation = 1_000.0, 1_000.0
+        else:
+            transient, accumulation = 100.0, 1_000.0
+        largest_exponents[index], state = continuation_system.lyapunov(
+            state,
+            transient + accumulation,
+            parameters=[0.2, 0.2, c],
+            transient_time=transient,
+            num_exponents=1,
+            return_last_state=True,
+        )
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(c_values, largest_exponents, "o-", color="navy", markersize=3)
+    ax.axhline(0.0, color="gray", linewidth=0.8)
+    ax.set_xlabel("$c$")
+    ax.set_ylabel(r"$\lambda_1$")
+    ax.set_xlim(c_values[0], c_values[-1])
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/continuous_rossler_lyapunov_continuation.png
+    :align: center
+    :width: 100%
+
+    Largest Lyapunov exponent of the Rössler system with :math:`a = b = 0.2` as a function of :math:`c`, computed by parameter continuation.
+
+On periodic orbits the largest exponent is the zero exponent associated with the flow direction, and it becomes positive where the attractor is chaotic.
+
 Numerical options
 ~~~~~~~~~~~~~~~~~
 
