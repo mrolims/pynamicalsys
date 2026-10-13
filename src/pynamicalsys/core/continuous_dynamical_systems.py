@@ -245,11 +245,13 @@ class ContinuousDynamicalSystem:
             "description": "4th order Runge-Kutta method with fixed step size",
             "integrator": rk4_step_wrapped,
             "estimate_initial_step": False,
+            "adaptive": False,
         },
         "rk45": {
             "description": "Adaptive 4th/5th order Runge-Kutta-Fehlberg method (RK45) with embedded error estimation",
             "integrator": rk45_step_wrapped,
             "estimate_initial_step": True,
+            "adaptive": True,
         },
     }
 
@@ -1239,6 +1241,7 @@ class ContinuousDynamicalSystem:
         method: str = "QR",
         endpoint: bool | None = None,
         return_last_state: bool = False,
+        qr_interval: int_t = 1,
     ) -> (
         np.float64
         | NDArray[np.float64]
@@ -1281,6 +1284,13 @@ class ContinuousDynamicalSystem:
         return_last_state : bool, optional
             If `True`, also return the state of the system at the time the
             integration stopped.
+        qr_interval : int_t, optional
+            Number of accepted integration steps between successive
+            reorthonormalizations of the deviation vectors. A
+            reorthonormalization is also performed at `total_time`. With
+            `return_history=True`, one row is stored at each
+            reorthonormalization. Values greater than 1 require a fixed-step
+            integrator.
 
         Returns
         -------
@@ -1305,10 +1315,12 @@ class ContinuousDynamicalSystem:
             - If `num_exponents` exceeds the system dimension.
             - If `method` is not `"QR"` or `"QR_HH"`.
             - If `log_base` is not positive or `log_base == 1`.
+            - If `qr_interval` is not positive.
+            - If `qr_interval > 1` and the integrator is adaptive.
         TypeError
             - If `method` is not a string.
             - If `total_time`, `transient_time`, or `log_base` is not a valid real number.
-            - If `num_exponents` or `seed` is not an integer.
+            - If `num_exponents`, `seed`, or `qr_interval` is not an integer.
 
         Warns
         -----
@@ -1367,6 +1379,13 @@ class ContinuousDynamicalSystem:
             raise ValueError("The logarithm function is not defined with base 1")
 
         validate_non_negative(seed, "seed", Integral)
+        validate_positive(qr_interval, "qr_interval", Integral)
+        if qr_interval > 1 and self.integrator_info["adaptive"]:
+            raise ValueError(
+                "qr_interval > 1 requires a fixed-step integrator. With an "
+                "adaptive integrator, the step-size control loses accuracy on "
+                "deviation vectors that are not reorthonormalized at every step."
+            )
 
         if num_exponents == 1:
             result, last_state = maximum_lyapunov_exponent(
@@ -1382,6 +1401,7 @@ class ContinuousDynamicalSystem:
                 integrator=self.__integrator_func,
                 return_history=return_history,
                 seed=int(seed),
+                qr_interval=int(qr_interval),
             )
         else:
             result, last_state = lyapunov_exponents(
@@ -1399,6 +1419,7 @@ class ContinuousDynamicalSystem:
                 return_history=return_history,
                 seed=int(seed),
                 method=method,
+                qr_interval=int(qr_interval),
             )
 
         if return_history:

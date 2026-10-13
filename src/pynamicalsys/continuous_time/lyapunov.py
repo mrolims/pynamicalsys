@@ -41,6 +41,7 @@ def lyapunov_exponents(
     return_history: bool = False,
     seed: int = 13,
     method: str = "QR",
+    qr_interval: int = 1,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the first `num_exponents` Lyapunov exponents of a continuous-time
@@ -84,6 +85,10 @@ def lyapunov_exponents(
 
         - `"QR"`: custom modified Gram-Schmidt QR (default).
         - `"QR_HH"`: `numpy.linalg.qr`, based on Householder reflections.
+    qr_interval : int, optional
+        Number of accepted integration steps between successive QR
+        reorthonormalizations. A reorthonormalization is also performed at the
+        final integration time.
 
     Returns
     -------
@@ -95,14 +100,16 @@ def lyapunov_exponents(
           containing the final Lyapunov exponents.
         - If `return_history=True`, returns an array of shape
           `(n_samples, num_exponents + 1)` whose first column contains time and
-          whose remaining columns contain the finite-time exponents.
+          whose remaining columns contain the finite-time exponents. One row
+          is stored at each reorthonormalization.
 
     Notes
     -----
     The computation evolves the state together with `num_exponents` deviation
-    vectors. After each accepted integration step, the deviation vectors are
-    reorthonormalized through a QR decomposition and the logarithms of the
-    diagonal entries of `R` are accumulated.
+    vectors. Every `qr_interval` accepted integration steps, and at the final
+    integration time, the deviation vectors are reorthonormalized through a QR
+    decomposition and the logarithms of the diagonal entries of `R` are
+    accumulated.
     """
     neq = len(u)
     nt = neq + neq * num_exponents
@@ -142,6 +149,7 @@ def lyapunov_exponents(
 
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
+    steps_since_qr = 0
     while time < total_time:
         if time + time_step > total_time:
             time_step = total_time - time
@@ -158,6 +166,11 @@ def lyapunov_exponents(
             integrator=integrator,
             number_of_deviation_vectors=num_exponents,
         )
+
+        steps_since_qr += 1
+        if steps_since_qr < qr_interval and time < total_time:
+            continue
+        steps_since_qr = 0
 
         v = uv[neq:].reshape(neq, num_exponents).copy()
         if method == "QR":
@@ -200,6 +213,7 @@ def maximum_lyapunov_exponent(
     integrator=rk4_step_wrapped,
     return_history: bool = False,
     seed: int = 13,
+    qr_interval: int = 1,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the maximum Lyapunov exponent of a continuous-time dynamical system.
@@ -234,6 +248,10 @@ def maximum_lyapunov_exponent(
         exponent.
     seed : int, optional
         Random seed used to initialize the deviation vector.
+    qr_interval : int, optional
+        Number of accepted integration steps between successive
+        renormalizations of the deviation vector. A renormalization is also
+        performed at the final integration time.
 
     Returns
     -------
@@ -245,13 +263,15 @@ def maximum_lyapunov_exponent(
           containing the final maximum Lyapunov exponent.
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
           whose first column contains time and whose second column contains the
-          finite-time maximum Lyapunov exponent.
+          finite-time maximum Lyapunov exponent. One row is stored at each
+          renormalization.
 
     Notes
     -----
-    The computation evolves the state together with one deviation vector. After
-    each accepted integration step, the deviation vector is renormalized and
-    the logarithm of its norm growth is accumulated.
+    The computation evolves the state together with one deviation vector.
+    Every `qr_interval` accepted integration steps, and at the final
+    integration time, the deviation vector is renormalized and the logarithm
+    of its norm growth is accumulated.
     """
     neq = len(u)
     nt = neq + neq
@@ -286,6 +306,7 @@ def maximum_lyapunov_exponent(
 
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
+    steps_since_qr = 0
     while time < total_time:
         if time + time_step > total_time:
             time_step = total_time - time
@@ -302,6 +323,11 @@ def maximum_lyapunov_exponent(
             integrator=integrator,
             number_of_deviation_vectors=1,
         )
+
+        steps_since_qr += 1
+        if steps_since_qr < qr_interval and time < total_time:
+            continue
+        steps_since_qr = 0
 
         norm = np.linalg.norm(uv[neq:])
         exponent += np.log(np.abs(norm))
