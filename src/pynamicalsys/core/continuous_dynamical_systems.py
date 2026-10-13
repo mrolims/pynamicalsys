@@ -1381,7 +1381,8 @@ class ContinuousDynamicalSystem:
             )
 
         if return_history:
-            return result / np.log(log_base)
+            result[:, 1:] /= np.log(log_base)
+            return result
 
         if num_exponents == 1:
             return np.float64(result[0, 0] / np.log(log_base))
