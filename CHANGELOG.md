@@ -9,76 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Discrete-time systems can now be given a **frequency map**, the advance of an
-  angle variable in one iteration, in turns, through the new `frequency_map`
-  argument of `DiscreteDynamicalSystem` or the new `set_frequency_map` method.
-  The `unbounded standard map`, `standard nontwist map`,
-  `extended standard nontwist map`, and `leonel map` models include one.
-- `rotation_number` now computes the rotation number from the frequency map
-  with the **weighted Birkhoff average** (Sander and Meiss, 2020). On regular
-  orbits it converges far faster than a plain time average, and it returns NaN
-  for chaotic orbits, whose rotation number does not converge. The convergence
-  criterion is set with `threshold`, the number of digits in which the averages
-  over two consecutive windows of `total_time` iterations must agree (9 by
-  default). The plain time average is available with `method="average"`. The
-  rotation number is no longer reduced modulo one, so distinct integer values,
-  such as those of accelerator modes, are kept apart.
-- New method `classify_orbit` for discrete-time systems, which classifies an
-  orbit as chaotic, in an island chain, or on a rotational invariant circle
-  from weighted Birkhoff averages of an observable and of the frequency map,
-  and from whether the rotation number is rational (Sander and Meiss, 2020).
-  It returns the classification together with the rotation number and the
-  number of converged digits of both averages.
-- `PlotStyler` accepts Matplotlib's short names `lw`, `ms`, `mew`, and `mec`
-  for `linewidth`, `markersize`, `markeredgewidth`, and `markeredgecolor`.
-  Passing both a name and its alias raises an error.
-- `PlotStyler.set_tick_padding` accepts an array or list of Axes, such as the
-  one returned by `plt.subplots`, and pads every Axes in it.
+- Discrete-time systems can now be given a **frequency map**, the advance of an angle variable in one iteration, in turns, through the new `frequency_map` argument of `DiscreteDynamicalSystem` or the new `set_frequency_map` method. The `unbounded standard map`, `standard nontwist map`, `extended standard nontwist map`, and `leonel map` models include one.
+- `rotation_number` now computes the rotation number from the frequency map with the **weighted Birkhoff average** (Sander and Meiss, 2020). On regular orbits it converges far faster than a plain time average, and it returns NaN for chaotic orbits, whose rotation number does not converge. The convergence criterion is set with `threshold`, the number of digits in which the averages over two consecutive windows of `total_time` iterations must agree (9 by default). The plain time average is available with `method="average"`. The rotation number is no longer reduced modulo one, so distinct integer values, such as those of accelerator modes, are kept apart.
+- New method `classify_orbit` for discrete-time systems, which classifies an orbit as chaotic, in an island chain, or on a rotational invariant circle from weighted Birkhoff averages of an observable and of the frequency map, and from whether the rotation number is rational (Sander and Meiss, 2020). It returns the classification together with the rotation number and the number of converged digits of both averages.
+- `PlotStyler` accepts Matplotlib's short names `lw`, `ms`, `mew`, and `mec` for `linewidth`, `markersize`, `markeredgewidth`, and `markeredgecolor`. Passing both a name and its alias raises an error.
+- `PlotStyler.set_tick_padding` accepts an array or list of Axes, such as the one returned by `plt.subplots`, and pads every Axes in it.
 
 ### Changed
 
-- The observable passed to `dig` is now a function of a **single state** that
-  returns a number, for example `lambda u: np.cos(2 * np.pi * u[0])`. It is
-  compiled with Numba when possible. The default observable,
-  `cos(2 pi u[0] / period)`, takes the period of the angle `u[0]` from the new
-  `period` argument (1 by default), so `period=2 * np.pi` gives `cos(u[0])`.
-  The same applies to `classify_orbit`.
-- `dig` now interprets `total_time` as the length of each of the two windows
-  that are compared, so the orbit is iterated `2 * total_time` times, as in
-  `rotation_number` and `classify_orbit`. The same call therefore uses twice as
-  many iterations as before and usually returns a higher value; pass half the
-  former value to reproduce previous results. `transient_time` no longer needs
-  to be smaller than `total_time`.
-- Python 3.14 and 3.15 are now officially supported. On Python 3.15, pip
-  installs Numba 0.68 or newer, the first release with support for it.
+- The observable passed to `dig` is now a function of a **single state** that returns a number, for example `lambda u: np.cos(2 * np.pi * u[0])`. It is compiled with Numba when possible. The default observable, `cos(2 pi u[0] / period)`, takes the period of the angle `u[0]` from the new `period` argument (1 by default), so `period=2 * np.pi` gives `cos(u[0])`. The same applies to `classify_orbit`.
+- `dig` now interprets `total_time` as the length of each of the two windows that are compared, so the orbit is iterated `2 * total_time` times, as in `rotation_number` and `classify_orbit`. The same call therefore uses twice as many iterations as before and usually returns a higher value; pass half the former value to reproduce previous results. `transient_time` no longer needs to be smaller than `total_time`.
+- Python 3.14 and 3.15 are now officially supported. On Python 3.15, pip installs Numba 0.68 or newer, the first release with support for it.
 
 ### Deprecated
 
-- Calling `rotation_number` on a system without a frequency map, which
-  averages the increment of the first coordinate wrapped modulo `mod`, and
-  passing `mod` when a frequency map is set. Set a frequency map instead.
-- Passing to `dig` an observable that acts on an array of states of shape
-  `(n, d)`. Pass a function of a single state instead.
+- Calling `rotation_number` on a system without a frequency map, which averages the increment of the first coordinate wrapped modulo `mod`, and passing `mod` when a frequency map is set. Set a frequency map instead.
+- Passing to `dig` an observable that acts on an array of states of shape `(n, d)`. Pass a function of a single state instead.
 
 ### Fixed
 
-- `PlotStyler(tick_direction_in=False)` had no effect, and ticks always pointed
-  inward. Ticks now point outward when it is `False`.
-- The **recurrence time entropy** left out white vertical lines that end at a
-  recurrence point in the last column of the recurrence matrix. These lines do
-  not touch the border and are now counted, so `recurrence_time_entropy` and
-  the white vertical line distribution it returns with `return_p=True` may
-  differ from those of v1.4.6 to v1.7.1, in which this error was present.
-- `TimeSeriesMetrics.recurrence_time_entropy` and
-  `TimeSeriesMetrics.recurrence_matrix` with `compute_white_vert_distr=True`
-  left out lines of length exactly `lmin`, so they started the distribution at
-  `lmin + 1`. They now start it at `lmin` and give the same result as the
-  `recurrence_time_entropy` method of `DiscreteDynamicalSystem`,
-  `ContinuousDynamicalSystem`, and `HamiltonianSystem` for the same time
-  series.
-- The recurrence methods no longer warn that `threshold_std` is deprecated
-  when it is not passed. The warning now appears only when `threshold_std` is
-  given explicitly.
+- `PlotStyler(tick_direction_in=False)` had no effect, and ticks always pointed inward. Ticks now point outward when it is `False`.
+- The **recurrence time entropy** left out white vertical lines that end at a recurrence point in the last column of the recurrence matrix. These lines do not touch the border and are now counted, so `recurrence_time_entropy` and the white vertical line distribution it returns with `return_p=True` may differ from those of v1.4.6 to v1.7.1, in which this error was present.
+- `TimeSeriesMetrics.recurrence_time_entropy` and `TimeSeriesMetrics.recurrence_matrix` with `compute_white_vert_distr=True` left out lines of length exactly `lmin`, so they started the distribution at `lmin + 1`. They now start it at `lmin` and give the same result as the `recurrence_time_entropy` method of `DiscreteDynamicalSystem`, `ContinuousDynamicalSystem`, and `HamiltonianSystem` for the same time series.
+- The recurrence methods no longer warn that `threshold_std` is deprecated when it is not passed. The warning now appears only when `threshold_std` is given explicitly.
+- `ContinuousDynamicalSystem.lyapunov` with `return_history=True` and a `log_base` other than `e` divided the time column by `ln(log_base)` along with the exponents. The time column is now left unchanged.
+- The `lyapunov` methods of `DiscreteDynamicalSystem`, `ContinuousDynamicalSystem`, and `HamiltonianSystem`, and `DiscreteDynamicalSystem.finite_time_lyapunov`, accepted `log_base=0` and then returned zero for every exponent. A `log_base` that is not positive now raises a `ValueError`.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
@@ -86,62 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `find_periodic_orbit` can now refine a single initial guess with **Newton's
-  method**, selected by passing a 1D initial guess instead of a grid. Unlike the
-  grid and symmetry-line searches, which are limited to two dimensions, it works
-  in **any number of dimensions**, so one-dimensional maps such as the logistic
-  map and four-dimensional ones such as the 4D symplectic map are now supported,
-  and it is far more accurate at elliptic orbits, where the searches stall. Two
-  options apply: `periods`, the wrapping period of each coordinate for maps on a
-  torus, and `prime_period`, which rejects a solution whose period is a proper
-  divisor of the one requested (off by default).
-- All built-in dynamical system classes now include the governing equations
-  in the `.info` property, which returns a dictionary describing the current
-  model. The equation is available in LaTeX form via `.info["equation"]` and
-  in plain-text Unicode form via `.info["equation_readable"]`, along with a
-  short descriptive note.
-- New optional install `pip install pynamicalsys[notebook]`, which adds
-  IPython so that `.info["equation"]` renders as typeset mathematics in a
-  notebook.
+- `find_periodic_orbit` can now refine a single initial guess with **Newton's method**, selected by passing a 1D initial guess instead of a grid. Unlike the grid and symmetry-line searches, which are limited to two dimensions, it works in **any number of dimensions**, so one-dimensional maps such as the logistic map and four-dimensional ones such as the 4D symplectic map are now supported, and it is far more accurate at elliptic orbits, where the searches stall. Two options apply: `periods`, the wrapping period of each coordinate for maps on a torus, and `prime_period`, which rejects a solution whose period is a proper divisor of the one requested (off by default).
+- All built-in dynamical system classes now include the governing equations in the `.info` property, which returns a dictionary describing the current model. The equation is available in LaTeX form via `.info["equation"]` and in plain-text Unicode form via `.info["equation_readable"]`, along with a short descriptive note.
+- New optional install `pip install pynamicalsys[notebook]`, which adds IPython so that `.info["equation"]` renders as typeset mathematics in a notebook.
 
 ### Changed
 
-- Choosing a recurrence threshold from a **fixed recurrence rate** now uses far
-  less memory and is considerably faster, so long series that previously ran out
-  of memory now work. The threshold returned is unchanged.
-- IPython is no longer required, and any version now works. Without it,
-  `.info["equation"]` returns the LaTeX source as a plain string instead of a
-  rendered equation; install `pynamicalsys[notebook]` to restore rendered
-  output.
-- The minimum supported Python version is now correctly declared as 3.10. It was
-  already required, but the package advertised 3.8, so installs on 3.8 or 3.9
-  appeared to succeed and then failed on import; `pip` now reports the
-  incompatibility up front.
+- Choosing a recurrence threshold from a **fixed recurrence rate** now uses far less memory and is considerably faster, so long series that previously ran out of memory now work. The threshold returned is unchanged.
+- IPython is no longer required, and any version now works. Without it, `.info["equation"]` returns the LaTeX source as a plain string instead of a rendered equation; install `pynamicalsys[notebook]` to restore rendered output.
+- The minimum supported Python version is now correctly declared as 3.10. It was already required, but the package advertised 3.8, so installs on 3.8 or 3.9 appeared to succeed and then failed on import; `pip` now reports the incompatibility up front.
 
 ### Fixed
 
-- Recurrence matrices built with `metric="euclidean"` used the **Manhattan**
-  distance and `metric="manhattan"` used the **Euclidean** distance, wherever a
-  recurrence matrix is built, which affects recurrence plots, recurrence time
-  entropy and `TimeSeriesMetrics`. Results obtained with either of these two
-  metrics will change; the default `"supremum"` metric was always correct and is
-  unaffected.
-- The Jacobian of the **Lozi map** had the wrong sign on its `dx'/dx` entry
-  (the map is `x' = 1 - a|x| + y`, so the derivative is `-a sign(x)`). Any
-  quantity computed from the linearised dynamics of this model was affected,
-  including eigenvalues and eigenvectors of periodic orbits, stability
-  classification, invariant manifolds, covariant Lyapunov vectors, and the
-  finite-time SALI, LDI and GALI indicators. The averaged Lyapunov exponents
-  were largely unaffected.
-- The backward mapping of the **4D symplectic map** was not the inverse of the
-  forward mapping, with an O(1) round-trip error. Computations that iterate
-  the map backwards, such as the stable branches of invariant manifolds, gave
-  incorrect results for this model.
-- Modifying the dictionary returned by `.info` no longer alters the built-in
-  model definition for the rest of the session.
-- `HamiltonianSystem.info` now raises `ValueError` with an explanatory message
-  for systems built from custom functions, as documented, instead of an
-  unhelpful `KeyError`.
+- Recurrence matrices built with `metric="euclidean"` used the **Manhattan** distance and `metric="manhattan"` used the **Euclidean** distance, wherever a recurrence matrix is built, which affects recurrence plots, recurrence time entropy and `TimeSeriesMetrics`. Results obtained with either of these two metrics will change; the default `"supremum"` metric was always correct and is unaffected.
+- The Jacobian of the **Lozi map** had the wrong sign on its `dx'/dx` entry (the map is `x' = 1 - a|x| + y`, so the derivative is `-a sign(x)`). Any quantity computed from the linearised dynamics of this model was affected, including eigenvalues and eigenvectors of periodic orbits, stability classification, invariant manifolds, covariant Lyapunov vectors, and the finite-time SALI, LDI and GALI indicators. The averaged Lyapunov exponents were largely unaffected.
+- The backward mapping of the **4D symplectic map** was not the inverse of the forward mapping, with an O(1) round-trip error. Computations that iterate the map backwards, such as the stable branches of invariant manifolds, gave incorrect results for this model.
+- Modifying the dictionary returned by `.info` no longer alters the built-in model definition for the rest of the session.
+- `HamiltonianSystem.info` now raises `ValueError` with an explanatory message for systems built from custom functions, as documented, instead of an unhelpful `KeyError`.
 
 [v1.7.0]: https://github.com/mrolims/pynamicalsys/compare/v1.6.0...v1.7.0
 
@@ -149,27 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Support for **general (non-separable) Hamiltonian systems** `H(q, p)`
-  via a new `"imp"` (implicit midpoint) integrator. Specify the system
-  via `eom` and `hess_H` instead of `grad_T`/`grad_V`. All analysis
-  methods (`lyapunov`, `CLV`, `CLV_angles`, `SALI`, `LDI`, `GALI`,
-  `poincare_section`, `recurrence_time_entropy`, `hurst_exponent`)
-  dispatch to the implicit midpoint backend automatically when `"imp"`
-  is selected.
-- Support for **periodic/angular section coordinates** in Poincaré
-  sections via `periodic_section_coordinate` and `period` parameters.
-  Useful for action-angle systems where the section coordinate grows
-  unbounded rather than oscillating. Available on `poincare_section`,
-  `recurrence_time_entropy`, and `hurst_exponent`.
-- `poincare_section` now accepts a `max_workers` parameter controlling
-  the number of parallel workers used when computing an ensemble of
-  initial conditions (default: all available CPUs).
-- The implicit midpoint integrator now raises `RuntimeError` on
-  non-convergence instead of silently returning corrupted results.
-- `BasinMetrics`: added `uncertainty_fraction_mapping` for Monte Carlo
-  estimation of the uncertainty fraction and uncertainty exponent of
-  escape basins, with parallel evaluation and reproducible random
-  sampling via a user-provided seed.
+- Support for **general (non-separable) Hamiltonian systems** `H(q, p)` via a new `"imp"` (implicit midpoint) integrator. Specify the system via `eom` and `hess_H` instead of `grad_T`/`grad_V`. All analysis methods (`lyapunov`, `CLV`, `CLV_angles`, `SALI`, `LDI`, `GALI`, `poincare_section`, `recurrence_time_entropy`, `hurst_exponent`) dispatch to the implicit midpoint backend automatically when `"imp"` is selected.
+- Support for **periodic/angular section coordinates** in Poincaré sections via `periodic_section_coordinate` and `period` parameters. Useful for action-angle systems where the section coordinate grows unbounded rather than oscillating. Available on `poincare_section`, `recurrence_time_entropy`, and `hurst_exponent`.
+- `poincare_section` now accepts a `max_workers` parameter controlling the number of parallel workers used when computing an ensemble of initial conditions (default: all available CPUs).
+- The implicit midpoint integrator now raises `RuntimeError` on non-convergence instead of silently returning corrupted results.
+- `BasinMetrics`: added `uncertainty_fraction_mapping` for Monte Carlo estimation of the uncertainty fraction and uncertainty exponent of escape basins, with parallel evaluation and reproducible random sampling via a user-provided seed.
 
 [v1.6.0]: https://github.com/mrolims/pynamicalsys/compare/v1.5.4...v1.6.0
 
