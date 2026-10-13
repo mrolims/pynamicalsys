@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Calling `rotation_number` on a system without a frequency map, which averages the increment of the first coordinate wrapped modulo `mod`, and passing `mod` when a frequency map is set. Set a frequency map instead.
 - Passing to `dig` an observable that acts on an array of states of shape `(n, d)`. Pass a function of a single state instead.
+- The `endpoint` argument of `lyapunov`, `SALI`, `LDI`, and `GALI` in `ContinuousDynamicalSystem`. It is now ignored, and passing it emits a `DeprecationWarning`.
 
 ### Fixed
 
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `lyapunov` methods of `DiscreteDynamicalSystem`, `ContinuousDynamicalSystem`, and `HamiltonianSystem`, and `DiscreteDynamicalSystem.finite_time_lyapunov`, accepted `log_base=0` and then returned zero for every exponent. A `log_base` that is not positive now raises a `ValueError`.
 - `ContinuousDynamicalSystem.evolve_system` returned the state one integration step after `total_time`. It now returns the state at `total_time`, so results differ slightly from those of earlier versions.
 - A `transient_time` shorter than the first integration step was overshot, so the computation started from the state at the end of that step instead of at `transient_time`. This affected every method of `ContinuousDynamicalSystem` that accepts `transient_time`, and mainly non-autonomous systems.
+- `lyapunov`, `SALI`, `LDI`, and `GALI` in `ContinuousDynamicalSystem` integrated one step past `total_time` by default. The integration now ends at `total_time`, so results differ slightly from those of earlier versions.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
