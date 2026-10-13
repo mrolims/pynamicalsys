@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The recurrence methods no longer warn that `threshold_std` is deprecated when it is not passed. The warning now appears only when `threshold_std` is given explicitly.
 - `ContinuousDynamicalSystem.lyapunov` with `return_history=True` and a `log_base` other than `e` divided the time column by `ln(log_base)` along with the exponents. The time column is now left unchanged.
 - The `lyapunov` methods of `DiscreteDynamicalSystem`, `ContinuousDynamicalSystem`, and `HamiltonianSystem`, and `DiscreteDynamicalSystem.finite_time_lyapunov`, accepted `log_base=0` and then returned zero for every exponent. A `log_base` that is not positive now raises a `ValueError`.
+- `ContinuousDynamicalSystem.evolve_system` returned the state one integration step after `total_time`. It now returns the state at `total_time`, so results differ slightly from those of earlier versions.
+- A `transient_time` shorter than the first integration step was overshot, so the computation started from the state at the end of that step instead of at `transient_time`. This affected every method of `ContinuousDynamicalSystem` that accepts `transient_time`, and mainly non-autonomous systems.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
