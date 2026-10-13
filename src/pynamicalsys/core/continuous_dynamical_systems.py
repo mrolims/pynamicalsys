@@ -590,8 +590,6 @@ class ContinuousDynamicalSystem:
 
         time_step = self.__get_initial_time_step(u, parameters)
 
-        total_time += time_step
-
         return evolve_system(
             u=u,
             parameters=parameters,
