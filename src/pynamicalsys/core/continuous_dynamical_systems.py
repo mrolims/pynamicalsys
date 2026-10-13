@@ -1237,7 +1237,7 @@ class ContinuousDynamicalSystem:
         seed: int_t = 13,
         log_base: numeric_t = np.e,
         method: str = "QR",
-        endpoint: bool = True,
+        endpoint: bool | None = None,
     ) -> np.float64 | NDArray[np.float64]:
         """
         Calculate the Lyapunov exponents of the dynamical system.
@@ -1270,8 +1270,9 @@ class ContinuousDynamicalSystem:
             QR decomposition method:
             - `"QR"`: custom modified Gram-Schmidt QR
             - `"QR_HH"`: `numpy.linalg.qr` based on Householder reflections
-        endpoint : bool, optional
-            Whether to include the endpoint `time = total_time`.
+        endpoint : bool | None, optional
+            Deprecated and ignored. The integration always ends at
+            `total_time`.
 
         Returns
         -------
@@ -1297,6 +1298,12 @@ class ContinuousDynamicalSystem:
             - If `method` is not a string.
             - If `total_time`, `transient_time`, or `log_base` is not a valid real number.
             - If `num_exponents` or `seed` is not an integer.
+
+        Warns
+        -----
+        DeprecationWarning
+            If `endpoint` is passed. It is ignored, and the integration
+            always ends at `total_time`.
 
         Notes
         -----
@@ -1328,8 +1335,14 @@ class ContinuousDynamicalSystem:
             if num_exponents > self.__system_dimension:
                 raise ValueError("num_exponents must be <= system_dimension")
 
-        if endpoint:
-            total_time += time_step
+        if endpoint is not None:
+            warnings.warn(
+                "endpoint is deprecated and ignored, and passing it will stop "
+                "working in a future version. The integration always ends at "
+                "total_time.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if not isinstance(method, str):
             raise TypeError("method must be a string")
@@ -1633,7 +1646,7 @@ class ContinuousDynamicalSystem:
         return_history: bool = False,
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
-        endpoint: bool = True,
+        endpoint: bool | None = None,
     ) -> NDArray[np.float64]:
         """
         Calculate the Smaller Alignment Index (SALI) for a continuous-time dynamical system.
@@ -1657,8 +1670,9 @@ class ContinuousDynamicalSystem:
         threshold : numeric_t, optional
             Early stopping threshold. If SALI becomes smaller than `threshold`,
             the computation is terminated.
-        endpoint : bool, optional
-            Whether to include the endpoint `time = total_time`.
+        endpoint : bool | None, optional
+            Deprecated and ignored. The integration always ends at
+            `total_time`.
 
         Returns
         -------
@@ -1677,6 +1691,12 @@ class ContinuousDynamicalSystem:
         TypeError
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `seed` is not an integer.
+
+        Warns
+        -----
+        DeprecationWarning
+            If `endpoint` is passed. It is ignored, and the integration
+            always ends at `total_time`.
 
         Examples
         --------
@@ -1715,8 +1735,14 @@ class ContinuousDynamicalSystem:
 
         time_step = self.__get_initial_time_step(u, parameters)
 
-        if endpoint:
-            total_time += time_step
+        if endpoint is not None:
+            warnings.warn(
+                "endpoint is deprecated and ignored, and passing it will stop "
+                "working in a future version. The integration always ends at "
+                "total_time.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         result = sali(
             u=u,
@@ -1749,7 +1775,7 @@ class ContinuousDynamicalSystem:
         return_history: bool = False,
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
-        endpoint: bool = True,
+        endpoint: bool | None = None,
     ) -> NDArray[np.float64]:
         """
         Calculate the Linear Dependence Index (LDI_k) for a continuous-time dynamical system.
@@ -1775,8 +1801,9 @@ class ContinuousDynamicalSystem:
         threshold : numeric_t, optional
             Early stopping threshold. If LDI becomes smaller than `threshold`,
             the computation is terminated.
-        endpoint : bool, optional
-            Whether to include the endpoint `time = total_time`.
+        endpoint : bool | None, optional
+            Deprecated and ignored. The integration always ends at
+            `total_time`.
 
         Returns
         -------
@@ -1797,6 +1824,12 @@ class ContinuousDynamicalSystem:
         TypeError
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `k` or `seed` is not an integer.
+
+        Warns
+        -----
+        DeprecationWarning
+            If `endpoint` is passed. It is ignored, and the integration
+            always ends at `total_time`.
         """
         if self.__jacobian is None:
             raise ValueError("Jacobian function is required to compute LDI")
@@ -1825,8 +1858,14 @@ class ContinuousDynamicalSystem:
 
         time_step = self.__get_initial_time_step(u, parameters)
 
-        if endpoint:
-            total_time += time_step
+        if endpoint is not None:
+            warnings.warn(
+                "endpoint is deprecated and ignored, and passing it will stop "
+                "working in a future version. The integration always ends at "
+                "total_time.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         result = ldi_k(
             u=u,
@@ -1861,7 +1900,7 @@ class ContinuousDynamicalSystem:
         method: str = "QR",
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
-        endpoint: bool = True,
+        endpoint: bool | None = None,
     ) -> NDArray[np.float64]:
         """
         Calculate the Generalized Alignment Index (GALI_k) for a continuous-time
@@ -1893,8 +1932,9 @@ class ContinuousDynamicalSystem:
         threshold : numeric_t, optional
             Early stopping threshold. If GALI becomes smaller than `threshold`,
             the computation is terminated.
-        endpoint : bool, optional
-            Whether to include the endpoint `time = total_time`.
+        endpoint : bool | None, optional
+            Deprecated and ignored. The integration always ends at
+            `total_time`.
 
         Returns
         -------
@@ -1917,6 +1957,12 @@ class ContinuousDynamicalSystem:
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `k` or `seed` is not an integer.
             - If `method` is not a string.
+
+        Warns
+        -----
+        DeprecationWarning
+            If `endpoint` is passed. It is ignored, and the integration
+            always ends at `total_time`.
         """
         if self.__jacobian is None:
             raise ValueError("Jacobian function is required to compute GALI")
@@ -1952,8 +1998,14 @@ class ContinuousDynamicalSystem:
 
         time_step = self.__get_initial_time_step(u, parameters)
 
-        if endpoint:
-            total_time += time_step
+        if endpoint is not None:
+            warnings.warn(
+                "endpoint is deprecated and ignored, and passing it will stop "
+                "working in a future version. The integration always ends at "
+                "total_time.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         result = gali_k(
             u=u,
