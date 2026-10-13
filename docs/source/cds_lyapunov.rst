@@ -191,6 +191,9 @@ Numerical options
 ``seed``
     The seed initializes the deviation vectors. For a sufficiently converged calculation, the estimated exponents should not depend materially on this initial orientation.
 
+``qr_interval``
+    The number of accepted integration steps between successive reorthonormalizations of the deviation vectors. The default ``1`` reorthonormalizes after every step. Larger values reduce the cost of the QR decompositions, which is relevant for high-dimensional systems. Values greater than ``1`` require a fixed-step integrator, because the step-size control of an adaptive integrator loses accuracy on deviation vectors that are not reorthonormalized at every step.
+
 Reliable estimates require a sufficiently long accumulation interval and appropriate integrator settings. Compare results obtained with longer integration times, smaller fixed steps, or tighter adaptive tolerances before drawing conclusions from small exponents.
 
 References
