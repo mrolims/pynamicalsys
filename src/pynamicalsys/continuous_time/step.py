@@ -155,6 +155,9 @@ def evolve_system(
     time = np.float64(0.0)
 
     while time < total_time:
+        if time + time_step > total_time:
+            time_step = total_time - time
+
         u, time, time_step = step(
             time,
             u,
@@ -165,8 +168,5 @@ def evolve_system(
             rtol=rtol,
             integrator=integrator,
         )
-
-        if time + time_step > total_time:
-            time_step = total_time - time
 
     return u
