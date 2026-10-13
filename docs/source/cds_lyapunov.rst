@@ -140,9 +140,6 @@ Numerical options
 ``seed``
     The seed initializes the deviation vectors. For a sufficiently converged calculation, the estimated exponents should not depend materially on this initial orientation.
 
-``endpoint``
-    The default ``True`` includes the endpoint of the requested interval. Set it to ``False`` when the integration must stop strictly before that endpoint.
-
 Reliable estimates require a sufficiently long accumulation interval and appropriate integrator settings. Compare results obtained with longer integration times, smaller fixed steps, or tighter adaptive tolerances before drawing conclusions from small exponents.
 
 References
