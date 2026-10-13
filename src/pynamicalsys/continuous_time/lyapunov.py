@@ -78,9 +78,12 @@ def lyapunov_exponents(
         exponents.
     seed : int, optional
         Random seed used to initialize the deviation vectors.
-    QR : callable, optional
-        QR decomposition routine used to reorthonormalize the deviation
-        vectors.
+    method : str, optional
+        QR decomposition used to reorthonormalize the deviation vectors.
+        Supported options are:
+
+        - `"QR"`: custom modified Gram-Schmidt QR (default).
+        - `"QR_HH"`: `numpy.linalg.qr`, based on Householder reflections.
 
     Returns
     -------

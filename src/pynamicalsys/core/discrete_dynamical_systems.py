@@ -3119,7 +3119,7 @@ class DiscreteDynamicalSystem:
         else:
             validate_non_negative(num_exponents, "num_exponents", Integral)
 
-        validate_non_negative(log_base, "log_base", Real)
+        validate_positive(log_base, "log_base", Real)
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1.")
 
@@ -3318,7 +3318,7 @@ class DiscreteDynamicalSystem:
         if method == "QR" and self.__system_dimension == 2:
             method = "ER"  # Fallback to QR for higher dimensions
 
-        validate_non_negative(log_base, "log_base", Real)
+        validate_positive(log_base, "log_base", Real)
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1.")
 

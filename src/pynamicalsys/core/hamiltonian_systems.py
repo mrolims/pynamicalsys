@@ -959,7 +959,7 @@ class HamiltonianSystem:
             If `total_time` is not positive.
             If `num_exponents` is not in
             `[1, 2 * degrees_of_freedom]`.
-            If `log_base == 1`.
+            If `log_base` is not positive or `log_base == 1`.
             If `method` is not `"QR"` or `"QR_HH"`.
         TypeError
             If `method` is not a string.
@@ -1004,7 +1004,7 @@ class HamiltonianSystem:
         validate_non_negative(seed, "seed", Integral)
         validate_positive(qr_interval, "qr_interval", Integral)
 
-        validate_non_negative(log_base, "log_base", Real)
+        validate_positive(log_base, "log_base", Real)
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1")
         log_base = np.float64(log_base)
