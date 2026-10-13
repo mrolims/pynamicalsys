@@ -1294,7 +1294,7 @@ class ContinuousDynamicalSystem:
             - If the number of parameters does not match the expected number.
             - If `num_exponents` exceeds the system dimension.
             - If `method` is not `"QR"` or `"QR_HH"`.
-            - If `log_base == 1`.
+            - If `log_base` is not positive or `log_base == 1`.
         TypeError
             - If `method` is not a string.
             - If `total_time`, `transient_time`, or `log_base` is not a valid real number.
@@ -1341,7 +1341,7 @@ class ContinuousDynamicalSystem:
         if method not in ["QR", "QR_HH"]:
             raise ValueError("method must be 'QR' or 'QR_HH'")
 
-        validate_non_negative(log_base, "log_base", Real)
+        validate_positive(log_base, "log_base", Real)
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1")
 
