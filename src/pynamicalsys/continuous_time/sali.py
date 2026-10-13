@@ -40,7 +40,7 @@ def sali(
     return_history: bool = False,
     seed: int = 13,
     threshold: np.float64 = np.float64(1e-16),
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Smaller Alignment Index (SALI) for a continuous-time dynamical
     system.
@@ -80,7 +80,10 @@ def sali(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        The result and the state of the system at the time the integration
+        stopped. The result is:
+
         - If `return_history=False`, returns an array of shape `(1, 2)`
           containing `[time, SALI]`.
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
@@ -162,9 +165,9 @@ def sali(
         uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64)
+        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
 
     result = np.empty((1, 2), dtype=np.float64)
     result[0, 0] = time
     result[0, 1] = sali
-    return result
+    return result, uv[:neq].copy()

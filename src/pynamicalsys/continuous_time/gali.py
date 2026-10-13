@@ -42,7 +42,7 @@ def gali_k(
     method: str = "QR",
     seed: int = 13,
     threshold: np.float64 = np.float64(1e-16),
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Generalized Alignment Index of order `k` for a continuous-time
     dynamical system.
@@ -107,7 +107,10 @@ def gali_k(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        The result and the state of the system at the time the integration
+        stopped. The result is:
+
         - If `return_history=False`, returns an array of shape `(1, 2)`
           containing `[time, GALI_k]`.
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
@@ -207,9 +210,9 @@ def gali_k(
         uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64)
+        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
 
     result = np.empty((1, 2), dtype=np.float64)
     result[0, 0] = time
     result[0, 1] = gali
-    return result
+    return result, uv[:neq].copy()

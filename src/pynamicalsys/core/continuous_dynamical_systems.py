@@ -1238,7 +1238,12 @@ class ContinuousDynamicalSystem:
         log_base: numeric_t = np.e,
         method: str = "QR",
         endpoint: bool | None = None,
-    ) -> np.float64 | NDArray[np.float64]:
+        return_last_state: bool = False,
+    ) -> (
+        np.float64
+        | NDArray[np.float64]
+        | tuple[np.float64 | NDArray[np.float64], NDArray[np.float64]]
+    ):
         """
         Calculate the Lyapunov exponents of the dynamical system.
 
@@ -1273,6 +1278,9 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
 
         Returns
         -------
@@ -1285,6 +1293,9 @@ class ContinuousDynamicalSystem:
             - If `return_history=False` and `num_exponents > 1`, returns a 1D
               array containing the final Lyapunov exponents.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
@@ -1358,7 +1369,7 @@ class ContinuousDynamicalSystem:
         validate_non_negative(seed, "seed", Integral)
 
         if num_exponents == 1:
-            result = maximum_lyapunov_exponent(
+            result, last_state = maximum_lyapunov_exponent(
                 u=u,
                 parameters=parameters,
                 total_time=total_time,
@@ -1373,7 +1384,7 @@ class ContinuousDynamicalSystem:
                 seed=int(seed),
             )
         else:
-            result = lyapunov_exponents(
+            result, last_state = lyapunov_exponents(
                 u=u,
                 parameters=parameters,
                 total_time=total_time,
@@ -1392,12 +1403,16 @@ class ContinuousDynamicalSystem:
 
         if return_history:
             result[:, 1:] /= np.log(log_base)
-            return result
+            value = result
+        elif num_exponents == 1:
+            value = np.float64(result[0, 0] / np.log(log_base))
+        else:
+            value = result[0] / np.log(log_base)
 
-        if num_exponents == 1:
-            return np.float64(result[0, 0] / np.log(log_base))
+        if return_last_state:
+            return value, last_state
 
-        return result[0] / np.log(log_base)
+        return value
 
     def CLV(
         self,
@@ -1647,7 +1662,8 @@ class ContinuousDynamicalSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Smaller Alignment Index (SALI) for a continuous-time dynamical system.
 
@@ -1673,6 +1689,9 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
 
         Returns
         -------
@@ -1681,6 +1700,9 @@ class ContinuousDynamicalSystem:
               and the final SALI value.
             - If `return_history=True`, returns the time history of SALI.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
@@ -1744,7 +1766,7 @@ class ContinuousDynamicalSystem:
                 stacklevel=2,
             )
 
-        result = sali(
+        result, last_state = sali(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -1760,10 +1782,13 @@ class ContinuousDynamicalSystem:
             threshold=threshold,
         )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, last_state
+
+        return result
 
     def LDI(
         self,
@@ -1776,7 +1801,8 @@ class ContinuousDynamicalSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Linear Dependence Index (LDI_k) for a continuous-time dynamical system.
 
@@ -1804,6 +1830,9 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
 
         Returns
         -------
@@ -1812,6 +1841,9 @@ class ContinuousDynamicalSystem:
               and the final LDI value.
             - If `return_history=True`, returns the time history of LDI.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
@@ -1867,7 +1899,7 @@ class ContinuousDynamicalSystem:
                 stacklevel=2,
             )
 
-        result = ldi_k(
+        result, last_state = ldi_k(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -1884,10 +1916,13 @@ class ContinuousDynamicalSystem:
             threshold=threshold,
         )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, last_state
+
+        return result
 
     def GALI(
         self,
@@ -1901,7 +1936,8 @@ class ContinuousDynamicalSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Generalized Alignment Index (GALI_k) for a continuous-time
         dynamical system.
@@ -1935,6 +1971,9 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
 
         Returns
         -------
@@ -1943,6 +1982,9 @@ class ContinuousDynamicalSystem:
               and the final GALI value.
             - If `return_history=True`, returns the time history of GALI.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
@@ -2007,7 +2049,7 @@ class ContinuousDynamicalSystem:
                 stacklevel=2,
             )
 
-        result = gali_k(
+        result, last_state = gali_k(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -2025,10 +2067,13 @@ class ContinuousDynamicalSystem:
             threshold=threshold,
         )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, last_state
+
+        return result
 
     def recurrence_time_entropy(
         self,

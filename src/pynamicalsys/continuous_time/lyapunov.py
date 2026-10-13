@@ -41,7 +41,7 @@ def lyapunov_exponents(
     return_history: bool = False,
     seed: int = 13,
     method: str = "QR",
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the first `num_exponents` Lyapunov exponents of a continuous-time
     dynamical system.
@@ -87,7 +87,10 @@ def lyapunov_exponents(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        The result and the state of the system at the time the integration
+        stopped. The result is:
+
         - If `return_history=False`, returns an array of shape `(1, num_exponents)`
           containing the final Lyapunov exponents.
         - If `return_history=True`, returns an array of shape
@@ -174,13 +177,13 @@ def lyapunov_exponents(
         uv[neq:] = v.reshape(neq * num_exponents)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64)
+        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
 
     result = np.empty((1, num_exponents), dtype=np.float64)
     for i in range(num_exponents):
         result[0, i] = exponents[i] / (time - t_ref)
 
-    return result
+    return result, uv[:neq].copy()
 
 
 @njit
@@ -197,7 +200,7 @@ def maximum_lyapunov_exponent(
     integrator=rk4_step_wrapped,
     return_history: bool = False,
     seed: int = 13,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the maximum Lyapunov exponent of a continuous-time dynamical system.
 
@@ -234,7 +237,10 @@ def maximum_lyapunov_exponent(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        The result and the state of the system at the time the integration
+        stopped. The result is:
+
         - If `return_history=False`, returns an array of shape `(1, 1)`
           containing the final maximum Lyapunov exponent.
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
@@ -305,9 +311,9 @@ def maximum_lyapunov_exponent(
             history.append([time, exponent / (time - t_ref)])
 
     if return_history:
-        return np.asarray(history, dtype=np.float64)
+        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
 
     result = np.empty((1, 1), dtype=np.float64)
     result[0, 0] = exponent / (time - t_ref)
 
-    return result
+    return result, uv[:neq].copy()
