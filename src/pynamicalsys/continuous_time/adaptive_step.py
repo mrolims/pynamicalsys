@@ -110,7 +110,7 @@ def rk45_step(
     if err == 0.0:
         factor = 2.0
     else:
-        factor = 0.9 * err ** (-0.25)
+        factor = 0.9 * err ** (-0.2)
 
     if factor < 0.1:
         factor = 0.1
@@ -201,7 +201,7 @@ def variational_rk45_step(
     if err == 0.0:
         factor = 2.0
     else:
-        factor = 0.9 * err ** (-0.25)
+        factor = 0.9 * err ** (-0.2)
 
     if factor < 0.1:
         factor = 0.1
