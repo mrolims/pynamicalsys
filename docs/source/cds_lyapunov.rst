@@ -179,6 +179,67 @@ The example below computes the largest exponent of the Rössler system with :mat
 
 On periodic orbits the largest exponent is the zero exponent associated with the flow direction, and it becomes positive where the attractor is chaotic.
 
+Sampling the history
+~~~~~~~~~~~~~~~~~~~~
+
+By default, ``return_history=True`` stores one row per reorthonormalization, which for long integrations with small steps produces large arrays. The ``sample_times`` argument stores the history only at the requested times, which must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. The integration is adjusted to land exactly on each of them, with both fixed-step and adaptive integrators, so the first column of the result reproduces ``sample_times``.
+
+Logarithmically spaced sample times are convenient for following the convergence of the exponents over several decades of accumulation time. The figure below compares the full history, drawn as lines, with the values stored at the sample times, drawn as points:
+
+.. code-block:: python
+
+    sample_times = transient_time + np.geomspace(1.0, total_time - transient_time, 75)
+
+    sampled_history = system.lyapunov(
+        initial_state,
+        total_time,
+        transient_time=transient_time,
+        num_exponents=3,
+        return_history=True,
+        sample_times=sample_times,
+    )
+    lyapunov_history.shape, sampled_history.shape
+
+.. code-block:: text
+
+    ((3584640, 4), (75, 4))
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(10, 4))
+    for index, color in enumerate(colors):
+        ax.plot(
+            lyapunov_history[:, 0] - transient_time,
+            rescale[index] * lyapunov_history[:, index + 1],
+            color=color,
+            label=rf"$\lambda_{index + 1}$",
+        )
+        ax.plot(
+            sampled_history[:, 0] - transient_time,
+            rescale[index] * sampled_history[:, index + 1],
+            "o",
+            color=color,
+            markersize=4,
+        )
+    ax.plot([], [], "o", color="gray", markersize=4, label="Sampled")
+
+    ax.set_xscale("log")
+    ax.set_xlabel("Accumulation time $t - t_{\mathrm{transient}}$")
+    ax.set_ylabel("Lyapunov exponents")
+    ax.set_xlim(1.0, total_time - transient_time)
+    ax.set_ylim(-1.1, 0.45)
+    ax.legend(loc="center right", ncols=4, frameon=False)
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/continuous_rossler_lyapunov_sampled.png
+    :align: center
+    :width: 100%
+
+    Convergence of the three Lyapunov exponents of the chaotic Rössler system. Lines show the full history and points show the values stored at 75 logarithmically spaced sample times. :math:`\lambda_3` is multiplied by :math:`0.05` in the plot.
+
 Numerical options
 ~~~~~~~~~~~~~~~~~
 
