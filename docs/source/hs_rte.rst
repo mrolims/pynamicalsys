@@ -170,6 +170,24 @@ The method also accepts ``threshold_mode="direct"`` when an absolute distance th
 
 A recurrence matrix for :math:`N` section points contains :math:`N^2` entries. Request it only when the matrix itself is needed.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``num_intersections``
+    The number of section points analyzed. The recurrence matrix has ``num_intersections`` squared entries, so the cost in time and memory grows quadratically with it. Too few points give a poorly sampled distribution of recurrence times.
+
+``threshold`` and ``threshold_mode``
+    The recurrence threshold :math:`\varepsilon` and how it is interpreted. The default ``threshold_mode="std"`` with ``threshold=0.1`` sets :math:`\varepsilon` to ten percent of the largest coordinate standard deviation of the section, ``"rr"`` targets a recurrence rate given by ``threshold`` in :math:`(0, 1)`, and ``"direct"`` uses ``threshold`` as an absolute distance.
+
+``metric`` and ``std_metric``
+    The norm used for distances between section points and, in the ``"std"`` mode, to combine the coordinate standard deviations. Both default to ``"supremum"``; ``"euclidean"`` and ``"manhattan"`` are also accepted, as is a Python function, which is evaluated without compilation and is therefore slower.
+
+``lmin``
+    The shortest white vertical line counted in the distribution of recurrence times. It defaults to ``1``.
+
+``time_step``, ``tol``, and ``max_iter``
+    Set with ``integrator``. The section points are interpolated between integration steps, as described in :doc:`hs_poincare`, so their accuracy depends on ``time_step``. ``tol`` and ``max_iter`` apply only to ``imp``, as described in :doc:`hs_trajectories`.
+
 References
 ~~~~~~~~~~
 
