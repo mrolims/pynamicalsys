@@ -449,12 +449,13 @@ class HamiltonianSystem:
         Returns
         -------
         dict
-            Dictionary containing the integrator description and associated
-            step functions.
+            A copy of the dictionary containing the integrator description
+            and associated step functions. Modifying the returned dictionary
+            does not affect the integrator.
         """
         integrator = self.__integrator.lower()
 
-        return self.__AVAILABLE_INTEGRATORS[integrator]
+        return dict(self.__AVAILABLE_INTEGRATORS[integrator])
 
     def integrator(
         self,
@@ -934,7 +935,10 @@ class HamiltonianSystem:
             Base of the logarithm used in the exponent calculation.
         qr_interval : int_t, optional
             Number of integration steps between successive QR
-            reorthonormalizations.
+            reorthonormalizations. A reorthonormalization is also performed at
+            the final step, so the result does not depend on whether the number
+            of steps is a multiple of `qr_interval`. With `num_exponents=1`,
+            the single deviation vector is renormalized at the same steps.
         method : str, optional
             QR decomposition method:
             - `"QR"`: internal reduced modified Gram-Schmidt QR
@@ -1047,6 +1051,7 @@ class HamiltonianSystem:
                     grad_V=self.__system_func_2,
                     hess_T=self.__system_func_3,
                     hess_V=self.__system_func_4,
+                    qr_interval=int(qr_interval),
                     return_history=return_history,
                     seed=int(seed),
                     log_base=log_base,
@@ -1082,6 +1087,7 @@ class HamiltonianSystem:
                     parameters=parameters,
                     eom=self.__system_func_1,
                     hess_H=self.__system_func_2,
+                    qr_interval=int(qr_interval),
                     return_history=return_history,
                     seed=int(seed),
                     log_base=log_base,

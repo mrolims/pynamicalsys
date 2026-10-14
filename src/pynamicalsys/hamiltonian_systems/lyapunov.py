@@ -85,6 +85,7 @@ def lyapunov_spectrum_sep(
         Number of Lyapunov exponents to compute.
     qr_interval : int
         Number of integration steps between successive QR re-orthonormalizations.
+        A re-orthonormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the spectrum.
     seed : int
@@ -107,8 +108,10 @@ def lyapunov_spectrum_sep(
     -------
     NDArray[np.float64]
         - If `return_history=True`, returns an array of shape
-          `(num_steps // qr_interval, num_exponents + 1)` whose first column is
+          `(ceil(num_steps / qr_interval), num_exponents + 1)`, where
+          `num_steps = round(total_time / time_step)`, whose first column is
           time and whose remaining columns are the running Lyapunov exponents.
+          The last row corresponds to the final integration step.
         - If `return_history=False`, returns an array of shape `(1, num_exponents)`
           containing the final Lyapunov spectrum.
     """
@@ -129,7 +132,7 @@ def lyapunov_spectrum_sep(
     dv = np.ascontiguousarray(dv)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
-    n_qr = num_steps // qr_interval
+    n_qr = (num_steps + qr_interval - 1) // qr_interval
     history = np.zeros((n_qr, num_exponents + 1), dtype=np.float64)
 
     count = 0
@@ -148,7 +151,7 @@ def lyapunov_spectrum_sep(
             parameters,
         )
 
-        if (i + 1) % qr_interval == 0:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
             if method == "QR":
                 dv, R = qr(dv)
             else:
@@ -167,7 +170,7 @@ def lyapunov_spectrum_sep(
         return history
 
     spectrum = np.zeros((1, num_exponents), dtype=np.float64)
-    spectrum[0, :] = exponents / (total_time * np.log(log_base))
+    spectrum[0, :] = exponents / (num_steps * time_step * np.log(log_base))
     return spectrum
 
 
@@ -217,6 +220,7 @@ def lyapunov_spectrum_imp(
         Number of Lyapunov exponents to compute.
     qr_interval : int
         Number of integration steps between successive QR re-orthonormalizations.
+        A re-orthonormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the spectrum.
     seed : int
@@ -243,8 +247,10 @@ def lyapunov_spectrum_imp(
     -------
     NDArray[np.float64]
         - If `return_history=True`, returns an array of shape
-          `(num_steps // qr_interval, num_exponents + 1)` whose first column is
+          `(ceil(num_steps / qr_interval), num_exponents + 1)`, where
+          `num_steps = round(total_time / time_step)`, whose first column is
           time and whose remaining columns are the running Lyapunov exponents.
+          The last row corresponds to the final integration step.
         - If `return_history=False`, returns an array of shape `(1, num_exponents)`
           containing the final Lyapunov spectrum.
     """
@@ -265,7 +271,7 @@ def lyapunov_spectrum_imp(
     dv = np.ascontiguousarray(dv)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
-    n_qr = num_steps // qr_interval
+    n_qr = (num_steps + qr_interval - 1) // qr_interval
     history = np.zeros((n_qr, num_exponents + 1), dtype=np.float64)
 
     count = 0
@@ -276,7 +282,7 @@ def lyapunov_spectrum_imp(
             q, p, dv, time_step, eom, hess_H, parameters, tol, max_iter
         )
 
-        if (i + 1) % qr_interval == 0:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
             if method == "QR":
                 dv, R = qr(dv)
             else:
@@ -295,7 +301,7 @@ def lyapunov_spectrum_imp(
         return history
 
     spectrum = np.zeros((1, num_exponents), dtype=np.float64)
-    spectrum[0, :] = exponents / (total_time * np.log(log_base))
+    spectrum[0, :] = exponents / (num_steps * time_step * np.log(log_base))
     return spectrum
 
 
@@ -310,6 +316,7 @@ def largest_lyapunov_exponent_sep(
     grad_V: system_func_t,
     hess_T: system_func_t,
     hess_V: system_func_t,
+    qr_interval: int,
     return_history: bool,
     seed: int,
     log_base: np.float64,
@@ -343,6 +350,9 @@ def largest_lyapunov_exponent_sep(
         Hessian of the kinetic energy with respect to the momenta.
     hess_V : system_func_t
         Hessian of the potential energy with respect to the coordinates.
+    qr_interval : int
+        Number of integration steps between successive renormalizations of the
+        deviation vector. A renormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the largest Lyapunov exponent.
     seed : int
@@ -355,7 +365,8 @@ def largest_lyapunov_exponent_sep(
     Returns
     -------
     NDArray[np.float64]
-        - If `return_history=True`, returns an array of shape `(num_steps, 2)`
+        - If `return_history=True`, returns an array of shape
+          `(ceil(num_steps / qr_interval), 2)`
           whose first column is time and whose second column is the running
           largest Lyapunov exponent.
         - If `return_history=False`, returns an array of shape `(1, 1)`
@@ -372,8 +383,10 @@ def largest_lyapunov_exponent_sep(
     dv = np.ascontiguousarray(dv)
 
     lyapunov_exponent = np.float64(0.0)
-    history = np.zeros((num_steps, 2), dtype=np.float64)
+    n_qr = (num_steps + qr_interval - 1) // qr_interval
+    history = np.zeros((n_qr, 2), dtype=np.float64)
     time = np.float64(0.0)
+    count = 0
 
     for i in range(num_steps):
         time = np.float64(i + 1) * time_step
@@ -390,13 +403,15 @@ def largest_lyapunov_exponent_sep(
             parameters,
         )
 
-        norm = np.linalg.norm(dv[:, 0])
-        lyapunov_exponent += np.log(norm)
-        dv /= norm
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
+            norm = np.linalg.norm(dv[:, 0])
+            lyapunov_exponent += np.log(norm)
+            dv /= norm
 
-        if return_history:
-            history[i, 0] = time
-            history[i, 1] = lyapunov_exponent / time
+            if return_history:
+                history[count, 0] = time
+                history[count, 1] = lyapunov_exponent / time
+                count += 1
 
     if return_history:
         history[:, 1] /= np.log(log_base)
@@ -416,6 +431,7 @@ def largest_lyapunov_exponent_imp(
     parameters: NDArray[np.float64],
     eom: system_func_t,
     hess_H: system_func_t,
+    qr_interval: int,
     return_history: bool,
     seed: int,
     log_base: np.float64,
@@ -446,6 +462,9 @@ def largest_lyapunov_exponent_imp(
         Equations of motion of the system.
     hess_H : system_func_t
         Hessian of the Hamiltonian w.r.t. z = (q, p).
+    qr_interval : int
+        Number of integration steps between successive renormalizations of the
+        deviation vector. A renormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the largest Lyapunov exponent.
     seed : int
@@ -462,7 +481,8 @@ def largest_lyapunov_exponent_imp(
     Returns
     -------
     NDArray[np.float64]
-        - If `return_history=True`, returns an array of shape `(num_steps, 2)`
+        - If `return_history=True`, returns an array of shape
+          `(ceil(num_steps / qr_interval), 2)`
           whose first column is time and whose second column is the running
           largest Lyapunov exponent.
         - If `return_history=False`, returns an array of shape `(1, 1)`
@@ -479,8 +499,10 @@ def largest_lyapunov_exponent_imp(
     dv = np.ascontiguousarray(dv)
 
     lyapunov_exponent = np.float64(0.0)
-    history = np.zeros((num_steps, 2), dtype=np.float64)
+    n_qr = (num_steps + qr_interval - 1) // qr_interval
+    history = np.zeros((n_qr, 2), dtype=np.float64)
     time = np.float64(0.0)
+    count = 0
 
     for i in range(num_steps):
         time = np.float64(i + 1) * time_step
@@ -489,13 +511,15 @@ def largest_lyapunov_exponent_imp(
             q, p, dv, time_step, eom, hess_H, parameters, tol, max_iter
         )
 
-        norm = np.linalg.norm(dv[:, 0])
-        lyapunov_exponent += np.log(norm)
-        dv /= norm
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
+            norm = np.linalg.norm(dv[:, 0])
+            lyapunov_exponent += np.log(norm)
+            dv /= norm
 
-        if return_history:
-            history[i, 0] = time
-            history[i, 1] = lyapunov_exponent / time
+            if return_history:
+                history[count, 0] = time
+                history[count, 1] = lyapunov_exponent / time
+                count += 1
 
     if return_history:
         history[:, 1] /= np.log(log_base)
