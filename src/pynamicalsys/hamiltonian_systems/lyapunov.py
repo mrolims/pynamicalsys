@@ -52,6 +52,7 @@ def lyapunov_spectrum_sep(
     log_base: np.float64,
     method: str,
     integrator_traj_tan: symplectic_tangent_step_t,
+    sample_steps: NDArray[np.int64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Lyapunov spectrum of a separable Hamiltonian system,
@@ -88,6 +89,10 @@ def lyapunov_spectrum_sep(
         A re-orthonormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the spectrum.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every reorthonormalization.
     seed : int
         Random seed used to initialize the deviation vectors.
     log_base : np.float64
@@ -136,10 +141,23 @@ def lyapunov_spectrum_sep(
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
     n_qr = (num_steps + qr_interval - 1) // qr_interval
+    if sample_steps is not None:
+        n_qr = len(sample_steps)
     history = np.zeros((n_qr, num_exponents + 1), dtype=np.float64)
 
     count = 0
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
@@ -154,7 +172,7 @@ def lyapunov_spectrum_sep(
             parameters,
         )
 
-        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1 or at_sample:
             if method == "QR":
                 dv, R = qr(dv)
             else:
@@ -163,7 +181,7 @@ def lyapunov_spectrum_sep(
             dv = np.ascontiguousarray(dv)
             exponents += np.log(np.abs(np.diag(R)))
 
-            if return_history:
+            if return_history and (sample_steps is None or at_sample):
                 history[count, 0] = time
                 history[count, 1:] = exponents / time
                 count += 1
@@ -195,6 +213,7 @@ def lyapunov_spectrum_imp(
     tol: np.float64,
     max_iter: int,
     integrator_traj_tan: symplectic_tangent_step_t,
+    sample_steps: NDArray[np.int64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Lyapunov spectrum of a general (possibly non-separable)
@@ -226,6 +245,10 @@ def lyapunov_spectrum_imp(
         A re-orthonormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the spectrum.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every reorthonormalization.
     seed : int
         Random seed used to initialize the deviation vectors.
     log_base : np.float64
@@ -278,17 +301,30 @@ def lyapunov_spectrum_imp(
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
     n_qr = (num_steps + qr_interval - 1) // qr_interval
+    if sample_steps is not None:
+        n_qr = len(sample_steps)
     history = np.zeros((n_qr, num_exponents + 1), dtype=np.float64)
 
     count = 0
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
             q, p, dv, time_step, eom, hess_H, parameters, tol, max_iter
         )
 
-        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1 or at_sample:
             if method == "QR":
                 dv, R = qr(dv)
             else:
@@ -297,7 +333,7 @@ def lyapunov_spectrum_imp(
             dv = np.ascontiguousarray(dv)
             exponents += np.log(np.abs(np.diag(R)))
 
-            if return_history:
+            if return_history and (sample_steps is None or at_sample):
                 history[count, 0] = time
                 history[count, 1:] = exponents / time
                 count += 1
@@ -327,6 +363,7 @@ def largest_lyapunov_exponent_sep(
     seed: int,
     log_base: np.float64,
     integrator_traj_tan: symplectic_tangent_step_t,
+    sample_steps: NDArray[np.int64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the largest Lyapunov exponent of a separable Hamiltonian
@@ -361,6 +398,10 @@ def largest_lyapunov_exponent_sep(
         deviation vector. A renormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the largest Lyapunov exponent.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every reorthonormalization.
     seed : int
         Random seed used to initialize the deviation vector.
     log_base : np.float64
@@ -393,11 +434,24 @@ def largest_lyapunov_exponent_sep(
 
     lyapunov_exponent = np.float64(0.0)
     n_qr = (num_steps + qr_interval - 1) // qr_interval
+    if sample_steps is not None:
+        n_qr = len(sample_steps)
     history = np.zeros((n_qr, 2), dtype=np.float64)
     time = np.float64(0.0)
     count = 0
 
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
@@ -412,12 +466,12 @@ def largest_lyapunov_exponent_sep(
             parameters,
         )
 
-        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1 or at_sample:
             norm = np.linalg.norm(dv[:, 0])
             lyapunov_exponent += np.log(norm)
             dv /= norm
 
-            if return_history:
+            if return_history and (sample_steps is None or at_sample):
                 history[count, 0] = time
                 history[count, 1] = lyapunov_exponent / time
                 count += 1
@@ -447,6 +501,7 @@ def largest_lyapunov_exponent_imp(
     tol: np.float64,
     max_iter: int,
     integrator_traj_tan: symplectic_tangent_step_t,
+    sample_steps: NDArray[np.int64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the largest Lyapunov exponent of a general (possibly non-separable)
@@ -476,6 +531,10 @@ def largest_lyapunov_exponent_imp(
         deviation vector. A renormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the largest Lyapunov exponent.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every reorthonormalization.
     seed : int
         Random seed used to initialize the deviation vector.
     log_base : np.float64
@@ -512,23 +571,36 @@ def largest_lyapunov_exponent_imp(
 
     lyapunov_exponent = np.float64(0.0)
     n_qr = (num_steps + qr_interval - 1) // qr_interval
+    if sample_steps is not None:
+        n_qr = len(sample_steps)
     history = np.zeros((n_qr, 2), dtype=np.float64)
     time = np.float64(0.0)
     count = 0
 
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
             q, p, dv, time_step, eom, hess_H, parameters, tol, max_iter
         )
 
-        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1 or at_sample:
             norm = np.linalg.norm(dv[:, 0])
             lyapunov_exponent += np.log(norm)
             dv /= norm
 
-            if return_history:
+            if return_history and (sample_steps is None or at_sample):
                 history[count, 0] = time
                 history[count, 1] = lyapunov_exponent / time
                 count += 1

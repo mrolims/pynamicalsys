@@ -48,6 +48,7 @@ def ldi_k_sep(
     seed: int,
     threshold: np.float64,
     integrator_traj_tan: symplectic_tangent_step_t,
+    sample_steps: NDArray[np.int64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Linear Dependence Index (LDI) for a separable Hamiltonian
@@ -81,6 +82,10 @@ def ldi_k_sep(
         Number of deviation vectors used in the computation.
     return_history : bool
         If True, return the time evolution of LDI.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every integration step.
     seed : int
         Random seed used to initialize the deviation vectors.
     integrator_traj_tan : symplectic_tangent_step_t
@@ -113,7 +118,18 @@ def ldi_k_sep(
     time = np.float64(0.0)
     count = 0
 
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
@@ -135,7 +151,7 @@ def ldi_k_sep(
         _, S, _ = np.linalg.svd(dv, full_matrices=False)
         ldi_val = np.exp(np.sum(np.log(S)))
 
-        if return_history:
+        if return_history and (sample_steps is None or at_sample):
             history[count, 0] = time
             history[count, 1] = ldi_val
             count += 1
@@ -168,6 +184,7 @@ def ldi_k_imp(
     tol: np.float64,
     max_iter: int,
     integrator_traj_tan: symplectic_tangent_step_t,
+    sample_steps: NDArray[np.int64] | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Linear Dependence Index (LDI) for a general (possibly
@@ -197,6 +214,10 @@ def ldi_k_imp(
         Number of deviation vectors used in the computation.
     return_history : bool
         If True, return the time evolution of LDI.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every integration step.
     seed : int
         Random seed used to initialize the deviation vectors.
     threshold : np.float64
@@ -233,7 +254,18 @@ def ldi_k_imp(
     time = np.float64(0.0)
     count = 0
 
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
@@ -247,7 +279,7 @@ def ldi_k_imp(
         _, S, _ = np.linalg.svd(dv, full_matrices=False)
         ldi_val = np.exp(np.sum(np.log(S)))
 
-        if return_history:
+        if return_history and (sample_steps is None or at_sample):
             history[count, 0] = time
             history[count, 1] = ldi_val
             count += 1

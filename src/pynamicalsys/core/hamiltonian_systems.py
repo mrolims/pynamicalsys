@@ -100,6 +100,7 @@ from pynamicalsys.common.validators import (
     validate_clv_subspaces,
 )
 
+from pynamicalsys.continuous_time.validators import validate_sample_times
 from pynamicalsys.hamiltonian_systems.validators import (
     validate_initial_conditions,
 )
@@ -895,6 +896,24 @@ class HamiltonianSystem:
             max_workers=int(max_workers),
         )
 
+    def __sample_times_to_steps(
+        self, sample_times, total_time: np.float64
+    ) -> NDArray[np.int64]:
+        """
+        Convert sample times to the indices of the nearest integration steps.
+
+        The integrators of this class use a constant step size, so each sample
+        time is rounded to the nearest step instead of shortening a step to
+        reach it. Indices are clipped to `[1, num_steps]` and duplicates created
+        by the rounding are removed.
+        """
+        sample_times_arr = validate_sample_times(
+            sample_times, np.float64(0.0), total_time
+        )
+        num_steps = round(total_time / self.__time_step)
+        steps = np.rint(sample_times_arr / self.__time_step).astype(np.int64)
+        return np.unique(np.clip(steps, 1, num_steps))
+
     def lyapunov(
         self,
         q: numeric_like_t,
@@ -908,6 +927,7 @@ class HamiltonianSystem:
         qr_interval: int_t = 1,
         method: str = "QR",
         return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> (
         NDArray[np.float64]
         | np.float64
@@ -953,6 +973,12 @@ class HamiltonianSystem:
         return_last_state : bool, optional
             If `True`, also return the coordinates and momenta at the final
             integration time.
+        sample_times : array-like | None, optional
+            Times in `(0, total_time]` at which the history is stored. Each time
+            is rounded to the nearest integration step, so that the step size
+            stays constant, and the first column of the history contains the
+            times actually stored. Requires `return_history=True`. If `None`,
+            the history is stored at every reorthonormalization.
 
         Returns
         -------
@@ -972,6 +998,8 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
+            If `sample_times` is passed without `return_history=True`, or
+            contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
@@ -980,6 +1008,7 @@ class HamiltonianSystem:
             If `log_base` is not positive or `log_base == 1`.
             If `method` is not `"QR"` or `"QR_HH"`.
         TypeError
+            If `sample_times` cannot be converted to a 1D array of real numbers.
             If `method` is not a string.
             If `seed`, `qr_interval`, or `num_exponents` are not integers.
             If `total_time` or `log_base` is not a valid real number.
@@ -1034,6 +1063,12 @@ class HamiltonianSystem:
         if method not in ("QR", "QR_HH"):
             raise ValueError("method must be 'QR' or 'QR_HH'")
 
+        sample_steps = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+
         if self.__integrator in ["vv2", "svy4"]:
             if num_exponents > 1:
                 result, q_last, p_last = lyapunov_spectrum_sep(
@@ -1049,6 +1084,7 @@ class HamiltonianSystem:
                     num_exponents=int(num_exponents),
                     qr_interval=int(qr_interval),
                     return_history=return_history,
+                    sample_steps=sample_steps,
                     seed=int(seed),
                     log_base=log_base,
                     method=method,
@@ -1067,6 +1103,7 @@ class HamiltonianSystem:
                     hess_V=self.__system_func_4,
                     qr_interval=int(qr_interval),
                     return_history=return_history,
+                    sample_steps=sample_steps,
                     seed=int(seed),
                     log_base=log_base,
                     integrator_traj_tan=self.__traj_tan_integrator_func,
@@ -1085,6 +1122,7 @@ class HamiltonianSystem:
                     num_exponents=int(num_exponents),
                     qr_interval=int(qr_interval),
                     return_history=return_history,
+                    sample_steps=sample_steps,
                     seed=int(seed),
                     log_base=log_base,
                     method=method,
@@ -1103,6 +1141,7 @@ class HamiltonianSystem:
                     hess_H=self.__system_func_2,
                     qr_interval=int(qr_interval),
                     return_history=return_history,
+                    sample_steps=sample_steps,
                     seed=int(seed),
                     log_base=log_base,
                     tol=self.__tol,
@@ -1589,6 +1628,7 @@ class HamiltonianSystem:
         seed: int_t = 1312,
         threshold: numeric_t = 1e-16,
         return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> (
         NDArray[np.float64]
         | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
@@ -1623,6 +1663,12 @@ class HamiltonianSystem:
         return_last_state : bool, optional
             If `True`, also return the coordinates and momenta at the time the
             integration stopped.
+        sample_times : array-like | None, optional
+            Times in `(0, total_time]` at which the history is stored. Each time
+            is rounded to the nearest integration step, so that the step size
+            stays constant, and the first column of the history contains the
+            times actually stored. Requires `return_history=True`. If `None`,
+            the history is stored at every integration step.
 
         Returns
         -------
@@ -1639,12 +1685,15 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
+            If `sample_times` is passed without `return_history=True`, or
+            contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
             If `threshold` is negative.
             If the number of parameters does not match the expected number.
         TypeError
+            If `sample_times` cannot be converted to a 1D array of real numbers.
             If `return_history` is not boolean.
             If `seed` is not an integer.
             If `total_time` or `threshold` is not a valid real number.
@@ -1677,6 +1726,12 @@ class HamiltonianSystem:
         validate_non_negative(threshold, "threshold", Real)
         threshold = np.float64(threshold)
 
+        sample_steps = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+
         if self.__integrator in ["vv2", "svy4"]:
             result, q_last, p_last = sali_sep(
                 q=q,
@@ -1689,6 +1744,7 @@ class HamiltonianSystem:
                 hess_T=self.__system_func_3,
                 hess_V=self.__system_func_4,
                 return_history=return_history,
+                sample_steps=sample_steps,
                 seed=int(seed),
                 threshold=threshold,
                 integrator_traj_tan=self.__traj_tan_integrator_func,
@@ -1704,6 +1760,7 @@ class HamiltonianSystem:
                 eom=self.__system_func_1,
                 hess_H=self.__system_func_2,
                 return_history=return_history,
+                sample_steps=sample_steps,
                 seed=int(seed),
                 threshold=threshold,
                 tol=self.__tol,
@@ -1730,6 +1787,7 @@ class HamiltonianSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> (
         NDArray[np.float64]
         | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
@@ -1766,6 +1824,12 @@ class HamiltonianSystem:
         return_last_state : bool, optional
             If `True`, also return the coordinates and momenta at the time the
             integration stopped.
+        sample_times : array-like | None, optional
+            Times in `(0, total_time]` at which the history is stored. Each time
+            is rounded to the nearest integration step, so that the step size
+            stays constant, and the first column of the history contains the
+            times actually stored. Requires `return_history=True`. If `None`,
+            the history is stored at every integration step.
 
         Returns
         -------
@@ -1782,6 +1846,8 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
+            If `sample_times` is passed without `return_history=True`, or
+            contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
@@ -1789,6 +1855,7 @@ class HamiltonianSystem:
             If `threshold` is negative.
             If the number of parameters does not match the expected number.
         TypeError
+            If `sample_times` cannot be converted to a 1D array of real numbers.
             If `return_history` is not boolean.
             If `k` or `seed` is not an integer.
             If `total_time` or `threshold` is not a valid real number.
@@ -1825,6 +1892,12 @@ class HamiltonianSystem:
         validate_non_negative(threshold, "threshold", Real)
         threshold = np.float64(threshold)
 
+        sample_steps = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+
         if self.__integrator in ["vv2", "svy4"]:
             result, q_last, p_last = ldi_k_sep(
                 q=q,
@@ -1838,6 +1911,7 @@ class HamiltonianSystem:
                 hess_V=self.__system_func_4,
                 k=int(k),
                 return_history=return_history,
+                sample_steps=sample_steps,
                 seed=int(seed),
                 threshold=threshold,
                 integrator_traj_tan=self.__traj_tan_integrator_func,
@@ -1854,6 +1928,7 @@ class HamiltonianSystem:
                 hess_H=self.__system_func_2,
                 k=int(k),
                 return_history=return_history,
+                sample_steps=sample_steps,
                 seed=int(seed),
                 threshold=threshold,
                 tol=self.__tol,
@@ -1881,6 +1956,7 @@ class HamiltonianSystem:
         threshold: numeric_t = 1e-16,
         method: str = "QR",
         return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> (
         NDArray[np.float64]
         | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
@@ -1922,6 +1998,12 @@ class HamiltonianSystem:
         return_last_state : bool, optional
             If `True`, also return the coordinates and momenta at the time the
             integration stopped.
+        sample_times : array-like | None, optional
+            Times in `(0, total_time]` at which the history is stored. Each time
+            is rounded to the nearest integration step, so that the step size
+            stays constant, and the first column of the history contains the
+            times actually stored. Requires `return_history=True`. If `None`,
+            the history is stored at every integration step.
 
         Returns
         -------
@@ -1938,6 +2020,8 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
+            If `sample_times` is passed without `return_history=True`, or
+            contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
@@ -1946,6 +2030,7 @@ class HamiltonianSystem:
             If `method` is not `"DET"`, `"QR"`, or `"QR_HH"`.
             If the number of parameters does not match the expected number.
         TypeError
+            If `sample_times` cannot be converted to a 1D array of real numbers.
             If `return_history` is not boolean.
             If `k` or `seed` is not an integer.
             If `method` is not a string.
@@ -1990,6 +2075,12 @@ class HamiltonianSystem:
         if method not in ("DET", "QR", "QR_HH"):
             raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
+        sample_steps = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+
         if self.__integrator in ["vv2", "svy4"]:
             result, q_last, p_last = gali_k_sep(
                 q=q,
@@ -2003,6 +2094,7 @@ class HamiltonianSystem:
                 hess_V=self.__system_func_4,
                 k=int(k),
                 return_history=return_history,
+                sample_steps=sample_steps,
                 seed=int(seed),
                 threshold=threshold,
                 method=method,
@@ -2019,6 +2111,7 @@ class HamiltonianSystem:
                 hess_H=self.__system_func_2,
                 k=int(k),
                 return_history=return_history,
+                sample_steps=sample_steps,
                 seed=int(seed),
                 threshold=threshold,
                 method=method,
