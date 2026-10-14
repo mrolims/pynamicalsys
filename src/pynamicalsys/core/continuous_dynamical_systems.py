@@ -249,7 +249,7 @@ class ContinuousDynamicalSystem:
             "adaptive": False,
         },
         "rk45": {
-            "description": "Adaptive 4th/5th order Runge-Kutta-Fehlberg method (RK45) with embedded error estimation",
+            "description": "Adaptive 5th order Dormand-Prince Runge-Kutta method (RK45) with embedded 4th order error estimation",
             "integrator": rk45_step_wrapped,
             "estimate_initial_step": True,
             "adaptive": True,
@@ -415,11 +415,21 @@ class ContinuousDynamicalSystem:
         return info
 
     @property
-    def integrator_info(self):
-        """Return a dictionary with information about the current integrator."""
+    def integrator_info(self) -> Dict[str, Any]:
+        """
+        Return a dictionary with information about the current integrator.
+
+        Returns
+        -------
+        dict
+            A copy of the integrator metadata: its description, its step
+            function, whether the initial step size is estimated, and whether
+            the step size is adaptive. Modifying the returned dictionary does
+            not affect the integrator.
+        """
         integrator = self.__integrator.lower()
 
-        return self.__AVAILABLE_INTEGRATORS[integrator]
+        return dict(self.__AVAILABLE_INTEGRATORS[integrator])
 
     def integrator(
         self,
@@ -433,7 +443,8 @@ class ContinuousDynamicalSystem:
         Parameters
         ----------
         integrator : str
-            The integrator name. Available options are 'rk4' and 'rk45'
+            The integrator name, case-insensitive. Available options are
+            'rk4' and 'rk45'
         time_step : np.float64, optional
             The integration time step when `integrator='rk4'`, by default 1e-2
         atol : np.float64, optional
@@ -444,7 +455,7 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
-            If `time_step`, `atol`, or `rtol` are negative.
+            If `time_step` or `atol` is not positive, or `rtol` is negative.
             If `integrator` is not available.
         TypeError
             - If `integrator` is not a string.
@@ -461,29 +472,26 @@ class ContinuousDynamicalSystem:
         """
 
         if not isinstance(integrator, str):
-            raise ValueError("integrator must be a string.")
-        validate_non_negative(time_step, "time_step", type_=Real)
-        validate_non_negative(atol, "atol", type_=Real)
+            raise TypeError("integrator must be a string.")
+        validate_positive(time_step, "time_step", type_=Real)
+        validate_positive(atol, "atol", type_=Real)
         validate_non_negative(rtol, "rtol", type_=Real)
 
-        if integrator in self.__AVAILABLE_INTEGRATORS:
-            self.__integrator = integrator.lower()
-            integrator_info = self.__AVAILABLE_INTEGRATORS[self.__integrator]
-            self.__integrator_func = integrator_info["integrator"]
-            self.__time_step = time_step
-            self.__atol = atol
-            self.__rtol = rtol
+        integrator = integrator.lower()
+        if integrator not in self.__AVAILABLE_INTEGRATORS:
+            available = "\n".join(
+                f"- {name}: {info['description']}"
+                for name, info in self.__AVAILABLE_INTEGRATORS.items()
+            )
+            raise ValueError(
+                f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
+            )
 
-        else:
-            integrator = integrator.lower()
-            if integrator not in self.__AVAILABLE_INTEGRATORS:
-                available = "\n".join(
-                    f"- {name}: {info['description']}"
-                    for name, info in self.__AVAILABLE_INTEGRATORS.items()
-                )
-                raise ValueError(
-                    f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
-                )
+        self.__integrator = integrator
+        self.__integrator_func = self.__AVAILABLE_INTEGRATORS[integrator]["integrator"]
+        self.__time_step = time_step
+        self.__atol = atol
+        self.__rtol = rtol
 
     def set_parameters(
         self, parameters: Union[NDArray[np.float64], Sequence[float], float]
@@ -522,6 +530,11 @@ class ContinuousDynamicalSystem:
         self, u: NDArray[np.float64], parameters: NDArray[np.float64]
     ) -> np.float64:
         if self.integrator_info["estimate_initial_step"]:
+            # For an ensemble, estimate from the first initial condition. The
+            # adaptive integrator corrects the step size of every trajectory
+            # from its first step onwards.
+            if u.ndim > 1:
+                u = u[0]
             time_step = estimate_initial_step(
                 np.float64(0.0),
                 u,

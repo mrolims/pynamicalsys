@@ -42,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContinuousDynamicalSystem.evolve_system` returned the state one integration step after `total_time`. It now returns the state at `total_time`, so results differ slightly from those of earlier versions.
 - A `transient_time` shorter than the first integration step was overshot, so the computation started from the state at the end of that step instead of at `transient_time`. This affected every method of `ContinuousDynamicalSystem` that accepts `transient_time`, and mainly non-autonomous systems.
 - `lyapunov`, `SALI`, `LDI`, and `GALI` in `ContinuousDynamicalSystem` integrated one step past `total_time` by default. The integration now ends at `total_time`, so results differ slightly from those of earlier versions.
+- `ContinuousDynamicalSystem.integrator` ignored valid integrator names written with uppercase letters, such as `"RK45"`, and kept the previous integrator. Names are now case-insensitive. A non-string name raises `TypeError` instead of `ValueError`.
+- `ContinuousDynamicalSystem.integrator` accepted `time_step=0` and `atol=0`, which made the integration run forever. `time_step` and `atol` must now be positive.
+- Modifying the dictionary returned by `ContinuousDynamicalSystem.integrator_info` changed the integrator metadata of every instance. It now returns a copy.
+- Ensemble methods of `ContinuousDynamicalSystem` with the `rk45` integrator, such as `trajectory` with several initial conditions, failed for vector fields written for a single state.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
