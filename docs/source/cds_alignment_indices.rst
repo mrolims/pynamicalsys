@@ -366,6 +366,27 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
 
 All three public methods return a two-element array containing the final time and indicator value by default. With ``return_history=True``, they return a two-dimensional array whose columns contain time and the indicator history. The ``parameters``, ``transient_time``, ``seed``, and ``threshold`` arguments follow the same pattern for SALI, GALI, and LDI. With ``return_last_state=True``, each method also returns the state of the system at the time the integration stopped. This option behaves as in ``lyapunov``, and its use for parameter continuation is shown on the :doc:`Lyapunov exponents <cds_lyapunov>` page. The ``sample_times`` argument also behaves as in ``lyapunov`` and stores the history only at the requested times.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``k``
+    Number of deviation vectors used by ``GALI`` and ``LDI``, between 2 and the dimension of the system. SALI always uses two vectors. Along a chaotic trajectory the indicator decays faster for larger ``k``.
+
+``method``
+    The formulation of ``GALI``: ``"QR"`` (default), ``"QR_HH"``, or ``"DET"``, as compared above.
+
+``threshold``
+    The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. Set ``threshold=0.0`` to integrate up to ``total_time`` regardless of the indicator.
+
+``seed``
+    Initializes the random deviation vectors. It defaults to ``13``.
+
+``sample_times`` and ``return_last_state``
+    With ``return_history=True``, ``sample_times`` stores the history only at the requested times, and ``return_last_state`` returns the state at the time the integration stopped. Both behave as in ``lyapunov``, described on the :doc:`Lyapunov exponents <cds_lyapunov>` page.
+
+``time_step``, ``atol``, and ``rtol``
+    Set with ``integrator``. With ``rk45``, the step size control also measures the error of the deviation vectors.
+
 References
 ~~~~~~~~~~
 
