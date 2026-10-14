@@ -198,6 +198,24 @@ Reproduce Fig. 2 of the paper by coloring the continuous three-dimensional Loren
 
 The smallest values of :math:`\theta_2` occur along the outer edges of the two lobes, while larger angles appear in their inner regions. A finite trajectory cannot establish the absence of tangencies by itself, so the minimum angles and their distributions should be checked over longer intervals and against changes in the integration, sampling, and convergence parameters.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``num_clvs``
+    Number of covariant vectors to compute, between one and the dimension of the system. It defaults to the full set. Many diagnostics need only the leading vectors, and computing fewer of them reduces the cost of the forward and backward passes.
+
+``qr_time_step``
+    Time between successive QR factorizations, which is also the spacing of the returned samples. It defaults to the initial integration step. A larger value reduces the cost and the memory used by the stored factors, but it must remain short enough that the deviation vectors do not collapse onto the leading direction between factorizations.
+
+``transient_time``, ``warmup_time``, and ``tail_time``
+    The durations of the three stages described above: the approach to the invariant set, the forward warmup of the tangent basis, and the forward continuation that initializes the backward recursion. ``warmup_time`` and ``tail_time`` default to zero and are rounded down to whole multiples of ``qr_time_step``.
+
+``seed``
+    Initializes the random upper-triangular matrix that starts the backward recursion. For a sufficiently long ``tail_time``, the vectors in the stored interval do not depend on it.
+
+``time_step``, ``atol``, and ``rtol``
+    Set with ``integrator``. The integration lands exactly on every QR time, with both fixed-step and adaptive integrators.
+
 References
 ~~~~~~~~~~
 
