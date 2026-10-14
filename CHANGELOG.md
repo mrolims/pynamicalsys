@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HamiltonianSystem.lyapunov` with a `qr_interval` that does not divide the number of integration steps left out the last steps from the exponents, so the result depended on `qr_interval`. The exponents are now independent of it.
 - `HamiltonianSystem.lyapunov` ignored `qr_interval` when `num_exponents=1`. It now applies to the largest exponent as well.
 - Modifying the dictionary returned by `HamiltonianSystem.integrator_info` changed the integrator metadata of every instance. It now returns a copy.
+- With the `imp` integrator, `lyapunov`, `SALI`, `LDI`, `GALI`, and `CLV` of `HamiltonianSystem` continued with an unconverged step when the Newton iteration of the implicit midpoint method did not converge, which could silently corrupt the results. They now raise a `RuntimeError`, as `trajectory` already did.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
