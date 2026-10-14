@@ -196,6 +196,21 @@ Plot both representations side by side, reducing :math:`\theta_2` modulo :math:`
 
 Closed curves mark regular motion and points scattered over an area mark chaotic motion. The energy sets the overlap of the two resonances, so raising it increases the chaotic fraction of the section. In the canonical plane the angle becomes the azimuth and :math:`J_2=(q_2^2+p_2^2)/2` the squared radius, so the section is free of the artificial cut at :math:`\theta_2=0` and :math:`2\pi` and the resonance islands appear in their natural geometry. Without ``periodic_section_coordinate=True`` the winding of :math:`\theta_1` would be read as a large jump at every :math:`2\pi` wrap, and the crossings would not be detected correctly.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``crossing``
+    Direction of the crossings to record, determined from the change of sign of the section coordinate minus ``section_value`` over one step. The default ``1`` keeps crossings in which the coordinate increases, ``-1`` those in which it decreases, and ``0`` both.
+
+``periodic_section_coordinate`` and ``period``
+    With ``periodic_section_coordinate=True``, the section coordinate is treated as an angle of the given ``period``, which defaults to :math:`2\pi`, and crossings are detected on the wrapped coordinate, as in the action-angle example above.
+
+``max_workers``
+    Number of processes used for an ensemble of initial conditions. The default ``-1`` uses all available processors. It has no effect for a single initial condition.
+
+``time_step``, ``tol``, and ``max_iter``
+    Set with ``integrator``. Each crossing is located by linear interpolation between the two steps that bracket it, so the recorded coordinates and momenta carry an interpolation error that decreases with ``time_step``, independently of the order of the integrator. As a consequence, the energy of the recorded points can differ from that of the trajectory by more than the energy error of the integrator itself. ``tol`` and ``max_iter`` apply only to ``imp``, as described in :doc:`hs_trajectories`.
+
 References
 ~~~~~~~~~~
 
