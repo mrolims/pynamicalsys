@@ -98,10 +98,80 @@ Early evolution may describe the approach to an attractor rather than its long-t
 
 Here, ``total_time`` is still the final integration time. The stored trajectory therefore covers the interval after :math:`t=20` through :math:`t=100`, rather than adding 20 time units to a 100-unit recorded trajectory.
 
+Sampling a long trajectory
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A long integration stores one row per accepted step, which quickly produces arrays too large to plot or keep in memory. The ``sample_times`` argument stores the state only at the requested times, which must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. The integration is adjusted to land exactly on each of them, with both fixed-step and adaptive integrators.
+
+The following example integrates the Lorenz system for 400 time units after the transient and stores 4000 equally spaced states, one every 0.1 time units. The figure below draws the full time series :math:`x(t)` in gray and the sampled states as points over the first 20 time units after the transient:
+
+.. code-block:: python
+
+    import numpy as np
+
+    total_time = 500.0
+    transient_time = 100.0
+    sample_times = np.linspace(transient_time, total_time, 4001)[1:]
+
+    full_trajectory = system.trajectory(
+        initial_state,
+        total_time,
+        transient_time=transient_time,
+    )
+    sampled_trajectory = system.trajectory(
+        initial_state,
+        total_time,
+        transient_time=transient_time,
+        sample_times=sample_times,
+    )
+    full_trajectory.shape, sampled_trajectory.shape
+
+.. code-block:: text
+
+    ((40001, 4), (4000, 4))
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(
+        full_trajectory[:, 0],
+        full_trajectory[:, 1],
+        color="gray",
+        lw=0.8,
+        label="Full trajectory",
+    )
+    ax.plot(
+        sampled_trajectory[:, 0],
+        sampled_trajectory[:, 1],
+        "k.",
+        markersize=4,
+        label="Sampled trajectory",
+    )
+    ax.set_xlim(transient_time, transient_time + 20.0)
+    ax.set_xlabel("Time $t$")
+    ax.set_ylabel("$x(t)$")
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncols=2,
+        frameon=False,
+        markerscale=2,
+    )
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/continuous_lorenz_sampled_trajectory.png
+    :align: center
+    :width: 100%
+
+    Time series :math:`x(t)` of the Lorenz system over the first 20 time units after the transient. The gray curve shows every accepted step and the points show the states stored at the sample times, one every 0.1 time units.
+
 An ensemble of trajectories
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Pass an array of shape ``(num_initial_conditions, system_dimension)`` to integrate several initial states with the same parameters. The method returns a list containing one trajectory array for each initial state. This also accommodates adaptive trajectories with different numbers of accepted steps.
+Pass an array of shape ``(num_initial_conditions, system_dimension)`` to integrate several initial states with the same parameters. The method returns a list containing one trajectory array for each initial state. This also accommodates adaptive trajectories with different numbers of accepted steps. With ``sample_times``, every trajectory of an ensemble is stored at the same times, also with adaptive integrators.
 
 The following example follows five nearby initial states of the Lorenz system. RK4 is used so every trajectory is sampled at the same times:
 
