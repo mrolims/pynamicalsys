@@ -224,8 +224,9 @@ def implicit_midpoint_step_traj_tan(
     Works for arbitrary (including non-separable) Hamiltonians H(q, p).
 
     If the Newton iteration fails to converge within `max_iter` steps,
-    a warning is printed and the best available (unconverged) result
-    is returned for both the trajectory and the tangent vectors.
+    the residual norm, `tol`, and `max_iter` are printed and a
+    `RuntimeError` is raised. Numba-compiled code cannot include these
+    values in the exception message, so they are printed instead.
 
     Parameters
     ----------
@@ -301,9 +302,9 @@ def implicit_midpoint_step_traj_tan(
             tol,
             " max_iter =",
             max_iter,
-            ". Returning unconverged result; consider reducing time_step "
-            "or increasing max_iter.",
+            ". Consider reducing time_step, increasing tol, or increasing max_iter.",
         )
+        raise RuntimeError("implicit_midpoint_step_traj_tan failed to converge")
 
     rhs = (identity + np.float64(0.5) * h * Jinv_Hmid) @ dv
     # np.linalg.solve returns a Fortran-ordered array; return a C-contiguous

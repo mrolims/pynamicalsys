@@ -168,8 +168,9 @@ def implicit_midpoint_step(
     H = T(p) + V(q).
 
     If the Newton iteration fails to converge within `max_iter` steps,
-    a warning is printed and the best available (unconverged) result
-    is returned.
+    the residual norm, `tol`, and `max_iter` are printed and a
+    `RuntimeError` is raised. Numba-compiled code cannot include these
+    values in the exception message, so they are printed instead.
 
     Parameters
     ----------
@@ -239,7 +240,7 @@ def implicit_midpoint_step(
             tol,
             " max_iter =",
             max_iter,
-            ". Consider reducing time_step, tol, or increasing max_iter.",
+            ". Consider reducing time_step, increasing tol, or increasing max_iter.",
         )
         raise RuntimeError("implicit_midpoint_step failed to converge")
 
