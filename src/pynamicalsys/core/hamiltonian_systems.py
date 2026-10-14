@@ -934,7 +934,9 @@ class HamiltonianSystem:
             Base of the logarithm used in the exponent calculation.
         qr_interval : int_t, optional
             Number of integration steps between successive QR
-            reorthonormalizations.
+            reorthonormalizations. A reorthonormalization is also performed at
+            the final step, so the result does not depend on whether the number
+            of steps is a multiple of `qr_interval`.
         method : str, optional
             QR decomposition method:
             - `"QR"`: internal reduced modified Gram-Schmidt QR

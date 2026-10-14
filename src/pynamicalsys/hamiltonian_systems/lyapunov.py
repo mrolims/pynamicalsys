@@ -85,6 +85,7 @@ def lyapunov_spectrum_sep(
         Number of Lyapunov exponents to compute.
     qr_interval : int
         Number of integration steps between successive QR re-orthonormalizations.
+        A re-orthonormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the spectrum.
     seed : int
@@ -107,8 +108,10 @@ def lyapunov_spectrum_sep(
     -------
     NDArray[np.float64]
         - If `return_history=True`, returns an array of shape
-          `(num_steps // qr_interval, num_exponents + 1)` whose first column is
+          `(ceil(num_steps / qr_interval), num_exponents + 1)`, where
+          `num_steps = round(total_time / time_step)`, whose first column is
           time and whose remaining columns are the running Lyapunov exponents.
+          The last row corresponds to the final integration step.
         - If `return_history=False`, returns an array of shape `(1, num_exponents)`
           containing the final Lyapunov spectrum.
     """
@@ -129,7 +132,7 @@ def lyapunov_spectrum_sep(
     dv = np.ascontiguousarray(dv)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
-    n_qr = num_steps // qr_interval
+    n_qr = (num_steps + qr_interval - 1) // qr_interval
     history = np.zeros((n_qr, num_exponents + 1), dtype=np.float64)
 
     count = 0
@@ -148,7 +151,7 @@ def lyapunov_spectrum_sep(
             parameters,
         )
 
-        if (i + 1) % qr_interval == 0:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
             if method == "QR":
                 dv, R = qr(dv)
             else:
@@ -167,7 +170,7 @@ def lyapunov_spectrum_sep(
         return history
 
     spectrum = np.zeros((1, num_exponents), dtype=np.float64)
-    spectrum[0, :] = exponents / (total_time * np.log(log_base))
+    spectrum[0, :] = exponents / (num_steps * time_step * np.log(log_base))
     return spectrum
 
 
@@ -217,6 +220,7 @@ def lyapunov_spectrum_imp(
         Number of Lyapunov exponents to compute.
     qr_interval : int
         Number of integration steps between successive QR re-orthonormalizations.
+        A re-orthonormalization is also performed at the final step.
     return_history : bool
         If True, return the time evolution of the spectrum.
     seed : int
@@ -243,8 +247,10 @@ def lyapunov_spectrum_imp(
     -------
     NDArray[np.float64]
         - If `return_history=True`, returns an array of shape
-          `(num_steps // qr_interval, num_exponents + 1)` whose first column is
+          `(ceil(num_steps / qr_interval), num_exponents + 1)`, where
+          `num_steps = round(total_time / time_step)`, whose first column is
           time and whose remaining columns are the running Lyapunov exponents.
+          The last row corresponds to the final integration step.
         - If `return_history=False`, returns an array of shape `(1, num_exponents)`
           containing the final Lyapunov spectrum.
     """
@@ -265,7 +271,7 @@ def lyapunov_spectrum_imp(
     dv = np.ascontiguousarray(dv)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
-    n_qr = num_steps // qr_interval
+    n_qr = (num_steps + qr_interval - 1) // qr_interval
     history = np.zeros((n_qr, num_exponents + 1), dtype=np.float64)
 
     count = 0
@@ -276,7 +282,7 @@ def lyapunov_spectrum_imp(
             q, p, dv, time_step, eom, hess_H, parameters, tol, max_iter
         )
 
-        if (i + 1) % qr_interval == 0:
+        if (i + 1) % qr_interval == 0 or i == num_steps - 1:
             if method == "QR":
                 dv, R = qr(dv)
             else:
@@ -295,7 +301,7 @@ def lyapunov_spectrum_imp(
         return history
 
     spectrum = np.zeros((1, num_exponents), dtype=np.float64)
-    spectrum[0, :] = exponents / (total_time * np.log(log_base))
+    spectrum[0, :] = exponents / (num_steps * time_step * np.log(log_base))
     return spectrum
 
 
