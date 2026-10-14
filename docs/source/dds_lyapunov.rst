@@ -284,4 +284,4 @@ Numerical options
     The default is :math:`e`, so the exponents use natural logarithms. Set ``log_base=2`` to express the rates in bits per iteration. Changing the base rescales the values but not their signs.
 
 ``sample_times`` and ``return_last_state``
-    With ``return_history=True``, ``sample_times`` stores the history of ``lyapunov`` only at the requested iterations, counted after the transient, so they must lie between 1 and ``total_time - transient_time``. ``return_last_state=True`` also returns the state at the end of the calculation, which can start a subsequent calculation, for example in a parameter continuation.
+    With ``return_history=True``, ``sample_times`` stores the history of ``lyapunov`` only at the requested iterations. They are counted from the initial condition, like ``total_time``, and must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. ``return_last_state=True`` also returns the state at the end of the calculation, which can start a subsequent calculation, for example in a parameter continuation.

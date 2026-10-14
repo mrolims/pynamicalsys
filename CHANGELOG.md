@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `evolve_system`, `trajectory`, `poincare_section`, `stroboscopic_map`, `maxima_map`, `lyapunov`, `SALI`, `LDI`, and `GALI` of `ContinuousDynamicalSystem` emit a `RuntimeWarning` when the result contains infinite or NaN values, which usually means that the solution diverged. The result is still returned.
 - The step-size control of the `rk45` integrator now uses the exponent appropriate to the Dormand-Prince 5(4) pair, so results computed with `rk45` may differ slightly from those of earlier versions.
 - `lyapunov`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem` emit a `UserWarning` when `sample_times` is passed without `return_history=True`, where it has no effect. It was previously ignored without notice. The same applies to `ContinuousDynamicalSystem` and `HamiltonianSystem`.
+- In `lyapunov`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem`, `sample_times` are now iterations counted from the initial condition, like `total_time`, and must lie in `(transient_time, total_time]`. They were previously counted from the end of the transient but checked against `total_time`, so times beyond `total_time - transient_time` returned rows of zeros. With a `transient_time`, add it to the sample times to reproduce previous results.
 
 ### Deprecated
 

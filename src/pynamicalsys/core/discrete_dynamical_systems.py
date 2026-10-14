@@ -2980,6 +2980,25 @@ class DiscreteDynamicalSystem:
             transient_time=transient_time,
         )
 
+    def __sample_times_after_transient(
+        self, sample_times, transient_time: int_t | None, total_time: int_t
+    ) -> NDArray[np.int64]:
+        """
+        Validate absolute sample times and count them from the end of the transient.
+
+        The sample times are iterations in `(transient_time, total_time]`,
+        counted from the initial condition like `total_time`. They are returned
+        sorted, without duplicates, and shifted by `transient_time`, which is
+        how the history of the indicators is indexed.
+        """
+        sample_times_arr = validate_sample_times(sample_times, total_time)
+        start = 0 if transient_time is None else int(transient_time)
+        if np.any(sample_times_arr <= start):
+            raise ValueError(
+                f"sample_times must be in the interval ({start}, {total_time}]"
+            )
+        return sample_times_arr - start
+
     def lyapunov(
         self,
         u: numeric_like_t,
@@ -3010,8 +3029,12 @@ class DiscreteDynamicalSystem:
             - "QR_HH": Householder QR (more stable, uses np.linalg.qr)
         return_history : bool, optional
             If True, returns convergence history (default False)
-        sample_times : Optional[Union[NDArray[np.float64], Sequence[int]]], optional
-            Specific times to sample when return_history=True
+        sample_times : Sequence[int] | NDArray[np.integer] | None, optional
+            Iterations in `(transient_time, total_time]` at which the exponents
+            are recorded when `return_history=True`. They are counted from the
+            initial condition, like `total_time`, and are sorted with duplicates
+            removed. If None and `return_history=True`, the exponents are
+            recorded at every iteration after the transient.
         transient_time : Optional[int], optional
             Initial iterations to discard
         num_exponents : Optional[int], optional
@@ -3038,7 +3061,8 @@ class DiscreteDynamicalSystem:
             - If `trasient_time` is negative.
             - If `transient_time` is greater than or equal to total_time.
             - If `method` is not "QR" or "QR_HH".
-            - If `sample_times` is not a 1D array of integers.
+            - If `sample_times` is not a 1D array of integers, or contains values
+              outside `(transient_time, total_time]`.
             - If `log_base` is not positive.
             - If `num_exponents` is larger then the system's dimension.
         TypeError
@@ -3119,7 +3143,9 @@ class DiscreteDynamicalSystem:
 
         if return_history:
             if sample_times is not None:
-                sample_times_arr = validate_sample_times(sample_times, total_time)
+                sample_times_arr = self.__sample_times_after_transient(
+                    sample_times, transient_time, total_time
+                )
             else:
                 sample_size = total_time - (
                     transient_time if transient_time is not None else 0
@@ -3850,9 +3876,11 @@ class DiscreteDynamicalSystem:
             If True, return SALI evaluated at the requested sampling times.
             Otherwise, return only the final SALI value. Default is False.
         sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
-            Iteration times at which SALI is recorded when `return_history=True`.
-            If None and `return_history=True`, SALI is recorded at every iteration
-            after the transient.
+            Iterations in `(transient_time, total_time]` at which SALI is
+            recorded when `return_history=True`. They are counted from the
+            initial condition, like `total_time`, and are sorted with duplicates
+            removed. If None and `return_history=True`, SALI is recorded at
+            every iteration after the transient.
         tol : numeric_t, optional
             Early stopping threshold. If `SALI < tol`, the computation is
             interrupted. Default is `1e-16`.
@@ -3883,7 +3911,8 @@ class DiscreteDynamicalSystem:
             - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
             - If `transient_time` is invalid.
-            - If `sample_times` is not a valid 1D array of integers.
+            - If `sample_times` is not a 1D array of integers, or contains values
+              outside `(transient_time, total_time]`.
             - If `tol` is negative.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
@@ -3949,7 +3978,9 @@ class DiscreteDynamicalSystem:
 
         if return_history:
             if sample_times is not None:
-                sample_times_arr = validate_sample_times(sample_times, total_time)
+                sample_times_arr = self.__sample_times_after_transient(
+                    sample_times, transient_time, total_time
+                )
             else:
                 sample_size = total_time - (
                     transient_time if transient_time is not None else 0
@@ -4024,9 +4055,11 @@ class DiscreteDynamicalSystem:
             If True, return LDI_k evaluated at the requested sampling times.
             Otherwise, return only the final LDI_k value. Default is False.
         sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
-            Iteration times at which LDI_k is recorded when `return_history=True`.
-            If None and `return_history=True`, LDI_k is recorded at every iteration
-            after the transient.
+            Iterations in `(transient_time, total_time]` at which LDI_k is
+            recorded when `return_history=True`. They are counted from the
+            initial condition, like `total_time`, and are sorted with duplicates
+            removed. If None and `return_history=True`, LDI_k is recorded at
+            every iteration after the transient.
         tol : numeric_t, optional
             Early stopping threshold. If `LDI_k < tol`, the computation is
             interrupted. Default is `1e-16`.
@@ -4057,7 +4090,8 @@ class DiscreteDynamicalSystem:
             - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
             - If `transient_time` is invalid.
-            - If `sample_times` is not a valid 1D array of integers.
+            - If `sample_times` is not a 1D array of integers, or contains values
+              outside `(transient_time, total_time]`.
             - If `k` is not in the interval `[2, system_dimension]`.
             - If `tol` is negative.
         TypeError
@@ -4131,7 +4165,9 @@ class DiscreteDynamicalSystem:
 
         if return_history:
             if sample_times is not None:
-                sample_times_arr = validate_sample_times(sample_times, total_time)
+                sample_times_arr = self.__sample_times_after_transient(
+                    sample_times, transient_time, total_time
+                )
             else:
                 sample_size = total_time - (
                     transient_time if transient_time is not None else 0
@@ -4211,9 +4247,11 @@ class DiscreteDynamicalSystem:
             If True, return GALI_k evaluated at the requested sampling times.
             Otherwise, return only the final GALI_k value. Default is False.
         sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
-            Iteration times at which GALI_k is recorded when `return_history=True`.
-            If None and `return_history=True`, GALI_k is recorded at every iteration
-            after the transient.
+            Iterations in `(transient_time, total_time]` at which GALI_k is
+            recorded when `return_history=True`. They are counted from the
+            initial condition, like `total_time`, and are sorted with duplicates
+            removed. If None and `return_history=True`, GALI_k is recorded at
+            every iteration after the transient.
         method : str, optional
             Method used to compute GALI_k. Supported options are:
 
@@ -4262,7 +4300,8 @@ class DiscreteDynamicalSystem:
             - If `parameters` does not match the expected number of parameters.
             - If `total_time` is negative.
             - If `transient_time` is invalid.
-            - If `sample_times` is not a valid 1D array of integers.
+            - If `sample_times` is not a 1D array of integers, or contains values
+              outside `(transient_time, total_time]`.
             - If `k` is not in the interval `[2, system_dimension]`.
             - If `method` is not `"DET"`, `"QR"`, or `"QR_HH"`.
             - If `tol` is negative.
@@ -4355,7 +4394,9 @@ class DiscreteDynamicalSystem:
 
         if return_history:
             if sample_times is not None:
-                sample_times_arr = validate_sample_times(sample_times, total_time)
+                sample_times_arr = self.__sample_times_after_transient(
+                    sample_times, transient_time, total_time
+                )
             else:
                 sample_size = total_time - (
                     transient_time if transient_time is not None else 0
