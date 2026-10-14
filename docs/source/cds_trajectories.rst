@@ -35,6 +35,8 @@ The ``rk45`` integrator adjusts its time step according to absolute and relative
 
 The selected integrator remains active for subsequent method calls. Fixed-step output is sampled at regular times, while adaptive output generally is not. This distinction matters when a later calculation assumes uniformly spaced samples.
 
+Each call to ``integrator`` sets the time step and both tolerances. An argument that is not passed is set to its default value (``time_step=1e-2``, ``atol=1e-6``, ``rtol=1e-3``) instead of keeping the value from a previous call, so pass every value that should differ from the default.
+
 A single trajectory
 ~~~~~~~~~~~~~~~~~~~
 

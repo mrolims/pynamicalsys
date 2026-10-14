@@ -485,6 +485,13 @@ class ContinuousDynamicalSystem:
             - If `integrator` is not a string.
             - If `time_step`, `atol`, or `rtol` are not valid numbers
 
+        Notes
+        -----
+        Every call sets `time_step`, `atol`, and `rtol`. An argument that is not
+        passed is set to its default value instead of keeping the value from a
+        previous call. For example, `ds.integrator("rk45", atol=1e-10)` sets
+        `rtol` back to `1e-3`.
+
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
