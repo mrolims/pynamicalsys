@@ -22,6 +22,10 @@ from numba import njit
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 
+# Smallest step size, relative to the current time, that an adaptive
+# integrator may reduce to after rejecting a step.
+_MIN_RELATIVE_STEP = 1e-14
+
 
 @njit
 def step(
@@ -78,6 +82,14 @@ def step(
         - the accepted updated state
         - the accepted updated time
         - the suggested next step size
+
+    Raises
+    ------
+    RuntimeError
+        If an adaptive integrator rejects a step and the reduced step size is
+        smaller than `1e-14 * max(|time|, 1)` or is not a number. This happens
+        when the solution diverges or becomes non-finite, and prevents the step
+        from being retried indefinitely.
     """
     u_new = u.copy()
     time_new = time
@@ -100,6 +112,14 @@ def step(
         if accept:
             time = time_new
             u = u_new.copy()
+        elif not time_step_new >= _MIN_RELATIVE_STEP * max(abs(time), 1.0):
+            # Written so that a NaN step size also fails the comparison.
+            raise RuntimeError(
+                "The adaptive integrator could not take a step: the step size "
+                "fell below the minimum allowed or became NaN. The solution may "
+                "diverge or contain non-finite values, or the tolerances may be "
+                "too strict."
+            )
 
         time_step = time_step_new
 
