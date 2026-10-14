@@ -306,7 +306,9 @@ def implicit_midpoint_step_traj_tan(
         )
 
     rhs = (identity + np.float64(0.5) * h * Jinv_Hmid) @ dv
-    dv_new = np.linalg.solve(DF, rhs).astype(np.float64)
+    # np.linalg.solve returns a Fortran-ordered array; return a C-contiguous
+    # one, so that the matrix products of the next step stay on contiguous arrays.
+    dv_new = np.ascontiguousarray(np.linalg.solve(DF, rhs))
 
     q_new = np.float64(2.0) * q_bar - q
     p_new = np.float64(2.0) * p_bar - p
