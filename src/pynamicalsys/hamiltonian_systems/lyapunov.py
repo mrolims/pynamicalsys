@@ -52,7 +52,7 @@ def lyapunov_spectrum_sep(
     log_base: np.float64,
     method: str,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Lyapunov spectrum of a separable Hamiltonian system,
     H(q, p) = T(p) + V(q), integrated with an explicit symplectic
@@ -106,7 +106,10 @@ def lyapunov_spectrum_sep(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape
           `(ceil(num_steps / qr_interval), num_exponents + 1)`, where
           `num_steps = round(total_time / time_step)`, whose first column is
@@ -167,11 +170,11 @@ def lyapunov_spectrum_sep(
 
     if return_history:
         history[:, 1:] /= np.log(log_base)
-        return history
+        return history, q.copy(), p.copy()
 
     spectrum = np.zeros((1, num_exponents), dtype=np.float64)
     spectrum[0, :] = exponents / (num_steps * time_step * np.log(log_base))
-    return spectrum
+    return spectrum, q.copy(), p.copy()
 
 
 @njit
@@ -192,7 +195,7 @@ def lyapunov_spectrum_imp(
     tol: np.float64,
     max_iter: int,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Lyapunov spectrum of a general (possibly non-separable)
     Hamiltonian system H(q, p), integrated with the implicit midpoint method.
@@ -245,7 +248,10 @@ def lyapunov_spectrum_imp(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape
           `(ceil(num_steps / qr_interval), num_exponents + 1)`, where
           `num_steps = round(total_time / time_step)`, whose first column is
@@ -298,11 +304,11 @@ def lyapunov_spectrum_imp(
 
     if return_history:
         history[:, 1:] /= np.log(log_base)
-        return history
+        return history, q.copy(), p.copy()
 
     spectrum = np.zeros((1, num_exponents), dtype=np.float64)
     spectrum[0, :] = exponents / (num_steps * time_step * np.log(log_base))
-    return spectrum
+    return spectrum, q.copy(), p.copy()
 
 
 @njit
@@ -321,7 +327,7 @@ def largest_lyapunov_exponent_sep(
     seed: int,
     log_base: np.float64,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the largest Lyapunov exponent of a separable Hamiltonian
     systems H(q, p) = T(p) + V(q), integrated with an explicit
@@ -364,7 +370,10 @@ def largest_lyapunov_exponent_sep(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape
           `(ceil(num_steps / qr_interval), 2)`
           whose first column is time and whose second column is the running
@@ -415,11 +424,11 @@ def largest_lyapunov_exponent_sep(
 
     if return_history:
         history[:, 1] /= np.log(log_base)
-        return history
+        return history, q.copy(), p.copy()
 
     result = np.zeros((1, 1), dtype=np.float64)
     result[0, 0] = lyapunov_exponent / (time * np.log(log_base))
-    return result
+    return result, q.copy(), p.copy()
 
 
 @njit
@@ -438,7 +447,7 @@ def largest_lyapunov_exponent_imp(
     tol: np.float64,
     max_iter: int,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the largest Lyapunov exponent of a general (possibly non-separable)
     Hamiltonian system H(q, p), integrated with the implicit midpoint method.
@@ -480,7 +489,10 @@ def largest_lyapunov_exponent_imp(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape
           `(ceil(num_steps / qr_interval), 2)`
           whose first column is time and whose second column is the running
@@ -523,8 +535,8 @@ def largest_lyapunov_exponent_imp(
 
     if return_history:
         history[:, 1] /= np.log(log_base)
-        return history
+        return history, q.copy(), p.copy()
 
     result = np.zeros((1, 1), dtype=np.float64)
     result[0, 0] = lyapunov_exponent / (time * np.log(log_base))
-    return result
+    return result, q.copy(), p.copy()

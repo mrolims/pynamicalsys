@@ -22,7 +22,6 @@ from numba import njit
 from pynamicalsys.common.types import system_func_t, symplectic_tangent_step_t
 from pynamicalsys.common.linalg import qr
 
-
 """
 TODO
 
@@ -49,7 +48,7 @@ def ldi_k_sep(
     seed: int,
     threshold: np.float64,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Linear Dependence Index (LDI) for a separable Hamiltonian
     system, H(q, p) = T(p) + V(q), integrated with an explicit symplectic
@@ -91,7 +90,10 @@ def ldi_k_sep(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
           whose first column is time and whose second column is `LDI_k`.
         - If `return_history=False`, returns an array of shape `(1, 2)`
@@ -142,12 +144,12 @@ def ldi_k_sep(
             break
 
     if return_history:
-        return history[:count]
+        return history[:count], q.copy(), p.copy()
 
     result = np.zeros((1, 2), dtype=np.float64)
     result[0, 0] = time
     result[0, 1] = ldi_val
-    return result
+    return result, q.copy(), p.copy()
 
 
 @njit
@@ -166,7 +168,7 @@ def ldi_k_imp(
     tol: np.float64,
     max_iter: int,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Linear Dependence Index (LDI) for a general (possibly
     non-separable) Hamiltonian system H(q, p), integrated with the implicit
@@ -208,7 +210,10 @@ def ldi_k_imp(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
           whose first column is time and whose second column is `LDI_k`.
         - If `return_history=False`, returns an array of shape `(1, 2)`
@@ -251,9 +256,9 @@ def ldi_k_imp(
             break
 
     if return_history:
-        return history[:count]
+        return history[:count], q.copy(), p.copy()
 
     result = np.zeros((1, 2), dtype=np.float64)
     result[0, 0] = time
     result[0, 1] = ldi_val
-    return result
+    return result, q.copy(), p.copy()

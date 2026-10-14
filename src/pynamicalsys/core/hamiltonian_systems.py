@@ -907,7 +907,14 @@ class HamiltonianSystem:
         log_base: numeric_t = np.e,
         qr_interval: int_t = 1,
         method: str = "QR",
-    ) -> NDArray[np.float64] | np.float64:
+        return_last_state: bool = False,
+    ) -> (
+        NDArray[np.float64]
+        | np.float64
+        | tuple[
+            NDArray[np.float64] | np.float64, NDArray[np.float64], NDArray[np.float64]
+        ]
+    ):
         """
         Compute Lyapunov exponents for a Hamiltonian system.
 
@@ -943,6 +950,9 @@ class HamiltonianSystem:
             QR decomposition method:
             - `"QR"`: internal reduced modified Gram-Schmidt QR
             - `"QR_HH"`: `numpy.linalg.qr` based on Householder reflections
+        return_last_state : bool, optional
+            If `True`, also return the coordinates and momenta at the final
+            integration time.
 
         Returns
         -------
@@ -954,6 +964,10 @@ class HamiltonianSystem:
               largest Lyapunov exponent as a scalar.
             - If `return_history=False` and `num_exponents > 1`, returns a 1D
               array containing the final Lyapunov exponents.
+            - If `return_last_state=True`, returns a tuple
+              `(result, q_last, p_last)`, where `result` is as described above
+              and `q_last` and `p_last` are the coordinates and momenta at the
+              final integration time.
 
         Raises
         ------
@@ -1022,7 +1036,7 @@ class HamiltonianSystem:
 
         if self.__integrator in ["vv2", "svy4"]:
             if num_exponents > 1:
-                result = lyapunov_spectrum_sep(
+                result, q_last, p_last = lyapunov_spectrum_sep(
                     q=q,
                     p=p,
                     total_time=total_time,
@@ -1041,7 +1055,7 @@ class HamiltonianSystem:
                     integrator_traj_tan=self.__traj_tan_integrator_func,
                 )
             else:
-                result = largest_lyapunov_exponent_sep(
+                result, q_last, p_last = largest_lyapunov_exponent_sep(
                     q=q,
                     p=p,
                     total_time=total_time,
@@ -1060,7 +1074,7 @@ class HamiltonianSystem:
 
         else:
             if num_exponents > 1:
-                result = lyapunov_spectrum_imp(
+                result, q_last, p_last = lyapunov_spectrum_imp(
                     q=q,
                     p=p,
                     total_time=total_time,
@@ -1079,7 +1093,7 @@ class HamiltonianSystem:
                     integrator_traj_tan=self.__traj_tan_integrator_func,
                 )
             else:
-                result = largest_lyapunov_exponent_imp(
+                result, q_last, p_last = largest_lyapunov_exponent_imp(
                     q=q,
                     p=p,
                     total_time=total_time,
@@ -1097,12 +1111,16 @@ class HamiltonianSystem:
                 )
 
         if return_history:
-            return result
+            value = result
+        elif num_exponents == 1:
+            value = np.float64(result[0, 0])
+        else:
+            value = result[0]
 
-        if num_exponents == 1:
-            return np.float64(result[0, 0])
+        if return_last_state:
+            return value, q_last, p_last
 
-        return result[0]
+        return value
 
     def CLV(
         self,
@@ -1570,7 +1588,11 @@ class HamiltonianSystem:
         return_history: bool = False,
         seed: int_t = 1312,
         threshold: numeric_t = 1e-16,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+    ) -> (
+        NDArray[np.float64]
+        | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+    ):
         """
         Compute the Smaller Alignment Index (SALI).
 
@@ -1598,6 +1620,9 @@ class HamiltonianSystem:
             Random seed used to initialize the deviation vectors.
         threshold : numeric_t, optional
             Early stopping threshold. Integration stops when `SALI <= threshold`.
+        return_last_state : bool, optional
+            If `True`, also return the coordinates and momenta at the time the
+            integration stopped.
 
         Returns
         -------
@@ -1606,6 +1631,10 @@ class HamiltonianSystem:
               columns `[time, SALI]`.
             - If `return_history=False`, returns an array of shape `(2,)`
               containing the final `[time, SALI]`.
+            - If `return_last_state=True`, returns a tuple
+              `(result, q_last, p_last)`, where `result` is as described above
+              and `q_last` and `p_last` are the coordinates and momenta at the
+              time the integration stopped.
 
         Raises
         ------
@@ -1649,7 +1678,7 @@ class HamiltonianSystem:
         threshold = np.float64(threshold)
 
         if self.__integrator in ["vv2", "svy4"]:
-            result = sali_sep(
+            result, q_last, p_last = sali_sep(
                 q=q,
                 p=p,
                 total_time=total_time,
@@ -1666,7 +1695,7 @@ class HamiltonianSystem:
             )
 
         else:
-            result = sali_imp(
+            result, q_last, p_last = sali_imp(
                 q=q,
                 p=p,
                 total_time=total_time,
@@ -1682,10 +1711,13 @@ class HamiltonianSystem:
                 integrator_traj_tan=self.__traj_tan_integrator_func,
             )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, q_last, p_last
+
+        return result
 
     def LDI(
         self,
@@ -1697,7 +1729,11 @@ class HamiltonianSystem:
         return_history: bool = False,
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+    ) -> (
+        NDArray[np.float64]
+        | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+    ):
         """
         Compute the Linear Dependence Index (LDI).
 
@@ -1727,6 +1763,9 @@ class HamiltonianSystem:
             Random seed used to initialize the deviation vectors.
         threshold : numeric_t, optional
             Early stopping threshold. Integration stops when `LDI <= threshold`.
+        return_last_state : bool, optional
+            If `True`, also return the coordinates and momenta at the time the
+            integration stopped.
 
         Returns
         -------
@@ -1735,6 +1774,10 @@ class HamiltonianSystem:
               columns `[time, LDI]`.
             - If `return_history=False`, returns an array of shape `(2,)`
               containing the final `[time, LDI]`.
+            - If `return_last_state=True`, returns a tuple
+              `(result, q_last, p_last)`, where `result` is as described above
+              and `q_last` and `p_last` are the coordinates and momenta at the
+              time the integration stopped.
 
         Raises
         ------
@@ -1783,7 +1826,7 @@ class HamiltonianSystem:
         threshold = np.float64(threshold)
 
         if self.__integrator in ["vv2", "svy4"]:
-            result = ldi_k_sep(
+            result, q_last, p_last = ldi_k_sep(
                 q=q,
                 p=p,
                 total_time=total_time,
@@ -1801,7 +1844,7 @@ class HamiltonianSystem:
             )
 
         else:
-            result = ldi_k_imp(
+            result, q_last, p_last = ldi_k_imp(
                 q=q,
                 p=p,
                 total_time=total_time,
@@ -1818,10 +1861,13 @@ class HamiltonianSystem:
                 integrator_traj_tan=self.__traj_tan_integrator_func,
             )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, q_last, p_last
+
+        return result
 
     def GALI(
         self,
@@ -1834,7 +1880,11 @@ class HamiltonianSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         method: str = "QR",
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+    ) -> (
+        NDArray[np.float64]
+        | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+    ):
         """
         Compute the Generalized Alignment Index (GALI).
 
@@ -1869,6 +1919,9 @@ class HamiltonianSystem:
             - `"DET"`: determinant of the Gram matrix
             - `"QR"`: product of diagonal entries from the internal QR routine
             - `"QR_HH"`: product of diagonal entries from `numpy.linalg.qr`
+        return_last_state : bool, optional
+            If `True`, also return the coordinates and momenta at the time the
+            integration stopped.
 
         Returns
         -------
@@ -1877,6 +1930,10 @@ class HamiltonianSystem:
               columns `[time, GALI]`.
             - If `return_history=False`, returns an array of shape `(2,)`
               containing the final `[time, GALI]`.
+            - If `return_last_state=True`, returns a tuple
+              `(result, q_last, p_last)`, where `result` is as described above
+              and `q_last` and `p_last` are the coordinates and momenta at the
+              time the integration stopped.
 
         Raises
         ------
@@ -1934,7 +1991,7 @@ class HamiltonianSystem:
             raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
         if self.__integrator in ["vv2", "svy4"]:
-            result = gali_k_sep(
+            result, q_last, p_last = gali_k_sep(
                 q=q,
                 p=p,
                 total_time=total_time,
@@ -1952,7 +2009,7 @@ class HamiltonianSystem:
                 integrator_traj_tan=self.__traj_tan_integrator_func,
             )
         else:
-            result = gali_k_imp(
+            result, q_last, p_last = gali_k_imp(
                 q=q,
                 p=p,
                 total_time=total_time,
@@ -1970,10 +2027,13 @@ class HamiltonianSystem:
                 integrator_traj_tan=self.__traj_tan_integrator_func,
             )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, q_last, p_last
+
+        return result
 
     def recurrence_time_entropy(
         self,
