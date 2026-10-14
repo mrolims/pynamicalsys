@@ -125,6 +125,15 @@ and evaluate the Hénon-Heiles Hamiltonian along the trajectory produced by each
 
 The error remains bounded for every integrator, which is the defining property of symplectic integration. The fourth-order method ``svy4`` is several orders of magnitude more accurate than the second-order ``vv2`` and ``imp`` methods at the same time step. The explicit ``vv2`` and ``svy4`` methods are available here only because the Hénon-Heiles Hamiltonian is separable; a general Hamiltonian, such as the Walker-Ford system in the :doc:`creation guide <hs_creating_hs>`, must use ``imp``.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``time_step``
+    The constant step size of the selected integrator, set with ``integrator``. The trajectory has ``round(total_time / time_step)`` steps, so a ``total_time`` that is not a multiple of ``time_step`` is rounded to the nearest one. The trajectory includes the initial state at :math:`t=0` and is stored at every step.
+
+``tol`` and ``max_iter``
+    The convergence tolerance on the residual norm and the maximum number of Newton iterations per step of the implicit midpoint method ``imp``, set with ``integrator``. They default to ``1e-12`` and ``50``. If the iteration does not converge, the calculation stops with a ``RuntimeError``; a smaller ``time_step``, a larger ``tol``, or a larger ``max_iter`` then helps. The explicit methods ``vv2`` and ``svy4`` ignore both.
+
 References
 ~~~~~~~~~~
 
