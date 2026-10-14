@@ -157,3 +157,9 @@ The result has shape ``(90000, 2)`` because ``total_time`` includes the discarde
     The Hénon attractor for :math:`a=1.4` and :math:`b=0.3` after discarding the transient.
 
 For a one-dimensional map and one initial condition, ``trajectory`` returns a one-dimensional array with shape ``(sample_size,)``. For higher-dimensional maps, the final axis always follows the state-variable order documented by the model's ``info`` property.
+
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``transient_time``
+    Number of initial iterations discarded before the trajectory is stored. It defaults to zero and must be smaller than ``total_time``, which remains the total number of iterations. The stored trajectory therefore has ``total_time - transient_time`` rows and starts at the iterate that follows the transient; the initial condition itself is not stored.
