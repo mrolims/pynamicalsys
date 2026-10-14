@@ -105,6 +105,9 @@ def generate_trajectory(
     num_samples = len(sample_times) if sample_times is not None else 0
     sample_index = 0
     while time < total_time:
+        # Nothing is stored after the last sample time, so stop there.
+        if sample_times is not None and sample_index == num_samples:
+            break
         if sample_times is not None and sample_index < num_samples:
             target_time = sample_times[sample_index]
         else:
