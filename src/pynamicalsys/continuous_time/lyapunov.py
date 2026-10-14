@@ -22,7 +22,7 @@ from numba import njit
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
 from pynamicalsys.common.linalg import qr
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
-from pynamicalsys.continuous_time.step import evolve_system, step
+from pynamicalsys.continuous_time.step import evolve_system, step_to
 
 
 @njit
@@ -39,6 +39,7 @@ def lyapunov_exponents(
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
     return_history: bool = False,
+    sample_times: NDArray[np.float64] | None = None,
     seed: int = 13,
     method: str = "QR",
     qr_interval: int = 1,
@@ -77,6 +78,11 @@ def lyapunov_exponents(
     return_history : bool, optional
         If True, return the time evolution of the finite-time Lyapunov
         exponents.
+    sample_times : NDArray[np.float64] | None, optional
+        Sorted times in `(transient_time, total_time]` at which the history
+        is stored when `return_history=True`. The integration lands exactly
+        on each of them. If None, the history is stored at every
+        reorthonormalization.
     seed : int, optional
         Random seed used to initialize the deviation vectors.
     method : str, optional
@@ -150,13 +156,18 @@ def lyapunov_exponents(
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
     steps_since_qr = 0
+    num_samples = len(sample_times) if sample_times is not None else 0
+    sample_index = 0
     while time < total_time:
-        if time + time_step > total_time:
-            time_step = total_time - time
+        if sample_times is not None and sample_index < num_samples:
+            target_time = sample_times[sample_index]
+        else:
+            target_time = total_time
 
-        uv, time, time_step = step(
+        uv, time, time_step, reached = step_to(
             time=time,
             u=uv,
+            target_time=target_time,
             parameters=parameters,
             equations_of_motion=equations_of_motion,
             jacobian=jacobian,
@@ -167,8 +178,12 @@ def lyapunov_exponents(
             number_of_deviation_vectors=num_exponents,
         )
 
+        at_sample = reached and sample_times is not None and sample_index < num_samples
+        if at_sample:
+            sample_index += 1
+
         steps_since_qr += 1
-        if steps_since_qr < qr_interval and time < total_time:
+        if steps_since_qr < qr_interval and time < total_time and not at_sample:
             continue
         steps_since_qr = 0
 
@@ -181,7 +196,7 @@ def lyapunov_exponents(
             R = np.ascontiguousarray(R)
         exponents += np.log(np.abs(np.diag(R)))
 
-        if return_history:
+        if return_history and (sample_times is None or at_sample):
             result = [time]
             for i in range(num_exponents):
                 result.append(exponents[i] / (time - t_ref))
@@ -212,6 +227,7 @@ def maximum_lyapunov_exponent(
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
     return_history: bool = False,
+    sample_times: NDArray[np.float64] | None = None,
     seed: int = 13,
     qr_interval: int = 1,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -246,6 +262,11 @@ def maximum_lyapunov_exponent(
     return_history : bool, optional
         If True, return the time evolution of the finite-time maximum Lyapunov
         exponent.
+    sample_times : NDArray[np.float64] | None, optional
+        Sorted times in `(transient_time, total_time]` at which the history
+        is stored when `return_history=True`. The integration lands exactly
+        on each of them. If None, the history is stored at every
+        renormalization.
     seed : int, optional
         Random seed used to initialize the deviation vector.
     qr_interval : int, optional
@@ -307,13 +328,18 @@ def maximum_lyapunov_exponent(
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
     steps_since_qr = 0
+    num_samples = len(sample_times) if sample_times is not None else 0
+    sample_index = 0
     while time < total_time:
-        if time + time_step > total_time:
-            time_step = total_time - time
+        if sample_times is not None and sample_index < num_samples:
+            target_time = sample_times[sample_index]
+        else:
+            target_time = total_time
 
-        uv, time, time_step = step(
+        uv, time, time_step, reached = step_to(
             time=time,
             u=uv,
+            target_time=target_time,
             parameters=parameters,
             equations_of_motion=equations_of_motion,
             jacobian=jacobian,
@@ -324,8 +350,12 @@ def maximum_lyapunov_exponent(
             number_of_deviation_vectors=1,
         )
 
+        at_sample = reached and sample_times is not None and sample_index < num_samples
+        if at_sample:
+            sample_index += 1
+
         steps_since_qr += 1
-        if steps_since_qr < qr_interval and time < total_time:
+        if steps_since_qr < qr_interval and time < total_time and not at_sample:
             continue
         steps_since_qr = 0
 
@@ -333,7 +363,7 @@ def maximum_lyapunov_exponent(
         exponent += np.log(np.abs(norm))
         uv[neq:] /= norm
 
-        if return_history:
+        if return_history and (sample_times is None or at_sample):
             history.append([time, exponent / (time - t_ref)])
 
     if return_history:

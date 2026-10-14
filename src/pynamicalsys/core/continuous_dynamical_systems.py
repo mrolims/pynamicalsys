@@ -91,6 +91,7 @@ from pynamicalsys.continuous_time.models import (
 
 
 from pynamicalsys.continuous_time.validators import (
+    validate_sample_times,
     validate_times,
 )
 
@@ -1242,6 +1243,7 @@ class ContinuousDynamicalSystem:
         endpoint: bool | None = None,
         return_last_state: bool = False,
         qr_interval: int_t = 1,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> (
         np.float64
         | NDArray[np.float64]
@@ -1292,6 +1294,12 @@ class ContinuousDynamicalSystem:
             reorthonormalization. Values greater than 1 require a fixed-step
             integrator.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            reorthonormalization.
         Returns
         -------
         np.float64 | NDArray[np.float64]
@@ -1309,6 +1317,8 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -1318,6 +1328,7 @@ class ContinuousDynamicalSystem:
             - If `qr_interval` is not positive.
             - If `qr_interval > 1` and the integrator is adaptive.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `method` is not a string.
             - If `total_time`, `transient_time`, or `log_base` is not a valid real number.
             - If `num_exponents`, `seed`, or `qr_interval` is not an integer.
@@ -1348,6 +1359,14 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
+
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
 
         time_step = self.__get_initial_time_step(u, parameters)
 
@@ -1400,6 +1419,7 @@ class ContinuousDynamicalSystem:
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
                 return_history=return_history,
+                sample_times=sample_times_arr,
                 seed=int(seed),
                 qr_interval=int(qr_interval),
             )
@@ -1417,6 +1437,7 @@ class ContinuousDynamicalSystem:
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
                 return_history=return_history,
+                sample_times=sample_times_arr,
                 seed=int(seed),
                 method=method,
                 qr_interval=int(qr_interval),
@@ -1684,6 +1705,7 @@ class ContinuousDynamicalSystem:
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
         return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Smaller Alignment Index (SALI) for a continuous-time dynamical system.
@@ -1714,6 +1736,12 @@ class ContinuousDynamicalSystem:
             If `True`, also return the state of the system at the time the
             integration stopped.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            accepted integration step.
         Returns
         -------
         NDArray[np.float64]
@@ -1727,11 +1755,14 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
             - If `total_time`, `transient_time`, or `threshold` is negative.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `seed` is not an integer.
 
@@ -1771,6 +1802,14 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
+
         validate_non_negative(threshold, "threshold", Real)
         validate_non_negative(seed, "seed", Integral)
 
@@ -1799,6 +1838,7 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
+            sample_times=sample_times_arr,
             seed=int(seed),
             threshold=threshold,
         )
@@ -1823,6 +1863,7 @@ class ContinuousDynamicalSystem:
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
         return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Linear Dependence Index (LDI_k) for a continuous-time dynamical system.
@@ -1855,6 +1896,12 @@ class ContinuousDynamicalSystem:
             If `True`, also return the state of the system at the time the
             integration stopped.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            accepted integration step.
         Returns
         -------
         NDArray[np.float64]
@@ -1868,6 +1915,8 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -1875,6 +1924,7 @@ class ContinuousDynamicalSystem:
             - If `k < 2`.
             - If `k > system_dimension`.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `k` or `seed` is not an integer.
 
@@ -1897,6 +1947,14 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
+
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
 
         validate_positive(k, "k", Integral)
         if k < 2:
@@ -1933,6 +1991,7 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
+            sample_times=sample_times_arr,
             seed=int(seed),
             threshold=threshold,
         )
@@ -1958,6 +2017,7 @@ class ContinuousDynamicalSystem:
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
         return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Generalized Alignment Index (GALI_k) for a continuous-time
@@ -1996,6 +2056,12 @@ class ContinuousDynamicalSystem:
             If `True`, also return the state of the system at the time the
             integration stopped.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            accepted integration step.
         Returns
         -------
         NDArray[np.float64]
@@ -2009,6 +2075,8 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -2017,6 +2085,7 @@ class ContinuousDynamicalSystem:
             - If `k > system_dimension`.
             - If `method` is not one of `"DET"`, `"QR"`, or `"QR_HH"`.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `k` or `seed` is not an integer.
             - If `method` is not a string.
@@ -2040,6 +2109,14 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
+
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
 
         validate_positive(k, "k", Integral)
         if k < 2:
@@ -2083,6 +2160,7 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
+            sample_times=sample_times_arr,
             method=method,
             seed=int(seed),
             threshold=threshold,
