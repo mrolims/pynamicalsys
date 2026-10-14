@@ -2502,16 +2502,20 @@ class DiscreteDynamicalSystem:
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
-        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
-            Sampling times at which the average is recorded. If None, all times from
-            `1` to `total_time` are used.
+        sample_times : NDArray[np.integer] | Sequence[int] | None, optional
+            Iterations in `[0, total_time]` at which the ensemble average is
+            recorded. They are sorted, with duplicates removed. Iteration `0`
+            gives the average of the initial conditions. If None, every
+            iteration from `1` to `total_time` is recorded.
         axis : int, optional
             Coordinate index whose ensemble average is computed.
 
         Returns
         -------
         NDArray[np.float64]
-            Ensemble-average time series.
+            Ensemble average of the coordinate `axis` at each sampled
+            iteration, with one entry per sample time, in increasing order,
+            or `total_time` entries if `sample_times` is None.
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=True
@@ -2551,7 +2555,7 @@ class DiscreteDynamicalSystem:
         u: numeric_like_t,
         total_time: int_t,
         parameters: numeric_like_t | None = None,
-        sample_times: NDArray[np.int32] | Sequence[int] | None = None,
+        sample_times: NDArray[np.integer] | Sequence[int] | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
         """
@@ -2566,16 +2570,26 @@ class DiscreteDynamicalSystem:
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
-        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
-            Sampling times at which the cumulative average is recorded. If None, all
-            times from `1` to `total_time` are used.
+        sample_times : NDArray[np.integer] | Sequence[int] | None, optional
+            Iterations in `[1, total_time]` at which the cumulative average is
+            recorded. They are sorted, with duplicates removed. If None, every
+            iteration from `1` to `total_time` is recorded.
         axis : int, optional
             Coordinate index whose cumulative ensemble average is computed.
 
         Returns
         -------
         NDArray[np.float64]
-            Cumulative ensemble-average time series.
+            Ensemble average of the time average of the coordinate `axis`
+            over iterations `1` to `n`, at each sampled iteration `n`, with one
+            entry per sample time, in increasing order, or `total_time` entries
+            if `sample_times` is None. The initial condition is not included
+            in the time average.
+
+        Raises
+        ------
+        ValueError
+            If `sample_times` contains values outside `[1, total_time]`.
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=True
@@ -2618,7 +2632,7 @@ class DiscreteDynamicalSystem:
         u: numeric_like_t,
         total_time: int_t,
         parameters: numeric_like_t | None = None,
-        sample_times: NDArray[np.int32] | Sequence[int] | None = None,
+        sample_times: NDArray[np.integer] | Sequence[int] | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
         """
@@ -2633,16 +2647,26 @@ class DiscreteDynamicalSystem:
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
-        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
-            Sampling times at which the RMS value is recorded. If None, all times
-            from `1` to `total_time` are used.
+        sample_times : NDArray[np.integer] | Sequence[int] | None, optional
+            Iterations in `[1, total_time]` at which the RMS value is recorded.
+            They are sorted, with duplicates removed. If None, every iteration
+            from `1` to `total_time` is recorded.
         axis : int, optional
             Coordinate index whose RMS value is computed.
 
         Returns
         -------
         NDArray[np.float64]
-            RMS time series.
+            Square root of the ensemble average of the time average of the
+            squared coordinate `axis` over iterations `1` to `n`, at each
+            sampled iteration `n`, with one entry per sample time, in
+            increasing order, or `total_time` entries if `sample_times` is
+            None. The initial condition is not included in the time average.
+
+        Raises
+        ------
+        ValueError
+            If `sample_times` contains values outside `[1, total_time]`.
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=True
@@ -2685,7 +2709,7 @@ class DiscreteDynamicalSystem:
         u: numeric_like_t,
         total_time: int_t,
         parameters: numeric_like_t | None = None,
-        sample_times: NDArray[np.int32] | Sequence[int] | None = None,
+        sample_times: NDArray[np.integer] | Sequence[int] | None = None,
         axis: int = 1,
     ) -> NDArray[np.float64]:
         """
@@ -2700,16 +2724,20 @@ class DiscreteDynamicalSystem:
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
-        sample_times : NDArray[np.int32] | Sequence[int] | None, optional
-            Sampling times at which the MSD is recorded. If None, all times from
-            `1` to `total_time` are used.
+        sample_times : NDArray[np.integer] | Sequence[int] | None, optional
+            Iterations in `[0, total_time]` at which the MSD is recorded. They
+            are sorted, with duplicates removed. Iteration `0` gives zero. If
+            None, every iteration from `1` to `total_time` is recorded.
         axis : int, optional
             Coordinate index used in the displacement calculation.
 
         Returns
         -------
         NDArray[np.float64]
-            Mean-squared-displacement time series.
+            Ensemble average of the squared displacement of the coordinate
+            `axis` from its initial value, at each sampled iteration, with one
+            entry per sample time, in increasing order, or `total_time` entries
+            if `sample_times` is None.
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=True
@@ -3023,9 +3051,10 @@ class DiscreteDynamicalSystem:
         Parameters
         ----------
         u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition(s) of shape (d,) or (n, d) where d is system dimension
+            Initial condition of shape `(system_dimension,)`.
         total_time : int
-            Total iterations to compute (default 10000, must be ≥ 1)
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`.
         parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
             System parameters of shape (p,) passed to mapping function
         method : str, optional
@@ -3034,7 +3063,8 @@ class DiscreteDynamicalSystem:
             - "QR": QR decomposition (modifed Gram-Schmidt)
             - "QR_HH": Householder QR (more stable, uses np.linalg.qr)
         return_history : bool, optional
-            If True, returns convergence history (default False)
+            If True, return the exponents after each sampled iteration instead
+            of only the final ones. Default is False.
         sample_times : Sequence[int] | NDArray[np.integer] | None, optional
             Iterations in `(transient_time, total_time]` at which the exponents
             are recorded when `return_history=True`. They are counted from the
@@ -3042,19 +3072,34 @@ class DiscreteDynamicalSystem:
             removed. If None and `return_history=True`, the exponents are
             recorded at every iteration after the transient.
         transient_time : Optional[int], optional
-            Initial iterations to discard
+            Number of initial iterations discarded before the exponents start
+            to be accumulated. If None, no transient is discarded.
         num_exponents : Optional[int], optional
             Number of Lyapunov exponents to compute, by default None. If None, compute the whole spectrum.
         log_base : float, optional (default np.e)
             Logarithm base for exponents (e.g. e, 2, or 10)
+        return_last_state : bool, optional
+            If True, also return the state after the last iteration. Default is
+            False.
 
         Returns
         -------
-        Union[Tuple[NDArray[np.float64], NDArray[np.float64]],
-              Tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]]
-
-            - If return_history=False: exponents
-            - If return_history=True: history
+        float | NDArray[np.float64] | tuple
+            - If `return_history=False`, returns the final exponents as a 1D
+              array of length `num_exponents`, or as a float if
+              `num_exponents == 1`.
+            - If `return_history=True`, returns the exponents after each
+              sampled iteration as a 2D array of shape
+              `(num_samples, num_exponents)`, or as a 1D array of length
+              `num_samples` if `num_exponents == 1`. Without `sample_times`,
+              `num_samples` is `total_time - transient_time` and row `i`
+              corresponds to iteration `transient_time + i + 1`. With
+              `sample_times`, row `i` corresponds to the `i`-th sample time
+              after sorting and removing duplicates. The history has no time
+              column, since the iterations are known from `sample_times`.
+            - If `return_last_state=True`, returns `(result, last_state)`,
+              where `result` is as described above and `last_state` is the
+              state after the last iteration.
 
         Raises
         ------
@@ -3089,7 +3134,7 @@ class DiscreteDynamicalSystem:
 
         Notes
         -----
-        - Sample times are automatically sorted and deduplicated
+        - Sample times are automatically sorted and deduplicated.
 
         References
         ----------
@@ -3874,13 +3919,14 @@ class DiscreteDynamicalSystem:
         u : numeric_like_t
             Initial condition of shape `(d,)`, where `d` is the system dimension.
         total_time : int_t
-            Total number of iterations used in the computation.
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the
             parameters stored in the system are used.
         return_history : bool, optional
-            If True, return SALI evaluated at the requested sampling times.
-            Otherwise, return only the final SALI value. Default is False.
+            If True, return SALI after each sampled iteration. Otherwise,
+            return only the final SALI value. Default is False.
         sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
             Iterations in `(transient_time, total_time]` at which SALI is
             recorded when `return_history=True`. They are counted from the
@@ -3906,7 +3952,13 @@ class DiscreteDynamicalSystem:
             - If `return_history=False` and `return_last_state=True`, returns
               `(final_sali, final_state)`.
             - If `return_history=True` and `return_last_state=False`, returns a
-              1D array containing the sampled SALI history.
+              1D array with SALI after each sampled iteration. Without
+              `sample_times`, it has length `total_time - transient_time` and
+              entry `i` corresponds to iteration `transient_time + i + 1`. With
+              `sample_times`, entry `i` corresponds to the `i`-th sample time
+              after sorting and removing duplicates. If SALI falls below
+              `tol`, the computation stops, and the entries after that point
+              are zero.
             - If `return_history=True` and `return_last_state=True`, returns
               `(sali_history, final_state)`.
 
@@ -4051,15 +4103,16 @@ class DiscreteDynamicalSystem:
         u : numeric_like_t
             Initial condition of shape `(d,)`, where `d` is the system dimension.
         total_time : int_t
-            Total number of iterations used in the computation.
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`.
         k : int
             Number of deviation vectors used in the computation.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the
             parameters stored in the system are used.
         return_history : bool, optional
-            If True, return LDI_k evaluated at the requested sampling times.
-            Otherwise, return only the final LDI_k value. Default is False.
+            If True, return LDI_k after each sampled iteration. Otherwise,
+            return only the final LDI_k value. Default is False.
         sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
             Iterations in `(transient_time, total_time]` at which LDI_k is
             recorded when `return_history=True`. They are counted from the
@@ -4085,7 +4138,13 @@ class DiscreteDynamicalSystem:
             - If `return_history=False` and `return_last_state=True`, returns
               `(final_ldi, final_state)`.
             - If `return_history=True` and `return_last_state=False`, returns a
-              1D array containing the sampled LDI_k history.
+              1D array with LDI_k after each sampled iteration. Without
+              `sample_times`, it has length `total_time - transient_time` and
+              entry `i` corresponds to iteration `transient_time + i + 1`. With
+              `sample_times`, entry `i` corresponds to the `i`-th sample time
+              after sorting and removing duplicates. If LDI_k falls below
+              `tol`, the computation stops, and the entries after that point
+              are zero.
             - If `return_history=True` and `return_last_state=True`, returns
               `(ldi_history, final_state)`.
 
@@ -4243,15 +4302,16 @@ class DiscreteDynamicalSystem:
         u : numeric_like_t
             Initial condition of shape `(d,)`, where `d` is the system dimension.
         total_time : int_t
-            Total number of iterations used in the computation.
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`.
         k : int
             Number of deviation vectors used in the computation.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the
             parameters stored in the system are used.
         return_history : bool, optional
-            If True, return GALI_k evaluated at the requested sampling times.
-            Otherwise, return only the final GALI_k value. Default is False.
+            If True, return GALI_k after each sampled iteration. Otherwise,
+            return only the final GALI_k value. Default is False.
         sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
             Iterations in `(transient_time, total_time]` at which GALI_k is
             recorded when `return_history=True`. They are counted from the
@@ -4295,7 +4355,13 @@ class DiscreteDynamicalSystem:
             - If `return_history=False` and `return_last_state=True`, returns
               `(final_gali, final_state)`.
             - If `return_history=True` and `return_last_state=False`, returns a
-              1D array containing the sampled GALI_k history.
+              1D array with GALI_k after each sampled iteration. Without
+              `sample_times`, it has length `total_time - transient_time` and
+              entry `i` corresponds to iteration `transient_time + i + 1`. With
+              `sample_times`, entry `i` corresponds to the `i`-th sample time
+              after sorting and removing duplicates. If GALI_k falls below
+              `tol`, the computation stops, and the entries after that point
+              are zero.
             - If `return_history=True` and `return_last_state=True`, returns
               `(gali_history, final_state)`.
 
