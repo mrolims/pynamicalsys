@@ -445,7 +445,7 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
-            If `time_step`, `atol`, or `rtol` are negative.
+            If `time_step` or `atol` is not positive, or `rtol` is negative.
             If `integrator` is not available.
         TypeError
             - If `integrator` is not a string.
@@ -463,8 +463,8 @@ class ContinuousDynamicalSystem:
 
         if not isinstance(integrator, str):
             raise TypeError("integrator must be a string.")
-        validate_non_negative(time_step, "time_step", type_=Real)
-        validate_non_negative(atol, "atol", type_=Real)
+        validate_positive(time_step, "time_step", type_=Real)
+        validate_positive(atol, "atol", type_=Real)
         validate_non_negative(rtol, "rtol", type_=Real)
 
         integrator = integrator.lower()
