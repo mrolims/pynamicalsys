@@ -154,6 +154,18 @@ Use :py:meth:`finite_time_hurst_exponent <pynamicalsys.core.discrete_dynamical_s
 
 When ``return_points=True``, ``phase_space_points[i]`` is the final state of the window that produced ``finite_hurst[i]``. Each row of ``finite_hurst`` contains the coordinate-wise estimates for that window. A multimodal finite-time distribution can reveal visits to dynamically distinct regions, but the locations and separation of its modes depend on the window length and fitted range.
 
+Numerical options
+^^^^^^^^^^^^^^^^^
+
+``wmin``
+    The shortest block length of the rescaled-range analysis. It defaults to ``2`` and must be smaller than half the effective trajectory length. The rescaled range of short blocks is biased, so a larger ``wmin`` reduces the influence of that bias on the fitted exponent. Since every integer block length up to half the trajectory is used, long blocks contribute most of the points of the logarithmic fit.
+
+``total_time`` and ``transient_time``
+    The total number of iterations and the number discarded before the time series is analyzed, which defaults to zero. The cost grows with the number of analyzed iterations and the number of block lengths, both proportional to ``total_time - transient_time``. ``finite_time_hurst_exponent`` has no ``transient_time``: its windows start at the initial condition.
+
+``finite_time``
+    The window length of ``finite_time_hurst_exponent``, in iterations. The analysis within each window uses block lengths from ``wmin`` up to half of ``finite_time``, so short windows give exponents from few block lengths and with a larger statistical uncertainty.
+
 References
 ^^^^^^^^^^
 
