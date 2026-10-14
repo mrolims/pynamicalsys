@@ -130,7 +130,7 @@ The following example integrates the Lorenz system for 400 time units after the 
 
 .. code-block:: text
 
-    ((40001, 4), (4000, 4))
+    ((40000, 4), (4000, 4))
 
 .. code-block:: python
 
