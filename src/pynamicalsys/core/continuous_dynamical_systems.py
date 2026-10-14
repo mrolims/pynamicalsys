@@ -105,6 +105,30 @@ from pynamicalsys.common.validators import (
 )
 
 
+def _warn_if_not_finite(*results) -> None:
+    """
+    Emit a RuntimeWarning if any result contains infinite or NaN values.
+
+    Parameters
+    ----------
+    *results : NDArray[np.float64] | np.float64 | list[NDArray[np.float64]]
+        Results returned by a public method. A list, as returned for an
+        ensemble of initial conditions, is checked element by element.
+    """
+    for result in results:
+        arrays = result if isinstance(result, list) else [result]
+        for array in arrays:
+            if not np.all(np.isfinite(array)):
+                warnings.warn(
+                    "The result contains non-finite values (inf or NaN). The "
+                    "solution may have diverged; consider a smaller time step "
+                    "or the adaptive integrator.",
+                    RuntimeWarning,
+                    stacklevel=3,
+                )
+                return
+
+
 class ContinuousDynamicalSystem:
     """
     Class for defining, integrating, and analyzing continuous-time dynamical systems.
@@ -582,6 +606,12 @@ class ContinuousDynamicalSystem:
         TypeError
             - If `total_time` is not a valid real number.
 
+        Warns
+        -----
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
+
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
@@ -606,7 +636,7 @@ class ContinuousDynamicalSystem:
 
         time_step = self.__get_initial_time_step(u, parameters)
 
-        return evolve_system(
+        result = evolve_system(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -616,6 +646,8 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
         )
+        _warn_if_not_finite(result)
+        return result
 
     def trajectory(
         self,
@@ -676,6 +708,12 @@ class ContinuousDynamicalSystem:
             - If `total_time` or `transient_time` is not a valid real number.
             - If `sample_times` cannot be converted to a 1D array of real numbers.
 
+        Warns
+        -----
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
+
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
@@ -709,7 +747,7 @@ class ContinuousDynamicalSystem:
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
-            return generate_trajectory(
+            result = generate_trajectory(
                 u=u,
                 parameters=parameters,
                 total_time=total_time,
@@ -721,8 +759,10 @@ class ContinuousDynamicalSystem:
                 integrator=self.__integrator_func,
                 sample_times=sample_times_arr,
             )
+            _warn_if_not_finite(result)
+            return result
 
-        return ensemble_trajectories(
+        result = ensemble_trajectories(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -734,6 +774,8 @@ class ContinuousDynamicalSystem:
             integrator=self.__integrator_func,
             sample_times=sample_times_arr,
         )
+        _warn_if_not_finite(result)
+        return result
 
     def poincare_section(
         self,
@@ -801,6 +843,12 @@ class ContinuousDynamicalSystem:
             - If `num_intersections`, `section_index`, or `crossing` are not integers.
             - If `transient_time` is not a valid real number.
 
+        Warns
+        -----
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
+
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
@@ -853,7 +901,7 @@ class ContinuousDynamicalSystem:
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
-            return generate_poincare_section(
+            result = generate_poincare_section(
                 u=u,
                 parameters=parameters,
                 num_intersections=int(num_intersections),
@@ -867,8 +915,10 @@ class ContinuousDynamicalSystem:
                 section_value=section_value,
                 crossing=int(crossing),
             )
+            _warn_if_not_finite(result)
+            return result
 
-        return ensemble_poincare_section(
+        result = ensemble_poincare_section(
             u=u,
             parameters=parameters,
             num_intersections=int(num_intersections),
@@ -882,6 +932,8 @@ class ContinuousDynamicalSystem:
             section_value=section_value,
             crossing=int(crossing),
         )
+        _warn_if_not_finite(result)
+        return result
 
     def stroboscopic_map(
         self,
@@ -937,6 +989,12 @@ class ContinuousDynamicalSystem:
             - If `num_samples` is not an integer.
             - If `sampling_time` or `transient_time` is not a valid real number.
 
+        Warns
+        -----
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
+
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
@@ -975,7 +1033,7 @@ class ContinuousDynamicalSystem:
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
-            return generate_stroboscopic_map(
+            result = generate_stroboscopic_map(
                 u=u,
                 parameters=parameters,
                 num_intersections=num_samples,
@@ -987,8 +1045,10 @@ class ContinuousDynamicalSystem:
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
             )
+            _warn_if_not_finite(result)
+            return result
 
-        return ensemble_stroboscopic_map(
+        result = ensemble_stroboscopic_map(
             u=u,
             parameters=parameters,
             num_intersections=num_samples,
@@ -1000,6 +1060,8 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
         )
+        _warn_if_not_finite(result)
+        return result
 
     def maxima_map(
         self,
@@ -1056,6 +1118,12 @@ class ContinuousDynamicalSystem:
             - If `num_points` or `maxima_index` is not an integer.
             - If `transient_time` is not a valid real number.
 
+        Warns
+        -----
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
+
         Examples
         --------
         >>> from pynamicalsys import ContinuousDynamicalSystem as cds
@@ -1089,7 +1157,7 @@ class ContinuousDynamicalSystem:
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
-            return generate_maxima_map(
+            result = generate_maxima_map(
                 u=u,
                 parameters=parameters,
                 num_peaks=int(num_points),
@@ -1101,8 +1169,10 @@ class ContinuousDynamicalSystem:
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
             )
+            _warn_if_not_finite(result)
+            return result
 
-        return ensemble_maxima_map(
+        result = ensemble_maxima_map(
             u=u,
             parameters=parameters,
             num_peaks=int(num_points),
@@ -1114,6 +1184,8 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
         )
+        _warn_if_not_finite(result)
+        return result
 
     def basin_of_attraction(
         self,
@@ -1369,6 +1441,9 @@ class ContinuousDynamicalSystem:
         DeprecationWarning
             If `endpoint` is passed. It is ignored, and the integration
             always ends at `total_time`.
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
 
         Notes
         -----
@@ -1481,6 +1556,8 @@ class ContinuousDynamicalSystem:
             value = np.float64(result[0, 0] / np.log(log_base))
         else:
             value = result[0] / np.log(log_base)
+
+        _warn_if_not_finite(value, last_state)
 
         if return_last_state:
             return value, last_state
@@ -1802,6 +1879,9 @@ class ContinuousDynamicalSystem:
         DeprecationWarning
             If `endpoint` is passed. It is ignored, and the integration
             always ends at `total_time`.
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
 
         Examples
         --------
@@ -1876,6 +1956,8 @@ class ContinuousDynamicalSystem:
 
         if not return_history:
             result = result[0]
+
+        _warn_if_not_finite(result, last_state)
 
         if return_last_state:
             return result, last_state
@@ -1964,6 +2046,9 @@ class ContinuousDynamicalSystem:
         DeprecationWarning
             If `endpoint` is passed. It is ignored, and the integration
             always ends at `total_time`.
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
         """
         if self.__jacobian is None:
             raise ValueError("Jacobian function is required to compute LDI")
@@ -2029,6 +2114,8 @@ class ContinuousDynamicalSystem:
 
         if not return_history:
             result = result[0]
+
+        _warn_if_not_finite(result, last_state)
 
         if return_last_state:
             return result, last_state
@@ -2126,6 +2213,9 @@ class ContinuousDynamicalSystem:
         DeprecationWarning
             If `endpoint` is passed. It is ignored, and the integration
             always ends at `total_time`.
+        RuntimeWarning
+            If the result contains infinite or NaN values, which usually means
+            that the solution diverged.
         """
         if self.__jacobian is None:
             raise ValueError("Jacobian function is required to compute GALI")
@@ -2199,6 +2289,8 @@ class ContinuousDynamicalSystem:
 
         if not return_history:
             result = result[0]
+
+        _warn_if_not_finite(result, last_state)
 
         if return_last_state:
             return result, last_state
