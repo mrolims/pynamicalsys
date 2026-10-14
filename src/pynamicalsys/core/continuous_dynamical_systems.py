@@ -530,6 +530,11 @@ class ContinuousDynamicalSystem:
         self, u: NDArray[np.float64], parameters: NDArray[np.float64]
     ) -> np.float64:
         if self.integrator_info["estimate_initial_step"]:
+            # For an ensemble, estimate from the first initial condition. The
+            # adaptive integrator corrects the step size of every trajectory
+            # from its first step onwards.
+            if u.ndim > 1:
+                u = u[0]
             time_step = estimate_initial_step(
                 np.float64(0.0),
                 u,
