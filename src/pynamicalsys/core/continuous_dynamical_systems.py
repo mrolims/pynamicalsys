@@ -579,6 +579,36 @@ class ContinuousDynamicalSystem:
 
         return np.float64(time_step)
 
+    def __validate_sample_times(
+        self,
+        sample_times,
+        transient_time: np.float64 | None,
+        total_time: np.float64,
+    ) -> NDArray[np.float64]:
+        """
+        Validate the sample times and, for a fixed-step integrator, round them.
+
+        With an adaptive integrator, the sample times are returned sorted and
+        without duplicates, and the integration lands exactly on each of them.
+        With a fixed-step integrator, each sample time is rounded to the
+        nearest time `transient_time + n * time_step`, with `n >= 1`, so that
+        the step size stays constant. A rounded time beyond `total_time` is
+        replaced by `total_time`, where the last step ends. Duplicates created
+        by the rounding are removed.
+        """
+        start = np.float64(0.0) if transient_time is None else transient_time
+        sample_times_arr = validate_sample_times(sample_times, start, total_time)
+
+        if self.integrator_info["adaptive"]:
+            return sample_times_arr
+
+        steps = np.rint((sample_times_arr - start) / self.__time_step)
+        rounded = start + np.maximum(steps, 1.0) * self.__time_step
+        # Times beyond `total_time`, or within round-off of it, end there.
+        near_end = rounded >= total_time - 1e-6 * self.__time_step
+        rounded[near_end] = total_time
+        return np.unique(rounded)
+
     def evolve_system(
         self,
         u: numeric_like_t,
@@ -682,10 +712,14 @@ class ContinuousDynamicalSystem:
             Initial integration time discarded before storing the trajectory.
         sample_times : array-like | None, optional
             Times in `(transient_time, total_time]` at which the state is
-            stored. The integration lands exactly on each of them, with both
-            fixed-step and adaptive integrators, so every trajectory of an
-            ensemble has the same number of stored points. If `None`, the state
-            is stored at every accepted integration step.
+            stored. With an adaptive integrator, the integration lands exactly
+            on each of them. With a fixed-step integrator, each time is rounded
+            to the nearest time `transient_time + n * time_step`, with
+            `n >= 1`, so that the step size stays constant, and a time rounded
+            beyond `total_time` becomes `total_time`. The first column of the
+            result contains the times actually stored, and every trajectory of
+            an ensemble has the same number of stored points. If `None`, the
+            state is stored at every accepted integration step.
 
         Returns
         -------
@@ -747,7 +781,7 @@ class ContinuousDynamicalSystem:
 
         sample_times_arr = None
         if sample_times is not None:
-            sample_times_arr = validate_sample_times(
+            sample_times_arr = self.__validate_sample_times(
                 sample_times, transient_time, total_time
             )
 
@@ -1406,8 +1440,12 @@ class ContinuousDynamicalSystem:
 
         sample_times : array-like | None, optional
             Times in `(transient_time, total_time]` at which the history is
-            stored. The integration lands exactly on each of them, with both
-            fixed-step and adaptive integrators. Requires
+            stored. With an adaptive integrator, the integration lands exactly
+            on each of them. With a fixed-step integrator, each time is rounded
+            to the nearest time `transient_time + n * time_step`, with
+            `n >= 1`, so that the step size stays constant, and a time rounded
+            beyond `total_time` becomes `total_time`. The first column of the
+            history contains the times actually stored. Requires
             `return_history=True`. If `None`, the history is stored at every
             reorthonormalization.
         Returns
@@ -1477,7 +1515,7 @@ class ContinuousDynamicalSystem:
         if sample_times is not None:
             if not return_history:
                 raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = validate_sample_times(
+            sample_times_arr = self.__validate_sample_times(
                 sample_times, transient_time, total_time
             )
 
@@ -1853,8 +1891,12 @@ class ContinuousDynamicalSystem:
 
         sample_times : array-like | None, optional
             Times in `(transient_time, total_time]` at which the history is
-            stored. The integration lands exactly on each of them, with both
-            fixed-step and adaptive integrators. Requires
+            stored. With an adaptive integrator, the integration lands exactly
+            on each of them. With a fixed-step integrator, each time is rounded
+            to the nearest time `transient_time + n * time_step`, with
+            `n >= 1`, so that the step size stays constant, and a time rounded
+            beyond `total_time` becomes `total_time`. The first column of the
+            history contains the times actually stored. Requires
             `return_history=True`. If `None`, the history is stored at every
             accepted integration step.
         Returns
@@ -1924,7 +1966,7 @@ class ContinuousDynamicalSystem:
         if sample_times is not None:
             if not return_history:
                 raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = validate_sample_times(
+            sample_times_arr = self.__validate_sample_times(
                 sample_times, transient_time, total_time
             )
 
@@ -2018,8 +2060,12 @@ class ContinuousDynamicalSystem:
 
         sample_times : array-like | None, optional
             Times in `(transient_time, total_time]` at which the history is
-            stored. The integration lands exactly on each of them, with both
-            fixed-step and adaptive integrators. Requires
+            stored. With an adaptive integrator, the integration lands exactly
+            on each of them. With a fixed-step integrator, each time is rounded
+            to the nearest time `transient_time + n * time_step`, with
+            `n >= 1`, so that the step size stays constant, and a time rounded
+            beyond `total_time` becomes `total_time`. The first column of the
+            history contains the times actually stored. Requires
             `return_history=True`. If `None`, the history is stored at every
             accepted integration step.
         Returns
@@ -2075,7 +2121,7 @@ class ContinuousDynamicalSystem:
         if sample_times is not None:
             if not return_history:
                 raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = validate_sample_times(
+            sample_times_arr = self.__validate_sample_times(
                 sample_times, transient_time, total_time
             )
 
@@ -2183,8 +2229,12 @@ class ContinuousDynamicalSystem:
 
         sample_times : array-like | None, optional
             Times in `(transient_time, total_time]` at which the history is
-            stored. The integration lands exactly on each of them, with both
-            fixed-step and adaptive integrators. Requires
+            stored. With an adaptive integrator, the integration lands exactly
+            on each of them. With a fixed-step integrator, each time is rounded
+            to the nearest time `transient_time + n * time_step`, with
+            `n >= 1`, so that the step size stays constant, and a time rounded
+            beyond `total_time` becomes `total_time`. The first column of the
+            history contains the times actually stored. Requires
             `return_history=True`. If `None`, the history is stored at every
             accepted integration step.
         Returns
@@ -2242,7 +2292,7 @@ class ContinuousDynamicalSystem:
         if sample_times is not None:
             if not return_history:
                 raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = validate_sample_times(
+            sample_times_arr = self.__validate_sample_times(
                 sample_times, transient_time, total_time
             )
 

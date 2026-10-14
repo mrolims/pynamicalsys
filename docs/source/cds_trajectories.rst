@@ -103,7 +103,7 @@ Here, ``total_time`` is still the final integration time. The stored trajectory 
 Sampling a long trajectory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A long integration stores one row per accepted step, which quickly produces arrays too large to plot or keep in memory. The ``sample_times`` argument stores the state only at the requested times, which must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. The integration is adjusted to land exactly on each of them, with both fixed-step and adaptive integrators.
+A long integration stores one row per accepted step, which quickly produces arrays too large to plot or keep in memory. The ``sample_times`` argument stores the state only at the requested times, which must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. With an adaptive integrator, the integration is adjusted to land exactly on each of them. With a fixed-step integrator, each time is rounded to the nearest integration step, ``transient_time + n * time_step``, so that the step size stays constant.
 
 The following example integrates the Lorenz system for 400 time units after the transient and stores 4000 equally spaced states, one every 0.1 time units. The figure below draws the full time series :math:`x(t)` in gray and the sampled states as points over the first 20 time units after the transient:
 
@@ -228,7 +228,7 @@ Numerical options
     Integration time discarded before the trajectory is stored. It defaults to zero. The ``total_time`` argument remains the final integration time, so the stored trajectory covers the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`, and its first row lies one step after ``transient_time``.
 
 ``sample_times``
-    Times in :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]` at which the state is stored, instead of at every accepted step. The integration is adjusted to land exactly on each of them, with both fixed-step and adaptive integrators, so every trajectory of an ensemble has the same number of rows.
+    Times in :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]` at which the state is stored, instead of at every accepted step. With an adaptive integrator, the integration is adjusted to land exactly on each of them. With a fixed-step integrator, each time is rounded to the nearest integration step, so that the step size stays constant, and the first column of the result contains the times actually stored. In both cases, every trajectory of an ensemble has the same number of rows.
 
 ``time_step``, ``atol``, and ``rtol``
     The step size of ``rk4`` and the absolute and relative tolerances of ``rk45``. They are set with ``integrator``, not passed to ``trajectory``, and apply to every subsequent calculation of the system.

@@ -182,7 +182,7 @@ On periodic orbits the largest exponent is the zero exponent associated with the
 Sampling the history
 ~~~~~~~~~~~~~~~~~~~~
 
-By default, ``return_history=True`` stores one row per reorthonormalization, which for long integrations with small steps produces large arrays. The ``sample_times`` argument stores the history only at the requested times, which must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. The integration is adjusted to land exactly on each of them, with both fixed-step and adaptive integrators, so the first column of the result reproduces ``sample_times``.
+By default, ``return_history=True`` stores one row per reorthonormalization, which for long integrations with small steps produces large arrays. The ``sample_times`` argument stores the history only at the requested times, which must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. With an adaptive integrator, as in the example below, the integration is adjusted to land exactly on each of them, so the first column of the result reproduces ``sample_times``. With a fixed-step integrator, each time is rounded to the nearest integration step, so that the step size stays constant, and the first column contains the times actually stored.
 
 Logarithmically spaced sample times are convenient for following the convergence of the exponents over several decades of accumulation time. The figure below compares the full history, drawn as lines, with the values stored at the sample times, drawn as points:
 
