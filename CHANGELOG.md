@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Modifying the dictionary returned by `ContinuousDynamicalSystem.integrator_info` changed the integrator metadata of every instance. It now returns a copy.
 - Ensemble methods of `ContinuousDynamicalSystem` with the `rk45` integrator, such as `trajectory` with several initial conditions, failed for vector fields written for a single state.
 - With the `rk45` integrator, a solution that diverges or becomes non-finite made the integration run forever. It now raises a `RuntimeError`.
+- `HamiltonianSystem.lyapunov` with a `qr_interval` that does not divide the number of integration steps left out the last steps from the exponents, so the result depended on `qr_interval`. The exponents are now independent of it.
+- `HamiltonianSystem.lyapunov` ignored `qr_interval` when `num_exponents=1`. It now applies to the largest exponent as well.
+- Modifying the dictionary returned by `HamiltonianSystem.integrator_info` changed the integrator metadata of every instance. It now returns a copy.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
