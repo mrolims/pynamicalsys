@@ -415,11 +415,21 @@ class ContinuousDynamicalSystem:
         return info
 
     @property
-    def integrator_info(self):
-        """Return a dictionary with information about the current integrator."""
+    def integrator_info(self) -> Dict[str, Any]:
+        """
+        Return a dictionary with information about the current integrator.
+
+        Returns
+        -------
+        dict
+            A copy of the integrator metadata: its description, its step
+            function, whether the initial step size is estimated, and whether
+            the step size is adaptive. Modifying the returned dictionary does
+            not affect the integrator.
+        """
         integrator = self.__integrator.lower()
 
-        return self.__AVAILABLE_INTEGRATORS[integrator]
+        return dict(self.__AVAILABLE_INTEGRATORS[integrator])
 
     def integrator(
         self,
