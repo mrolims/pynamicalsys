@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContinuousDynamicalSystem.lyapunov` accepts `qr_interval`, the number of accepted integration steps between successive reorthonormalizations of the deviation vectors (1 by default). Values greater than 1 require a fixed-step integrator.
 - `lyapunov`, `SALI`, `LDI`, and `GALI` of `ContinuousDynamicalSystem` accept `sample_times` with `return_history=True`, which stores the history only at the requested times. The integration lands exactly on each of them, with both fixed-step and adaptive integrators.
 - `ContinuousDynamicalSystem.trajectory` accepts `sample_times`, which stores the state only at the requested times. With an ensemble of initial conditions, every trajectory is then stored at the same times, also with adaptive integrators.
+- `lyapunov`, `SALI`, `LDI`, and `GALI` of `HamiltonianSystem` accept `return_last_state`. With `return_last_state=True`, they also return the coordinates and momenta at the time the integration stopped, as `(result, q_last, p_last)`.
+- `lyapunov`, `SALI`, `LDI`, and `GALI` of `HamiltonianSystem` accept `sample_times` with `return_history=True`, which stores the history only at the requested times. Each time is rounded to the nearest integration step, so the step size of the symplectic integrators stays constant.
 
 ### Changed
 

@@ -130,7 +130,7 @@ def validate_sample_times(
         sample_times_arr > total_time
     ):
         raise ValueError(
-            "sample_times must be in the interval (transient_time, total_time]"
+            f"sample_times must be in the interval ({transient_time}, {total_time}]"
         )
 
     return np.unique(sample_times_arr)

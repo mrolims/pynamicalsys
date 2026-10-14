@@ -93,6 +93,64 @@ When only the sign of the largest exponent is needed to classify an orbit, set `
 
 The chaotic orbit gives a largest exponent of about :math:`0.05`, while the regular orbit gives a value near zero that continues to decrease as :math:`1/t`. A positive limit marks sensitive dependence on initial conditions; a value consistent with zero marks regular motion. Small positive values should be checked against a longer integration time before an orbit is called chaotic, because a slowly diffusing sticky orbit can imitate a regular one over short intervals.
 
+Sampling the history
+~~~~~~~~~~~~~~~~~~~~
+
+With ``return_history=True``, the history stores one row per reorthonormalization, which for long integrations produces large arrays. The ``sample_times`` argument stores the history only at the requested times, which must lie in the interval :math:`(0, t_{\mathrm{total}}]`. The symplectic integrators require a constant step size, so each requested time is rounded to the nearest integration step, and the first column of the result contains the times actually stored.
+
+Logarithmically spaced sample times follow the largest exponent over several decades of time. The figure below compares the full histories of the chaotic and regular orbits, drawn as lines, with the values stored at the sample times, drawn as points. On logarithmic axes, the regular orbit shows the :math:`\ln t / t` decay of a zero exponent. The chaotic orbit follows the same decay up to :math:`t\approx 400`, while it is trapped near a regular region, and then settles at a positive value:
+
+.. code-block:: python
+
+    sample_times = np.geomspace(10.0, total_time, 75)
+
+    histories = {}
+    for label, q0, p0 in [
+        ("Chaotic", q_chaotic, p_chaotic),
+        ("Regular", q_regular, p_regular),
+    ]:
+        full = system.lyapunov(q0, p0, total_time, num_exponents=1, return_history=True)
+        sampled = system.lyapunov(
+            q0,
+            p0,
+            total_time,
+            num_exponents=1,
+            return_history=True,
+            sample_times=sample_times,
+        )
+        histories[label] = (full, sampled)
+
+    histories["Chaotic"][0].shape, histories["Chaotic"][1].shape
+
+.. code-block:: text
+
+    ((1000000, 2), (75, 2))
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(10, 4))
+    for (label, (full, sampled)), color in zip(histories.items(), ["crimson", "navy"]):
+        ax.plot(full[:, 0], full[:, 1], color=color, lw=1, label=label)
+        ax.plot(sampled[:, 0], sampled[:, 1], "o", color=color, markersize=4)
+    ax.plot([], [], "o", color="gray", markersize=4, label="Sampled")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Time $t$")
+    ax.set_ylabel(r"$\lambda_1$")
+    ax.set_xlim(10.0, total_time)
+    ax.set_ylim(5e-4, 0.15)
+    ax.legend(loc="lower left", frameon=False)
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/henon_heiles_lyapunov_sampled.png
+    :align: center
+    :width: 100%
+
+    Largest Lyapunov exponent of the chaotic and regular Hénon-Heiles orbits at :math:`E=1/8`. Lines show the full histories and points show the values stored at 75 logarithmically spaced sample times.
+
 Numerical options
 ~~~~~~~~~~~~~~~~~
 
@@ -110,6 +168,12 @@ Numerical options
 
 ``seed``
     Initializes the deviation vectors. For a converged calculation the estimated exponents should not depend materially on this initial orientation.
+
+``return_last_state``
+    With ``return_last_state=True``, the method also returns the coordinates and momenta at the final integration time, as ``(result, q_last, p_last)``. A subsequent calculation can then continue the orbit from where the previous one ended.
+
+``sample_times``
+    With ``return_history=True``, stores the history only at the requested times in :math:`(0, t_{\mathrm{total}}]` instead of at every reorthonormalization. Each time is rounded to the nearest integration step, so that the symplectic integrator keeps a constant step size, and the first column of the history contains the times actually stored.
 
 References
 ~~~~~~~~~~

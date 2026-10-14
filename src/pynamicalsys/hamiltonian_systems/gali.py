@@ -40,7 +40,8 @@ def gali_k_sep(
     threshold: np.float64,
     method: str,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+    sample_steps: NDArray[np.int64] | None = None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Generalized Alignment Index (GALI) for a separable Hamiltonian
     system, H(q, p) = T(p) + V(q), integrated with an explicit symplectic
@@ -73,6 +74,10 @@ def gali_k_sep(
         Number of deviation vectors used in the computation.
     return_history : bool
         If True, return the time evolution of GALI.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every integration step.
     seed : int
         Random seed used to initialize the deviation vectors.
     integrator_traj_tan : symplectic_tangent_step_t
@@ -104,7 +109,10 @@ def gali_k_sep(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
           whose first column is time and whose second column is `GALI_k`.
         - If `return_history=False`, returns an array of shape `(1, 2)`
@@ -124,7 +132,18 @@ def gali_k_sep(
     time = np.float64(0.0)
     count = 0
 
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
@@ -155,7 +174,7 @@ def gali_k_sep(
         else:
             raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
-        if return_history:
+        if return_history and (sample_steps is None or at_sample):
             history[count, 0] = time
             history[count, 1] = gali_val
             count += 1
@@ -164,12 +183,12 @@ def gali_k_sep(
             break
 
     if return_history:
-        return history[:count]
+        return history[:count], q.copy(), p.copy()
 
     result = np.zeros((1, 2), dtype=np.float64)
     result[0, 0] = time
     result[0, 1] = gali_val
-    return result
+    return result, q.copy(), p.copy()
 
 
 @njit
@@ -189,7 +208,8 @@ def gali_k_imp(
     tol: np.float64,
     max_iter: int,
     integrator_traj_tan: symplectic_tangent_step_t,
-) -> NDArray[np.float64]:
+    sample_steps: NDArray[np.int64] | None = None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Generalized Alignment Index (GALI) for a general (possibly
     non-separable) Hamiltonian system H(q, p), integrated with the implicit
@@ -218,6 +238,10 @@ def gali_k_imp(
         Number of deviation vectors used in the computation.
     return_history : bool
         If True, return the time evolution of GALI.
+    sample_steps : NDArray[np.int64] | None, optional
+        Sorted integration step indices, between 1 and the number of steps,
+        at which the history is stored when `return_history=True`. If None,
+        the history is stored at every integration step.
     seed : int
         Random seed used to initialize the deviation vectors.
     threshold : np.float64
@@ -253,7 +277,10 @@ def gali_k_imp(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+        The result and the final coordinates and momenta `(q, p)`. The
+        result is:
+
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
           whose first column is time and whose second column is `GALI_k`.
         - If `return_history=False`, returns an array of shape `(1, 2)`
@@ -273,7 +300,18 @@ def gali_k_imp(
     time = np.float64(0.0)
     count = 0
 
+    num_samples = len(sample_steps) if sample_steps is not None else 0
+    sample_index = 0
     for i in range(num_steps):
+        at_sample = False
+        if (
+            sample_steps is not None
+            and sample_index < num_samples
+            and i + 1 == sample_steps[sample_index]
+        ):
+            at_sample = True
+            sample_index += 1
+
         time = np.float64(i + 1) * time_step
 
         q, p, dv = integrator_traj_tan(
@@ -296,7 +334,7 @@ def gali_k_imp(
         else:
             raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
-        if return_history:
+        if return_history and (sample_steps is None or at_sample):
             history[count, 0] = time
             history[count, 1] = gali_val
             count += 1
@@ -305,9 +343,9 @@ def gali_k_imp(
             break
 
     if return_history:
-        return history[:count]
+        return history[:count], q.copy(), p.copy()
 
     result = np.zeros((1, 2), dtype=np.float64)
     result[0, 0] = time
     result[0, 1] = gali_val
-    return result
+    return result, q.copy(), p.copy()
