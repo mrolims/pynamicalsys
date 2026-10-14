@@ -704,37 +704,45 @@ class ContinuousDynamicalSystem:
             a 1D state vector of length equal to the system dimension or a 2D array
             whose rows are valid initial conditions.
         total_time : numeric_t
-            Total integration time.
+            Final integration time, measured from the initial condition, so it
+            includes `transient_time`.
         parameters : numeric_like_t | None, optional
             Parameters of the system. If `None`, the parameters stored in the
             instance are used.
         transient_time : numeric_t | None, optional
             Initial integration time discarded before storing the trajectory.
         sample_times : array-like | None, optional
-            Times in `(transient_time, total_time]` at which the state is
-            stored. With an adaptive integrator, the integration lands exactly
-            on each of them. With a fixed-step integrator, each time is rounded
-            to the nearest time `transient_time + n * time_step`, with
-            `n >= 1`, so that the step size stays constant, and a time rounded
-            beyond `total_time` becomes `total_time`. The first column of the
-            result contains the times actually stored, and every trajectory of
-            an ensemble has the same number of stored points. If `None`, the
-            state is stored at every accepted integration step.
+            Times at which the state is stored, measured from the initial
+            condition like `total_time`. They must lie in
+            `(transient_time, total_time]`, and they are sorted with duplicates
+            removed. Only these times are stored, and the integration stops at
+            the last of them. With an adaptive integrator, the integration
+            lands exactly on each time. With a fixed-step integrator, each time
+            is rounded to the nearest time `transient_time + n * time_step`,
+            with `n >= 1`, so that the step size stays constant. A time rounded
+            beyond `total_time` becomes `total_time`, and duplicates created by
+            the rounding are removed. If `None`, the state is stored after every
+            accepted integration step.
 
         Returns
         -------
         NDArray[np.float64] | list[NDArray[np.float64]]
-            The computed trajectory.
+            The stored states. Each row contains the time followed by the state
+            coordinates. The initial state, at time zero or at the end of the
+            transient, is not stored.
 
             - If `u` is one initial condition, returns an array of shape
-              `(num_steps, neq + 1)`, where the first column contains time and the
-              remaining columns contain the state coordinates.
-            - If `u` is an ensemble of initial conditions and all trajectories have the
-              same number of stored time steps, the result may be represented as arrays
-              with common shape `(num_ic, num_steps, neq + 1)`.
-            - If `u` is an ensemble of initial conditions and the trajectories have
-              different numbers of stored time steps, returns a list of arrays, where
-              each element has shape `(num_steps_i, neq + 1)`.
+              `(num_samples, neq + 1)`. Without `sample_times`, `num_samples`
+              is the number of accepted steps after the transient. With
+              `sample_times`, it is the number of times that remain after
+              sorting, removing duplicates and, with a fixed-step integrator,
+              rounding, and the first column contains these times.
+            - If `u` is an ensemble of initial conditions, returns a list with
+              one such array per initial condition. With an adaptive integrator
+              and no `sample_times`, the arrays can have different numbers of
+              rows. Otherwise, all of them have the same number of rows, and
+              `np.stack(result)` gives an array of shape
+              `(num_ic, num_samples, neq + 1)`.
 
         Raises
         ------
@@ -1405,7 +1413,8 @@ class ContinuousDynamicalSystem:
             Initial condition of the system. It must define a 1D state vector whose
             length matches the system dimension.
         total_time : numeric_t
-            Total integration time.
+            Final integration time, measured from the initial condition, so it
+            includes `transient_time`.
         parameters : numeric_like_t | None, optional
             Parameters of the system. If `None`, the parameters stored in the
             instance are used.
@@ -1439,21 +1448,28 @@ class ContinuousDynamicalSystem:
             integrator.
 
         sample_times : array-like | None, optional
-            Times in `(transient_time, total_time]` at which the history is
-            stored. With an adaptive integrator, the integration lands exactly
-            on each of them. With a fixed-step integrator, each time is rounded
-            to the nearest time `transient_time + n * time_step`, with
-            `n >= 1`, so that the step size stays constant, and a time rounded
-            beyond `total_time` becomes `total_time`. The first column of the
-            history contains the times actually stored. Requires
-            `return_history=True`. If `None`, the history is stored at every
+            Times at which the history is stored, measured from the initial
+            condition like `total_time`. Used only with `return_history=True`.
+            They must lie in `(transient_time, total_time]`, and they are
+            sorted with duplicates removed. With an adaptive integrator, the
+            integration lands exactly on each time. With a fixed-step
+            integrator, each time is rounded to the nearest time
+            `transient_time + n * time_step`, with `n >= 1`, so that the step
+            size stays constant. A time rounded beyond `total_time` becomes
+            `total_time`, and duplicates created by the rounding are removed.
+            If `None`, the history is stored at every
             reorthonormalization.
+
         Returns
         -------
         np.float64 | NDArray[np.float64]
-            - If `return_history=True`, returns a 2D array whose first column
-              contains the sampled times and whose remaining columns contain
-              the Lyapunov exponents at those times.
+            - If `return_history=True`, returns a 2D array of shape
+              `(num_samples, num_exponents + 1)` whose first column contains
+              the time and whose remaining columns contain the Lyapunov
+              exponents at that time. Without `sample_times`, there is one row
+              per reorthonormalization after the transient. With
+              `sample_times`, there is one row per sample time, and the first
+              column contains the times actually stored.
             - If `return_history=False` and `num_exponents == 1`, returns the
               largest Lyapunov exponent as a scalar.
             - If `return_history=False` and `num_exponents > 1`, returns a 1D
@@ -1878,7 +1894,8 @@ class ContinuousDynamicalSystem:
             Initial condition of the system. It must define a 1D state vector whose
             length matches the system dimension.
         total_time : numeric_t
-            Total integration time.
+            Final integration time, measured from the initial condition, so it
+            includes `transient_time`.
         parameters : numeric_like_t | None, optional
             Parameters of the system. If `None`, the parameters stored in the
             instance are used.
@@ -1899,21 +1916,31 @@ class ContinuousDynamicalSystem:
             integration stopped.
 
         sample_times : array-like | None, optional
-            Times in `(transient_time, total_time]` at which the history is
-            stored. With an adaptive integrator, the integration lands exactly
-            on each of them. With a fixed-step integrator, each time is rounded
-            to the nearest time `transient_time + n * time_step`, with
-            `n >= 1`, so that the step size stays constant, and a time rounded
-            beyond `total_time` becomes `total_time`. The first column of the
-            history contains the times actually stored. Requires
-            `return_history=True`. If `None`, the history is stored at every
+            Times at which the history is stored, measured from the initial
+            condition like `total_time`. Used only with `return_history=True`.
+            They must lie in `(transient_time, total_time]`, and they are
+            sorted with duplicates removed. With an adaptive integrator, the
+            integration lands exactly on each time. With a fixed-step
+            integrator, each time is rounded to the nearest time
+            `transient_time + n * time_step`, with `n >= 1`, so that the step
+            size stays constant. A time rounded beyond `total_time` becomes
+            `total_time`, and duplicates created by the rounding are removed.
+            If `None`, the history is stored at every
             accepted integration step.
+
         Returns
         -------
         NDArray[np.float64]
             - If `return_history=False`, returns an array containing the final time
               and the final SALI value.
-            - If `return_history=True`, returns the time history of SALI.
+            - If `return_history=True`, returns a 2D array of shape
+              `(num_samples, 2)` whose columns contain the time and SALI at
+              that time. Without `sample_times`, there is one row per accepted
+              integration step after the transient. With `sample_times`, there
+              is one row per sample time, and the first column contains the
+              times actually stored. If SALI falls below `threshold`, the
+              integration stops, and the history contains only the rows stored
+              until then.
 
             - If `return_last_state=True`, returns a tuple `(result, last_state)`,
               where `result` is as described above and `last_state` is the state
@@ -2054,7 +2081,8 @@ class ContinuousDynamicalSystem:
             Initial condition of the system. It must define a 1D state vector whose
             length matches the system dimension.
         total_time : numeric_t
-            Total integration time.
+            Final integration time, measured from the initial condition, so it
+            includes `transient_time`.
         k : int_t
             Number of deviation vectors used in the computation.
         parameters : numeric_like_t | None, optional
@@ -2077,21 +2105,31 @@ class ContinuousDynamicalSystem:
             integration stopped.
 
         sample_times : array-like | None, optional
-            Times in `(transient_time, total_time]` at which the history is
-            stored. With an adaptive integrator, the integration lands exactly
-            on each of them. With a fixed-step integrator, each time is rounded
-            to the nearest time `transient_time + n * time_step`, with
-            `n >= 1`, so that the step size stays constant, and a time rounded
-            beyond `total_time` becomes `total_time`. The first column of the
-            history contains the times actually stored. Requires
-            `return_history=True`. If `None`, the history is stored at every
+            Times at which the history is stored, measured from the initial
+            condition like `total_time`. Used only with `return_history=True`.
+            They must lie in `(transient_time, total_time]`, and they are
+            sorted with duplicates removed. With an adaptive integrator, the
+            integration lands exactly on each time. With a fixed-step
+            integrator, each time is rounded to the nearest time
+            `transient_time + n * time_step`, with `n >= 1`, so that the step
+            size stays constant. A time rounded beyond `total_time` becomes
+            `total_time`, and duplicates created by the rounding are removed.
+            If `None`, the history is stored at every
             accepted integration step.
+
         Returns
         -------
         NDArray[np.float64]
             - If `return_history=False`, returns an array containing the final time
               and the final LDI value.
-            - If `return_history=True`, returns the time history of LDI.
+            - If `return_history=True`, returns a 2D array of shape
+              `(num_samples, 2)` whose columns contain the time and LDI at
+              that time. Without `sample_times`, there is one row per accepted
+              integration step after the transient. With `sample_times`, there
+              is one row per sample time, and the first column contains the
+              times actually stored. If LDI falls below `threshold`, the
+              integration stops, and the history contains only the rows stored
+              until then.
 
             - If `return_last_state=True`, returns a tuple `(result, last_state)`,
               where `result` is as described above and `last_state` is the state
@@ -2227,7 +2265,8 @@ class ContinuousDynamicalSystem:
             Initial condition of the system. It must define a 1D state vector whose
             length matches the system dimension.
         total_time : numeric_t
-            Total integration time.
+            Final integration time, measured from the initial condition, so it
+            includes `transient_time`.
         k : int_t
             Number of deviation vectors used in the computation.
         parameters : numeric_like_t | None, optional
@@ -2255,21 +2294,31 @@ class ContinuousDynamicalSystem:
             integration stopped.
 
         sample_times : array-like | None, optional
-            Times in `(transient_time, total_time]` at which the history is
-            stored. With an adaptive integrator, the integration lands exactly
-            on each of them. With a fixed-step integrator, each time is rounded
-            to the nearest time `transient_time + n * time_step`, with
-            `n >= 1`, so that the step size stays constant, and a time rounded
-            beyond `total_time` becomes `total_time`. The first column of the
-            history contains the times actually stored. Requires
-            `return_history=True`. If `None`, the history is stored at every
+            Times at which the history is stored, measured from the initial
+            condition like `total_time`. Used only with `return_history=True`.
+            They must lie in `(transient_time, total_time]`, and they are
+            sorted with duplicates removed. With an adaptive integrator, the
+            integration lands exactly on each time. With a fixed-step
+            integrator, each time is rounded to the nearest time
+            `transient_time + n * time_step`, with `n >= 1`, so that the step
+            size stays constant. A time rounded beyond `total_time` becomes
+            `total_time`, and duplicates created by the rounding are removed.
+            If `None`, the history is stored at every
             accepted integration step.
+
         Returns
         -------
         NDArray[np.float64]
             - If `return_history=False`, returns an array containing the final time
               and the final GALI value.
-            - If `return_history=True`, returns the time history of GALI.
+            - If `return_history=True`, returns a 2D array of shape
+              `(num_samples, 2)` whose columns contain the time and GALI at
+              that time. Without `sample_times`, there is one row per accepted
+              integration step after the transient. With `sample_times`, there
+              is one row per sample time, and the first column contains the
+              times actually stored. If GALI falls below `threshold`, the
+              integration stops, and the history contains only the rows stored
+              until then.
 
             - If `return_last_state=True`, returns a tuple `(result, last_state)`,
               where `result` is as described above and `last_state` is the state

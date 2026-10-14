@@ -66,8 +66,9 @@ def generate_trajectory(
         `(u_next, time_next, time_step_next, accept)`.
     sample_times : NDArray[np.float64] | None, optional
         Sorted times in `(transient_time, total_time]` at which the state is
-        stored. The integration lands exactly on each of them. If None, the
-        state is stored at every accepted integration step.
+        stored. The integration lands exactly on each of them and stops at the
+        last one. If None, the state is stored at every accepted integration
+        step.
 
     Returns
     -------
@@ -179,15 +180,15 @@ def ensemble_trajectories(
         `(u_next, time_next, time_step_next, accept)`.
     sample_times : NDArray[np.float64] | None, optional
         Sorted times in `(transient_time, total_time]` at which the state is
-        stored. The integration lands exactly on each of them. If None, the
-        state is stored at every accepted integration step.
+        stored. The integration lands exactly on each of them and stops at the
+        last one. If None, the state is stored at every accepted integration
+        step.
 
     Returns
     -------
-    NDArray[np.float64]
-        Array containing one trajectory per initial condition. The output has
-        shape `(num_ic, n_samples, neq + 1)` if all trajectories have the same
-        number of stored points.
+    list[NDArray[np.float64]]
+        List with one trajectory per initial condition, each of shape
+        `(n_samples_i, neq + 1)`, as returned by `generate_trajectory`.
     """
 
     def run_one(
