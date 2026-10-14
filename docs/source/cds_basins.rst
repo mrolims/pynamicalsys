@@ -105,6 +105,21 @@ Using a Poincaré section
 
 For an autonomous flow, set ``map_type="PS"`` and provide ``section_index``, ``section_value``, and ``crossing`` instead of ``sampling_time``. The section coordinate must exist in the selected system, and the ensemble must contain one complete state vector per initial condition. As with the stroboscopic calculation, inspect the resulting clusters and test the sensitivity to ``eps``, ``min_samples``, transient duration, and the number of recorded intersections before interpreting a basin boundary.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``transient_time``
+    Integration time discarded before the reduced map is recorded. It should be long enough for every trajectory of the grid to approach its attractor, since points recorded during the approach shift the centroid used for the classification.
+
+``num_intersections``
+    Number of stroboscopic samples or section crossings recorded per trajectory. The centroid of these points, excluding the time column, is the quantity that is clustered. For periodic attractors a few points suffice; attractors with more structure need enough points for the centroid to converge. Memory use grows with ``num_intersections`` times the number of initial conditions.
+
+``eps`` and ``min_samples``
+    The DBSCAN parameters. ``eps``, by default ``0.05``, is the largest distance between two centroids of the same cluster and should be smaller than the distance between the centroids of different attractors. ``min_samples``, by default ``1``, is the number of nearby centroids needed to form a cluster. With ``min_samples=1``, no centroid is labeled as noise.
+
+``time_step``, ``atol``, and ``rtol``
+    Set with ``integrator``. The reduced maps are interpolated between integration steps, as described in :doc:`cds_reduced_maps`, so their accuracy depends on the step size.
+
 References
 ~~~~~~~~~~
 
