@@ -264,3 +264,24 @@ There are 500,000 complete windows, so ``finite_time_exponents`` has shape ``(50
 The distribution is multimodal. For these parameters, its large high-exponent mode is associated with motion in the bulk of the chaotic sea, while the smaller low-exponent mode is associated with sticky intervals near stability islands. If a transient is supplied, the number of complete windows is ``(total_time - transient_time) // finite_time``.
 
 By default, logarithms use base :math:`e`, so the exponents are measured per iteration in natural-logarithm units. Use ``log_base=2`` or ``log_base=10`` when another logarithm base is required. Set ``return_last_state=True`` in ``lyapunov`` when the state reached after the calculation is also needed.
+
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``num_exponents``
+    The number of exponents to compute, between one and the dimension of the map. If omitted, the full spectrum is returned. With ``num_exponents=1``, ``lyapunov`` returns a scalar.
+
+``method``
+    ``"QR"`` (default) uses the package's modified Gram-Schmidt decomposition, ``"QR_HH"`` uses ``numpy.linalg.qr`` with Householder reflections, and ``"ER"`` uses the Eckmann-Ruelle algorithm, available only for two-dimensional maps. In ``finite_time_lyapunov``, the default ``"QR"`` is replaced by ``"ER"`` when the map is two-dimensional.
+
+``transient_time``
+    Number of iterations discarded before the averages start. It defaults to zero in both methods. For ``finite_time_lyapunov``, the number of complete windows is ``(total_time - transient_time) // finite_time``, and iterations that do not fill a window are discarded.
+
+``finite_time``
+    The window length of ``finite_time_lyapunov``, in iterations. Short windows resolve the local variability of the exponents, and long windows approach the asymptotic values.
+
+``log_base``
+    The default is :math:`e`, so the exponents use natural logarithms. Set ``log_base=2`` to express the rates in bits per iteration. Changing the base rescales the values but not their signs.
+
+``sample_times`` and ``return_last_state``
+    With ``return_history=True``, ``sample_times`` stores the history of ``lyapunov`` only at the requested iterations, counted after the transient, so they must lie between 1 and ``total_time - transient_time``. ``return_last_state=True`` also returns the state at the end of the calculation, which can start a subsequent calculation, for example in a parameter continuation.
