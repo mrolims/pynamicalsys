@@ -209,11 +209,12 @@ def step_to(
     """
     Advance the system by one accepted step without passing `target_time`.
 
-    If the current step would reach or pass `target_time`, it is shortened so
-    that the step ends exactly at `target_time`. After landing there, the step
-    size is restored to the value it had before it was shortened, unless the
-    integrator suggests a larger one, so that a target does not reduce the
-    step size of the following steps.
+    If the current step would reach or pass `target_time`, or would end within
+    round-off of it, its size is adjusted so that the step ends exactly at
+    `target_time`. After landing there, the step size is restored to the value
+    it had before it was shortened, unless the integrator suggests a larger
+    one, so that a target does not reduce the step size of the following
+    steps.
 
     Parameters
     ----------
@@ -262,7 +263,9 @@ def step_to(
     """
     shortened = False
     requested_time_step = time_step
-    if time + time_step >= target_time:
+    # A step that ends within round-off of `target_time` is also shortened,
+    # so that accumulated round-off does not leave a tiny final step.
+    if time + time_step * (1.0 + 1e-6) >= target_time:
         time_step = target_time - time
         shortened = True
 
