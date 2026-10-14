@@ -220,3 +220,15 @@ Plotting :math:`x(t)` for each initial state shows how initially close solutions
     Time evolution and phase-space projections of five Lorenz trajectories whose initial states differ only in their :math:`x` coordinate.
 
 The same ``parameters`` argument described in :doc:`cds_creating_ds` can be passed directly to ``trajectory`` to override the stored parameter values for one call.
+
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``transient_time``
+    Integration time discarded before the trajectory is stored. It defaults to zero. The ``total_time`` argument remains the final integration time, so the stored trajectory covers the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`, and its first row lies one step after ``transient_time``.
+
+``sample_times``
+    Times in :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]` at which the state is stored, instead of at every accepted step. The integration is adjusted to land exactly on each of them, with both fixed-step and adaptive integrators, so every trajectory of an ensemble has the same number of rows.
+
+``time_step``, ``atol``, and ``rtol``
+    The step size of ``rk4`` and the absolute and relative tolerances of ``rk45``. They are set with ``integrator``, not passed to ``trajectory``, and apply to every subsequent calculation of the system.
