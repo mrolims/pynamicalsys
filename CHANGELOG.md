@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The observable passed to `dig` is now a function of a **single state** that returns a number, for example `lambda u: np.cos(2 * np.pi * u[0])`. It is compiled with Numba when possible. The default observable, `cos(2 pi u[0] / period)`, takes the period of the angle `u[0]` from the new `period` argument (1 by default), so `period=2 * np.pi` gives `cos(u[0])`. The same applies to `classify_orbit`.
 - `dig` now interprets `total_time` as the length of each of the two windows that are compared, so the orbit is iterated `2 * total_time` times, as in `rotation_number` and `classify_orbit`. The same call therefore uses twice as many iterations as before and usually returns a higher value; pass half the former value to reproduce previous results. `transient_time` no longer needs to be smaller than `total_time`.
 - Python 3.14 and 3.15 are now officially supported. On Python 3.15, pip installs Numba 0.68 or newer, the first release with support for it.
+- `evolve_system`, `trajectory`, `poincare_section`, `stroboscopic_map`, `maxima_map`, `lyapunov`, `SALI`, `LDI`, and `GALI` of `ContinuousDynamicalSystem` emit a `RuntimeWarning` when the result contains infinite or NaN values, which usually means that the solution diverged. The result is still returned.
 
 ### Deprecated
 
@@ -46,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContinuousDynamicalSystem.integrator` accepted `time_step=0` and `atol=0`, which made the integration run forever. `time_step` and `atol` must now be positive.
 - Modifying the dictionary returned by `ContinuousDynamicalSystem.integrator_info` changed the integrator metadata of every instance. It now returns a copy.
 - Ensemble methods of `ContinuousDynamicalSystem` with the `rk45` integrator, such as `trajectory` with several initial conditions, failed for vector fields written for a single state.
+- With the `rk45` integrator, a solution that diverges or becomes non-finite made the integration run forever. It now raises a `RuntimeError`.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
