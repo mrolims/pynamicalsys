@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python 3.14 and 3.15 are now officially supported. On Python 3.15, pip installs Numba 0.68 or newer, the first release with support for it.
 - `evolve_system`, `trajectory`, `poincare_section`, `stroboscopic_map`, `maxima_map`, `lyapunov`, `SALI`, `LDI`, and `GALI` of `ContinuousDynamicalSystem` emit a `RuntimeWarning` when the result contains infinite or NaN values, which usually means that the solution diverged. The result is still returned.
 - The step-size control of the `rk45` integrator now uses the exponent appropriate to the Dormand-Prince 5(4) pair, so results computed with `rk45` may differ slightly from those of earlier versions.
+- `lyapunov`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem` emit a `UserWarning` when `sample_times` is passed without `return_history=True`, where it has no effect. It was previously ignored without notice. The same applies to `ContinuousDynamicalSystem` and `HamiltonianSystem`.
 
 ### Deprecated
 

@@ -1465,8 +1465,8 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
-            - If `sample_times` is passed without `return_history=True`, or
-              contains values outside `(transient_time, total_time]`.
+            - If `sample_times` contains values outside
+              `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -1489,6 +1489,9 @@ class ContinuousDynamicalSystem:
         RuntimeWarning
             If the result contains infinite or NaN values, which usually means
             that the solution diverged.
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
 
         Notes
         -----
@@ -1514,10 +1517,16 @@ class ContinuousDynamicalSystem:
         sample_times_arr = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = self.__validate_sample_times(
-                sample_times, transient_time, total_time
-            )
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_times_arr = self.__validate_sample_times(
+                    sample_times, transient_time, total_time
+                )
 
         time_step = self.__get_initial_time_step(u, parameters)
 
@@ -1912,8 +1921,8 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
-            - If `sample_times` is passed without `return_history=True`, or
-              contains values outside `(transient_time, total_time]`.
+            - If `sample_times` contains values outside
+              `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -1931,6 +1940,9 @@ class ContinuousDynamicalSystem:
         RuntimeWarning
             If the result contains infinite or NaN values, which usually means
             that the solution diverged.
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
 
         Examples
         --------
@@ -1965,10 +1977,16 @@ class ContinuousDynamicalSystem:
         sample_times_arr = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = self.__validate_sample_times(
-                sample_times, transient_time, total_time
-            )
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_times_arr = self.__validate_sample_times(
+                    sample_times, transient_time, total_time
+                )
 
         validate_non_negative(threshold, "threshold", Real)
         validate_non_negative(seed, "seed", Integral)
@@ -2081,8 +2099,8 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
-            - If `sample_times` is passed without `return_history=True`, or
-              contains values outside `(transient_time, total_time]`.
+            - If `sample_times` contains values outside
+              `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -2102,6 +2120,9 @@ class ContinuousDynamicalSystem:
         RuntimeWarning
             If the result contains infinite or NaN values, which usually means
             that the solution diverged.
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
         """
         if self.__jacobian is None:
             raise ValueError("Jacobian function is required to compute LDI")
@@ -2120,10 +2141,16 @@ class ContinuousDynamicalSystem:
         sample_times_arr = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = self.__validate_sample_times(
-                sample_times, transient_time, total_time
-            )
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_times_arr = self.__validate_sample_times(
+                    sample_times, transient_time, total_time
+                )
 
         validate_positive(k, "k", Integral)
         if k < 2:
@@ -2250,8 +2277,8 @@ class ContinuousDynamicalSystem:
         Raises
         ------
         ValueError
-            - If `sample_times` is passed without `return_history=True`, or
-              contains values outside `(transient_time, total_time]`.
+            - If `sample_times` contains values outside
+              `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -2273,6 +2300,9 @@ class ContinuousDynamicalSystem:
         RuntimeWarning
             If the result contains infinite or NaN values, which usually means
             that the solution diverged.
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
         """
         if self.__jacobian is None:
             raise ValueError("Jacobian function is required to compute GALI")
@@ -2291,10 +2321,16 @@ class ContinuousDynamicalSystem:
         sample_times_arr = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_times_arr = self.__validate_sample_times(
-                sample_times, transient_time, total_time
-            )
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_times_arr = self.__validate_sample_times(
+                    sample_times, transient_time, total_time
+                )
 
         validate_positive(k, "k", Integral)
         if k < 2:

@@ -3051,6 +3051,12 @@ class DiscreteDynamicalSystem:
             - If sample_times cannot be converted to a 1D array of integers.
             - If `method` is not a string.
 
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
+
         Notes
         -----
         - Sample times are automatically sorted and deduplicated
@@ -3103,6 +3109,14 @@ class DiscreteDynamicalSystem:
             raise ValueError("method ER is only valid for 2 dimensional systems.")
 
         sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None and not return_history:
+            warnings.warn(
+                "sample_times has no effect without return_history=True "
+                "and is ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         if return_history:
             if sample_times is not None:
                 sample_times_arr = validate_sample_times(sample_times, total_time)
@@ -3879,6 +3893,12 @@ class DiscreteDynamicalSystem:
             - If `tol` is not numeric.
             - If `seed` is not an integer.
 
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
+
         Notes
         -----
         SALI tends to zero for chaotic trajectories and remains bounded away from
@@ -3919,6 +3939,14 @@ class DiscreteDynamicalSystem:
         validate_transient_time(transient_time, total_time, Integral)
 
         sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None and not return_history:
+            warnings.warn(
+                "sample_times has no effect without return_history=True "
+                "and is ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         if return_history:
             if sample_times is not None:
                 sample_times_arr = validate_sample_times(sample_times, total_time)
@@ -4041,6 +4069,12 @@ class DiscreteDynamicalSystem:
             - If `seed` is not an integer.
             - If `k` is not an integer.
 
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
+
         Notes
         -----
         - A set of `k` initially orthonormal deviation vectors is evolved with the
@@ -4087,6 +4121,14 @@ class DiscreteDynamicalSystem:
             raise ValueError(f"k must be in range [2, {self.__system_dimension}]")
 
         sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None and not return_history:
+            warnings.warn(
+                "sample_times has no effect without return_history=True "
+                "and is ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         if return_history:
             if sample_times is not None:
                 sample_times_arr = validate_sample_times(sample_times, total_time)
@@ -4234,6 +4276,12 @@ class DiscreteDynamicalSystem:
             - If `k` is not an integer.
             - If `method` is not a string.
 
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
+
         Notes
         -----
         GALI_k can be written equivalently as
@@ -4297,6 +4345,14 @@ class DiscreteDynamicalSystem:
             raise ValueError(f"k must be in range [2, {self.__system_dimension}]")
 
         sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None and not return_history:
+            warnings.warn(
+                "sample_times has no effect without return_history=True "
+                "and is ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         if return_history:
             if sample_times is not None:
                 sample_times_arr = validate_sample_times(sample_times, total_time)

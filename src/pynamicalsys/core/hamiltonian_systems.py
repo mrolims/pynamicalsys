@@ -19,6 +19,7 @@ from numbers import Integral, Real
 from typing import Any, Dict, List, Sequence, Union
 
 import os
+import warnings
 import numpy as np
 from numpy.typing import NDArray
 
@@ -998,8 +999,7 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
-            If `sample_times` is passed without `return_history=True`, or
-            contains values outside `(0, total_time]`.
+            If `sample_times` contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
@@ -1012,6 +1012,12 @@ class HamiltonianSystem:
             If `method` is not a string.
             If `seed`, `qr_interval`, or `num_exponents` are not integers.
             If `total_time` or `log_base` is not a valid real number.
+
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
         """
         if self.__integrator in ["vv2", "svy4"] and (
             self.__hess_T is None or self.__hess_V is None
@@ -1066,8 +1072,14 @@ class HamiltonianSystem:
         sample_steps = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_steps = self.__sample_times_to_steps(sample_times, total_time)
 
         if self.__integrator in ["vv2", "svy4"]:
             if num_exponents > 1:
@@ -1685,8 +1697,7 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
-            If `sample_times` is passed without `return_history=True`, or
-            contains values outside `(0, total_time]`.
+            If `sample_times` contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
@@ -1697,6 +1708,12 @@ class HamiltonianSystem:
             If `return_history` is not boolean.
             If `seed` is not an integer.
             If `total_time` or `threshold` is not a valid real number.
+
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
         """
         if self.__hess_T is None or self.__hess_V is None:
             raise ValueError("Hessian functions are required to compute SALI")
@@ -1729,8 +1746,14 @@ class HamiltonianSystem:
         sample_steps = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_steps = self.__sample_times_to_steps(sample_times, total_time)
 
         if self.__integrator in ["vv2", "svy4"]:
             result, q_last, p_last = sali_sep(
@@ -1846,8 +1869,7 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
-            If `sample_times` is passed without `return_history=True`, or
-            contains values outside `(0, total_time]`.
+            If `sample_times` contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
@@ -1859,6 +1881,12 @@ class HamiltonianSystem:
             If `return_history` is not boolean.
             If `k` or `seed` is not an integer.
             If `total_time` or `threshold` is not a valid real number.
+
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
         """
         if self.__hess_T is None or self.__hess_V is None:
             raise ValueError("Hessian functions are required to compute LDI")
@@ -1895,8 +1923,14 @@ class HamiltonianSystem:
         sample_steps = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_steps = self.__sample_times_to_steps(sample_times, total_time)
 
         if self.__integrator in ["vv2", "svy4"]:
             result, q_last, p_last = ldi_k_sep(
@@ -2020,8 +2054,7 @@ class HamiltonianSystem:
         Raises
         ------
         ValueError
-            If `sample_times` is passed without `return_history=True`, or
-            contains values outside `(0, total_time]`.
+            If `sample_times` contains values outside `(0, total_time]`.
             If Hessian functions are missing.
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
@@ -2035,6 +2068,12 @@ class HamiltonianSystem:
             If `k` or `seed` is not an integer.
             If `method` is not a string.
             If `total_time` or `threshold` is not a valid real number.
+
+        Warns
+        -----
+        UserWarning
+            If `sample_times` is passed without `return_history=True`. It is
+            ignored.
         """
         if self.__hess_T is None or self.__hess_V is None:
             raise ValueError("Hessian functions are required to compute GALI")
@@ -2078,8 +2117,14 @@ class HamiltonianSystem:
         sample_steps = None
         if sample_times is not None:
             if not return_history:
-                raise ValueError("sample_times requires return_history=True")
-            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+                warnings.warn(
+                    "sample_times has no effect without return_history=True "
+                    "and is ignored.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            else:
+                sample_steps = self.__sample_times_to_steps(sample_times, total_time)
 
         if self.__integrator in ["vv2", "svy4"]:
             result, q_last, p_last = gali_k_sep(
