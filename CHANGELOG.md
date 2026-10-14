@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New method `classify_orbit` for discrete-time systems, which classifies an orbit as chaotic, in an island chain, or on a rotational invariant circle from weighted Birkhoff averages of an observable and of the frequency map, and from whether the rotation number is rational (Sander and Meiss, 2020). It returns the classification together with the rotation number and the number of converged digits of both averages.
 - `PlotStyler` accepts Matplotlib's short names `lw`, `ms`, `mew`, and `mec` for `linewidth`, `markersize`, `markeredgewidth`, and `markeredgecolor`. Passing both a name and its alias raises an error.
 - `PlotStyler.set_tick_padding` accepts an array or list of Axes, such as the one returned by `plt.subplots`, and pads every Axes in it.
+- `lyapunov`, `SALI`, `LDI`, and `GALI` of `ContinuousDynamicalSystem` accept `return_last_state`. With `return_last_state=True`, they also return the state of the system at the time the integration stopped, which allows parameter continuation without repeating the transient.
+- `ContinuousDynamicalSystem.lyapunov` accepts `qr_interval`, the number of accepted integration steps between successive reorthonormalizations of the deviation vectors (1 by default). Values greater than 1 require a fixed-step integrator.
+- `lyapunov`, `SALI`, `LDI`, and `GALI` of `ContinuousDynamicalSystem` accept `sample_times` with `return_history=True`, which stores the history only at the requested times. The integration lands exactly on each of them, with both fixed-step and adaptive integrators.
+- `ContinuousDynamicalSystem.trajectory` accepts `sample_times`, which stores the state only at the requested times. With an ensemble of initial conditions, every trajectory is then stored at the same times, also with adaptive integrators.
 
 ### Changed
 

@@ -128,6 +128,118 @@ When only the largest exponent is needed, set ``num_exponents=1`` and leave ``re
 
 Set ``num_exponents`` between one and the dimension of the system. If it is omitted, the complete spectrum is calculated. Without a stored history, a request for more than one exponent returns a one-dimensional array.
 
+Parameter continuation
+~~~~~~~~~~~~~~~~~~~~~~
+
+With ``return_last_state=True``, ``lyapunov`` also returns the state of the system at the end of the integration. When the largest exponent is computed along a range of parameter values, each calculation can then start from the final state of the previous one. Only the first parameter value requires a long transient. The following ones require only a short relaxation after each small parameter change, and the calculation follows the attractor continuously as the parameter varies.
+
+The example below computes the largest exponent of the Rössler system with :math:`a = b = 0.2` as :math:`c` increases from 2 to 6, along the period-doubling route to chaos:
+
+.. code-block:: python
+
+    continuation_system = cds(model="rossler system")
+    continuation_system.integrator("rk45", atol=1e-10, rtol=1e-8)
+
+    c_values = np.linspace(2.0, 6.0, 161)
+    largest_exponents = np.empty_like(c_values)
+
+    state = [0.1, 0.1, 0.1]
+    for index, c in enumerate(c_values):
+        if index == 0:
+            transient, accumulation = 1_000.0, 1_000.0
+        else:
+            transient, accumulation = 100.0, 1_000.0
+        largest_exponents[index], state = continuation_system.lyapunov(
+            state,
+            transient + accumulation,
+            parameters=[0.2, 0.2, c],
+            transient_time=transient,
+            num_exponents=1,
+            return_last_state=True,
+        )
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(c_values, largest_exponents, "o-", color="navy", markersize=3)
+    ax.axhline(0.0, color="gray", linewidth=0.8)
+    ax.set_xlabel("$c$")
+    ax.set_ylabel(r"$\lambda_1$")
+    ax.set_xlim(c_values[0], c_values[-1])
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/continuous_rossler_lyapunov_continuation.png
+    :align: center
+    :width: 100%
+
+    Largest Lyapunov exponent of the Rössler system with :math:`a = b = 0.2` as a function of :math:`c`, computed by parameter continuation.
+
+On periodic orbits the largest exponent is the zero exponent associated with the flow direction, and it becomes positive where the attractor is chaotic.
+
+Sampling the history
+~~~~~~~~~~~~~~~~~~~~
+
+By default, ``return_history=True`` stores one row per reorthonormalization, which for long integrations with small steps produces large arrays. The ``sample_times`` argument stores the history only at the requested times, which must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. The integration is adjusted to land exactly on each of them, with both fixed-step and adaptive integrators, so the first column of the result reproduces ``sample_times``.
+
+Logarithmically spaced sample times are convenient for following the convergence of the exponents over several decades of accumulation time. The figure below compares the full history, drawn as lines, with the values stored at the sample times, drawn as points:
+
+.. code-block:: python
+
+    sample_times = transient_time + np.geomspace(1.0, total_time - transient_time, 75)
+
+    sampled_history = system.lyapunov(
+        initial_state,
+        total_time,
+        transient_time=transient_time,
+        num_exponents=3,
+        return_history=True,
+        sample_times=sample_times,
+    )
+    lyapunov_history.shape, sampled_history.shape
+
+.. code-block:: text
+
+    ((3584640, 4), (75, 4))
+
+.. code-block:: python
+
+    ps = PlotStyler()
+    ps.apply_style()
+    fig, ax = plt.subplots(figsize=(10, 4))
+    for index, color in enumerate(colors):
+        ax.plot(
+            lyapunov_history[:, 0] - transient_time,
+            rescale[index] * lyapunov_history[:, index + 1],
+            color=color,
+            label=rf"$\lambda_{index + 1}$",
+        )
+        ax.plot(
+            sampled_history[:, 0] - transient_time,
+            rescale[index] * sampled_history[:, index + 1],
+            "o",
+            color=color,
+            markersize=4,
+        )
+    ax.plot([], [], "o", color="gray", markersize=4, label="Sampled")
+
+    ax.set_xscale("log")
+    ax.set_xlabel("Accumulation time $t - t_{\mathrm{transient}}$")
+    ax.set_ylabel("Lyapunov exponents")
+    ax.set_xlim(1.0, total_time - transient_time)
+    ax.set_ylim(-1.1, 0.45)
+    ax.legend(loc="center right", ncols=4, frameon=False)
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/continuous_rossler_lyapunov_sampled.png
+    :align: center
+    :width: 100%
+
+    Convergence of the three Lyapunov exponents of the chaotic Rössler system. Lines show the full history and points show the values stored at 75 logarithmically spaced sample times. :math:`\lambda_3` is multiplied by :math:`0.05` in the plot.
+
 Numerical options
 ~~~~~~~~~~~~~~~~~
 
@@ -139,6 +251,9 @@ Numerical options
 
 ``seed``
     The seed initializes the deviation vectors. For a sufficiently converged calculation, the estimated exponents should not depend materially on this initial orientation.
+
+``qr_interval``
+    The number of accepted integration steps between successive reorthonormalizations of the deviation vectors. The default ``1`` reorthonormalizes after every step. Larger values reduce the cost of the QR decompositions, which is relevant for high-dimensional systems. Values greater than ``1`` require a fixed-step integrator, because the step-size control of an adaptive integrator loses accuracy on deviation vectors that are not reorthonormalized at every step.
 
 Reliable estimates require a sufficiently long accumulation interval and appropriate integrator settings. Compare results obtained with longer integration times, smaller fixed steps, or tighter adaptive tolerances before drawing conclusions from small exponents.
 

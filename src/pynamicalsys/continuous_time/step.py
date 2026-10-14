@@ -170,3 +170,100 @@ def evolve_system(
         )
 
     return u
+
+
+@njit
+def step_to(
+    time: np.float64,
+    u: NDArray[np.float64],
+    target_time: np.float64,
+    parameters: NDArray[np.float64],
+    equations_of_motion: flow_t,
+    jacobian: flow_jacobian_t | None = None,
+    time_step: np.float64 = np.float64(0.01),
+    atol: np.float64 = np.float64(1e-6),
+    rtol: np.float64 = np.float64(1e-3),
+    integrator=rk4_step_wrapped,
+    number_of_deviation_vectors: int | None = None,
+) -> tuple[NDArray[np.float64], np.float64, np.float64, bool]:
+    """
+    Advance the system by one accepted step without passing `target_time`.
+
+    If the current step would reach or pass `target_time`, it is shortened so
+    that the step ends exactly at `target_time`. After landing there, the step
+    size is restored to the value it had before it was shortened, unless the
+    integrator suggests a larger one, so that a target does not reduce the
+    step size of the following steps.
+
+    Parameters
+    ----------
+    time : np.float64
+        Current integration time.
+    u : NDArray[np.float64]
+        Current state vector, or extended state vector when `jacobian` is
+        provided.
+    target_time : np.float64
+        Time that the step must not pass. Must be greater than `time`.
+    parameters : NDArray[np.float64]
+        System parameters passed to the equations of motion.
+    equations_of_motion : flow_t
+        Continuous-time vector field with signature
+        `(time, u, parameters) -> dudt`.
+    jacobian : flow_jacobian_t | None, optional
+        Jacobian of the vector field. If provided, the integrator evolves the
+        extended variational system.
+    time_step : np.float64, optional
+        Current integration step size.
+    atol : np.float64, optional
+        Absolute tolerance used by adaptive integrators.
+    rtol : np.float64, optional
+        Relative tolerance used by adaptive integrators.
+    integrator : callable, optional
+        Step method with unified signature returning
+        `(u_next, time_next, time_step_next, accept)`.
+    number_of_deviation_vectors : int | None, optional
+        Number of deviation vectors in the extended state when variational
+        integration is used.
+
+    Returns
+    -------
+    tuple[NDArray[np.float64], np.float64, np.float64, bool]
+        Tuple containing:
+        - the accepted updated state
+        - the accepted updated time, equal to `target_time` when it was reached
+        - the suggested next step size
+        - whether `target_time` was reached
+
+    Notes
+    -----
+    With an adaptive integrator, the shortened step may itself be rejected
+    and replaced by a smaller one. In that case `target_time` is not reached
+    and the returned flag is False.
+    """
+    shortened = False
+    requested_time_step = time_step
+    if time + time_step >= target_time:
+        time_step = target_time - time
+        shortened = True
+
+    u_new, time_new, time_step_new = step(
+        time,
+        u,
+        parameters,
+        equations_of_motion,
+        jacobian=jacobian,
+        time_step=time_step,
+        atol=atol,
+        rtol=rtol,
+        integrator=integrator,
+        number_of_deviation_vectors=number_of_deviation_vectors,
+    )
+
+    reached = False
+    if shortened and target_time - time_new <= 1e-12 * max(1.0, abs(target_time)):
+        time_new = target_time
+        reached = True
+        if requested_time_step > time_step_new:
+            time_step_new = requested_time_step
+
+    return u_new, time_new, time_step_new, reached

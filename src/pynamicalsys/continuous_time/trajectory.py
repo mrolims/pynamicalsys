@@ -23,7 +23,7 @@ from joblib import Parallel, delayed
 
 from pynamicalsys.common.types import flow_t
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
-from pynamicalsys.continuous_time.step import evolve_system, step
+from pynamicalsys.continuous_time.step import evolve_system, step_to
 
 
 @njit
@@ -37,6 +37,7 @@ def generate_trajectory(
     atol: np.float64 = np.float64(1e-6),
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
+    sample_times: NDArray[np.float64] | None = None,
 ) -> NDArray[np.float64]:
     """
     Generate a trajectory of a continuous-time dynamical system.
@@ -63,6 +64,10 @@ def generate_trajectory(
     integrator : callable, optional
         Step method with unified signature returning
         `(u_next, time_next, time_step_next, accept)`.
+    sample_times : NDArray[np.float64] | None, optional
+        Sorted times in `(transient_time, total_time]` at which the state is
+        stored. The integration lands exactly on each of them. If None, the
+        state is stored at every accepted integration step.
 
     Returns
     -------
@@ -97,13 +102,18 @@ def generate_trajectory(
     neq = len(u)
     trajectory = []
 
+    num_samples = len(sample_times) if sample_times is not None else 0
+    sample_index = 0
     while time < total_time:
-        if time + time_step > total_time:
-            time_step = total_time - time
+        if sample_times is not None and sample_index < num_samples:
+            target_time = sample_times[sample_index]
+        else:
+            target_time = total_time
 
-        u, time, time_step = step(
+        u, time, time_step, reached = step_to(
             time=time,
             u=u,
+            target_time=target_time,
             parameters=parameters,
             equations_of_motion=equations_of_motion,
             time_step=time_step,
@@ -111,6 +121,13 @@ def generate_trajectory(
             rtol=rtol,
             integrator=integrator,
         )
+
+        at_sample = reached and sample_times is not None and sample_index < num_samples
+        if at_sample:
+            sample_index += 1
+
+        if sample_times is not None and not at_sample:
+            continue
 
         result = [time]
         for i in range(neq):
@@ -130,6 +147,7 @@ def ensemble_trajectories(
     atol: np.float64 = np.float64(1e-6),
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
+    sample_times: NDArray[np.float64] | None = None,
 ) -> list[NDArray[np.float64]]:
     """
     Generate trajectories for an ensemble of initial conditions.
@@ -156,6 +174,10 @@ def ensemble_trajectories(
     integrator : callable, optional
         Step method with unified signature returning
         `(u_next, time_next, time_step_next, accept)`.
+    sample_times : NDArray[np.float64] | None, optional
+        Sorted times in `(transient_time, total_time]` at which the state is
+        stored. The integration lands exactly on each of them. If None, the
+        state is stored at every accepted integration step.
 
     Returns
     -------
@@ -181,6 +203,7 @@ def ensemble_trajectories(
             atol=atol,
             rtol=rtol,
             integrator=integrator,
+            sample_times=sample_times,
         )
 
     results = Parallel(n_jobs=-1)(

@@ -22,7 +22,7 @@ from numba import njit
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
 from pynamicalsys.common.linalg import qr
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
-from pynamicalsys.continuous_time.step import evolve_system, step
+from pynamicalsys.continuous_time.step import evolve_system, step_to
 
 
 @njit
@@ -39,9 +39,11 @@ def lyapunov_exponents(
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
     return_history: bool = False,
+    sample_times: NDArray[np.float64] | None = None,
     seed: int = 13,
     method: str = "QR",
-) -> NDArray[np.float64]:
+    qr_interval: int = 1,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the first `num_exponents` Lyapunov exponents of a continuous-time
     dynamical system.
@@ -76,6 +78,11 @@ def lyapunov_exponents(
     return_history : bool, optional
         If True, return the time evolution of the finite-time Lyapunov
         exponents.
+    sample_times : NDArray[np.float64] | None, optional
+        Sorted times in `(transient_time, total_time]` at which the history
+        is stored when `return_history=True`. The integration lands exactly
+        on each of them. If None, the history is stored at every
+        reorthonormalization.
     seed : int, optional
         Random seed used to initialize the deviation vectors.
     method : str, optional
@@ -84,22 +91,31 @@ def lyapunov_exponents(
 
         - `"QR"`: custom modified Gram-Schmidt QR (default).
         - `"QR_HH"`: `numpy.linalg.qr`, based on Householder reflections.
+    qr_interval : int, optional
+        Number of accepted integration steps between successive QR
+        reorthonormalizations. A reorthonormalization is also performed at the
+        final integration time.
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        The result and the state of the system at the time the integration
+        stopped. The result is:
+
         - If `return_history=False`, returns an array of shape `(1, num_exponents)`
           containing the final Lyapunov exponents.
         - If `return_history=True`, returns an array of shape
           `(n_samples, num_exponents + 1)` whose first column contains time and
-          whose remaining columns contain the finite-time exponents.
+          whose remaining columns contain the finite-time exponents. One row
+          is stored at each reorthonormalization.
 
     Notes
     -----
     The computation evolves the state together with `num_exponents` deviation
-    vectors. After each accepted integration step, the deviation vectors are
-    reorthonormalized through a QR decomposition and the logarithms of the
-    diagonal entries of `R` are accumulated.
+    vectors. Every `qr_interval` accepted integration steps, and at the final
+    integration time, the deviation vectors are reorthonormalized through a QR
+    decomposition and the logarithms of the diagonal entries of `R` are
+    accumulated.
     """
     neq = len(u)
     nt = neq + neq * num_exponents
@@ -139,13 +155,19 @@ def lyapunov_exponents(
 
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
+    steps_since_qr = 0
+    num_samples = len(sample_times) if sample_times is not None else 0
+    sample_index = 0
     while time < total_time:
-        if time + time_step > total_time:
-            time_step = total_time - time
+        if sample_times is not None and sample_index < num_samples:
+            target_time = sample_times[sample_index]
+        else:
+            target_time = total_time
 
-        uv, time, time_step = step(
+        uv, time, time_step, reached = step_to(
             time=time,
             u=uv,
+            target_time=target_time,
             parameters=parameters,
             equations_of_motion=equations_of_motion,
             jacobian=jacobian,
@@ -156,6 +178,15 @@ def lyapunov_exponents(
             number_of_deviation_vectors=num_exponents,
         )
 
+        at_sample = reached and sample_times is not None and sample_index < num_samples
+        if at_sample:
+            sample_index += 1
+
+        steps_since_qr += 1
+        if steps_since_qr < qr_interval and time < total_time and not at_sample:
+            continue
+        steps_since_qr = 0
+
         v = uv[neq:].reshape(neq, num_exponents).copy()
         if method == "QR":
             v, R = qr(v)
@@ -165,7 +196,7 @@ def lyapunov_exponents(
             R = np.ascontiguousarray(R)
         exponents += np.log(np.abs(np.diag(R)))
 
-        if return_history:
+        if return_history and (sample_times is None or at_sample):
             result = [time]
             for i in range(num_exponents):
                 result.append(exponents[i] / (time - t_ref))
@@ -174,13 +205,13 @@ def lyapunov_exponents(
         uv[neq:] = v.reshape(neq * num_exponents)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64)
+        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
 
     result = np.empty((1, num_exponents), dtype=np.float64)
     for i in range(num_exponents):
         result[0, i] = exponents[i] / (time - t_ref)
 
-    return result
+    return result, uv[:neq].copy()
 
 
 @njit
@@ -196,8 +227,10 @@ def maximum_lyapunov_exponent(
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
     return_history: bool = False,
+    sample_times: NDArray[np.float64] | None = None,
     seed: int = 13,
-) -> NDArray[np.float64]:
+    qr_interval: int = 1,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the maximum Lyapunov exponent of a continuous-time dynamical system.
 
@@ -229,23 +262,37 @@ def maximum_lyapunov_exponent(
     return_history : bool, optional
         If True, return the time evolution of the finite-time maximum Lyapunov
         exponent.
+    sample_times : NDArray[np.float64] | None, optional
+        Sorted times in `(transient_time, total_time]` at which the history
+        is stored when `return_history=True`. The integration lands exactly
+        on each of them. If None, the history is stored at every
+        renormalization.
     seed : int, optional
         Random seed used to initialize the deviation vector.
+    qr_interval : int, optional
+        Number of accepted integration steps between successive
+        renormalizations of the deviation vector. A renormalization is also
+        performed at the final integration time.
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        The result and the state of the system at the time the integration
+        stopped. The result is:
+
         - If `return_history=False`, returns an array of shape `(1, 1)`
           containing the final maximum Lyapunov exponent.
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
           whose first column contains time and whose second column contains the
-          finite-time maximum Lyapunov exponent.
+          finite-time maximum Lyapunov exponent. One row is stored at each
+          renormalization.
 
     Notes
     -----
-    The computation evolves the state together with one deviation vector. After
-    each accepted integration step, the deviation vector is renormalized and
-    the logarithm of its norm growth is accumulated.
+    The computation evolves the state together with one deviation vector.
+    Every `qr_interval` accepted integration steps, and at the final
+    integration time, the deviation vector is renormalized and the logarithm
+    of its norm growth is accumulated.
     """
     neq = len(u)
     nt = neq + neq
@@ -280,13 +327,19 @@ def maximum_lyapunov_exponent(
 
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
+    steps_since_qr = 0
+    num_samples = len(sample_times) if sample_times is not None else 0
+    sample_index = 0
     while time < total_time:
-        if time + time_step > total_time:
-            time_step = total_time - time
+        if sample_times is not None and sample_index < num_samples:
+            target_time = sample_times[sample_index]
+        else:
+            target_time = total_time
 
-        uv, time, time_step = step(
+        uv, time, time_step, reached = step_to(
             time=time,
             u=uv,
+            target_time=target_time,
             parameters=parameters,
             equations_of_motion=equations_of_motion,
             jacobian=jacobian,
@@ -297,17 +350,26 @@ def maximum_lyapunov_exponent(
             number_of_deviation_vectors=1,
         )
 
+        at_sample = reached and sample_times is not None and sample_index < num_samples
+        if at_sample:
+            sample_index += 1
+
+        steps_since_qr += 1
+        if steps_since_qr < qr_interval and time < total_time and not at_sample:
+            continue
+        steps_since_qr = 0
+
         norm = np.linalg.norm(uv[neq:])
         exponent += np.log(np.abs(norm))
         uv[neq:] /= norm
 
-        if return_history:
+        if return_history and (sample_times is None or at_sample):
             history.append([time, exponent / (time - t_ref)])
 
     if return_history:
-        return np.asarray(history, dtype=np.float64)
+        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
 
     result = np.empty((1, 1), dtype=np.float64)
     result[0, 0] = exponent / (time - t_ref)
 
-    return result
+    return result, uv[:neq].copy()

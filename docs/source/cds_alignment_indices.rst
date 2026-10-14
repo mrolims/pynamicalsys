@@ -364,7 +364,7 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
 
     Wall times for SALI, the three formulations of :math:`\mathrm{GALI}_2`, and SVD-based :math:`\mathrm{LDI}_2` along a regular periodic trajectory. Bars show the mean of 20 fixed-workload runs and error bars show one standard deviation.
 
-All three public methods return a two-element array containing the final time and indicator value by default. With ``return_history=True``, they return a two-dimensional array whose columns contain time and the indicator history. The ``parameters``, ``transient_time``, ``seed``, and ``threshold`` arguments follow the same pattern for SALI, GALI, and LDI.
+All three public methods return a two-element array containing the final time and indicator value by default. With ``return_history=True``, they return a two-dimensional array whose columns contain time and the indicator history. The ``parameters``, ``transient_time``, ``seed``, and ``threshold`` arguments follow the same pattern for SALI, GALI, and LDI. With ``return_last_state=True``, each method also returns the state of the system at the time the integration stopped. This option behaves as in ``lyapunov``, and its use for parameter continuation is shown on the :doc:`Lyapunov exponents <cds_lyapunov>` page. The ``sample_times`` argument also behaves as in ``lyapunov`` and stores the history only at the requested times.
 
 References
 ~~~~~~~~~~

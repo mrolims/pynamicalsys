@@ -91,6 +91,7 @@ from pynamicalsys.continuous_time.models import (
 
 
 from pynamicalsys.continuous_time.validators import (
+    validate_sample_times,
     validate_times,
 )
 
@@ -245,11 +246,13 @@ class ContinuousDynamicalSystem:
             "description": "4th order Runge-Kutta method with fixed step size",
             "integrator": rk4_step_wrapped,
             "estimate_initial_step": False,
+            "adaptive": False,
         },
         "rk45": {
             "description": "Adaptive 4th/5th order Runge-Kutta-Fehlberg method (RK45) with embedded error estimation",
             "integrator": rk45_step_wrapped,
             "estimate_initial_step": True,
+            "adaptive": True,
         },
     }
 
@@ -607,6 +610,7 @@ class ContinuousDynamicalSystem:
         total_time: numeric_t,
         parameters: numeric_like_t | None = None,
         transient_time: numeric_t | None = None,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> NDArray[np.float64] | list[NDArray[np.float64]]:
         """
         Compute the trajectory of the dynamical system over a specified time interval.
@@ -624,6 +628,12 @@ class ContinuousDynamicalSystem:
             instance are used.
         transient_time : numeric_t | None, optional
             Initial integration time discarded before storing the trajectory.
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the state is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators, so every trajectory of an
+            ensemble has the same number of stored points. If `None`, the state
+            is stored at every accepted integration step.
 
         Returns
         -------
@@ -647,8 +657,11 @@ class ContinuousDynamicalSystem:
             - If the number of parameters does not match the expected number.
             - If `total_time` is negative.
             - If `transient_time` is negative or not smaller than `total_time`.
+            - If `sample_times` contains values outside
+              `(transient_time, total_time]`.
         TypeError
             - If `total_time` or `transient_time` is not a valid real number.
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
 
         Examples
         --------
@@ -674,6 +687,12 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
+        sample_times_arr = None
+        if sample_times is not None:
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
+
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
@@ -687,6 +706,7 @@ class ContinuousDynamicalSystem:
                 atol=self.__atol,
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
+                sample_times=sample_times_arr,
             )
 
         return ensemble_trajectories(
@@ -699,6 +719,7 @@ class ContinuousDynamicalSystem:
             atol=self.__atol,
             rtol=self.__rtol,
             integrator=self.__integrator_func,
+            sample_times=sample_times_arr,
         )
 
     def poincare_section(
@@ -1238,7 +1259,14 @@ class ContinuousDynamicalSystem:
         log_base: numeric_t = np.e,
         method: str = "QR",
         endpoint: bool | None = None,
-    ) -> np.float64 | NDArray[np.float64]:
+        return_last_state: bool = False,
+        qr_interval: int_t = 1,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
+    ) -> (
+        np.float64
+        | NDArray[np.float64]
+        | tuple[np.float64 | NDArray[np.float64], NDArray[np.float64]]
+    ):
         """
         Calculate the Lyapunov exponents of the dynamical system.
 
@@ -1273,7 +1301,23 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
+        qr_interval : int_t, optional
+            Number of accepted integration steps between successive
+            reorthonormalizations of the deviation vectors. A
+            reorthonormalization is also performed at `total_time`. With
+            `return_history=True`, one row is stored at each
+            reorthonormalization. Values greater than 1 require a fixed-step
+            integrator.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            reorthonormalization.
         Returns
         -------
         np.float64 | NDArray[np.float64]
@@ -1285,19 +1329,27 @@ class ContinuousDynamicalSystem:
             - If `return_history=False` and `num_exponents > 1`, returns a 1D
               array containing the final Lyapunov exponents.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
             - If `num_exponents` exceeds the system dimension.
             - If `method` is not `"QR"` or `"QR_HH"`.
             - If `log_base` is not positive or `log_base == 1`.
+            - If `qr_interval` is not positive.
+            - If `qr_interval > 1` and the integrator is adaptive.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `method` is not a string.
             - If `total_time`, `transient_time`, or `log_base` is not a valid real number.
-            - If `num_exponents` or `seed` is not an integer.
+            - If `num_exponents`, `seed`, or `qr_interval` is not an integer.
 
         Warns
         -----
@@ -1325,6 +1377,14 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
+
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
 
         time_step = self.__get_initial_time_step(u, parameters)
 
@@ -1356,9 +1416,16 @@ class ContinuousDynamicalSystem:
             raise ValueError("The logarithm function is not defined with base 1")
 
         validate_non_negative(seed, "seed", Integral)
+        validate_positive(qr_interval, "qr_interval", Integral)
+        if qr_interval > 1 and self.integrator_info["adaptive"]:
+            raise ValueError(
+                "qr_interval > 1 requires a fixed-step integrator. With an "
+                "adaptive integrator, the step-size control loses accuracy on "
+                "deviation vectors that are not reorthonormalized at every step."
+            )
 
         if num_exponents == 1:
-            result = maximum_lyapunov_exponent(
+            result, last_state = maximum_lyapunov_exponent(
                 u=u,
                 parameters=parameters,
                 total_time=total_time,
@@ -1370,10 +1437,12 @@ class ContinuousDynamicalSystem:
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
                 return_history=return_history,
+                sample_times=sample_times_arr,
                 seed=int(seed),
+                qr_interval=int(qr_interval),
             )
         else:
-            result = lyapunov_exponents(
+            result, last_state = lyapunov_exponents(
                 u=u,
                 parameters=parameters,
                 total_time=total_time,
@@ -1386,18 +1455,24 @@ class ContinuousDynamicalSystem:
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
                 return_history=return_history,
+                sample_times=sample_times_arr,
                 seed=int(seed),
                 method=method,
+                qr_interval=int(qr_interval),
             )
 
         if return_history:
             result[:, 1:] /= np.log(log_base)
-            return result
+            value = result
+        elif num_exponents == 1:
+            value = np.float64(result[0, 0] / np.log(log_base))
+        else:
+            value = result[0] / np.log(log_base)
 
-        if num_exponents == 1:
-            return np.float64(result[0, 0] / np.log(log_base))
+        if return_last_state:
+            return value, last_state
 
-        return result[0] / np.log(log_base)
+        return value
 
     def CLV(
         self,
@@ -1647,7 +1722,9 @@ class ContinuousDynamicalSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Smaller Alignment Index (SALI) for a continuous-time dynamical system.
 
@@ -1673,7 +1750,16 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            accepted integration step.
         Returns
         -------
         NDArray[np.float64]
@@ -1681,14 +1767,20 @@ class ContinuousDynamicalSystem:
               and the final SALI value.
             - If `return_history=True`, returns the time history of SALI.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
             - If `total_time`, `transient_time`, or `threshold` is negative.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `seed` is not an integer.
 
@@ -1728,6 +1820,14 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
+
         validate_non_negative(threshold, "threshold", Real)
         validate_non_negative(seed, "seed", Integral)
 
@@ -1744,7 +1844,7 @@ class ContinuousDynamicalSystem:
                 stacklevel=2,
             )
 
-        result = sali(
+        result, last_state = sali(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -1756,14 +1856,18 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
+            sample_times=sample_times_arr,
             seed=int(seed),
             threshold=threshold,
         )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, last_state
+
+        return result
 
     def LDI(
         self,
@@ -1776,7 +1880,9 @@ class ContinuousDynamicalSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Linear Dependence Index (LDI_k) for a continuous-time dynamical system.
 
@@ -1804,7 +1910,16 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            accepted integration step.
         Returns
         -------
         NDArray[np.float64]
@@ -1812,9 +1927,14 @@ class ContinuousDynamicalSystem:
               and the final LDI value.
             - If `return_history=True`, returns the time history of LDI.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -1822,6 +1942,7 @@ class ContinuousDynamicalSystem:
             - If `k < 2`.
             - If `k > system_dimension`.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `k` or `seed` is not an integer.
 
@@ -1845,6 +1966,14 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
+
         validate_positive(k, "k", Integral)
         if k < 2:
             raise ValueError("k must be >= 2")
@@ -1867,7 +1996,7 @@ class ContinuousDynamicalSystem:
                 stacklevel=2,
             )
 
-        result = ldi_k(
+        result, last_state = ldi_k(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -1880,14 +2009,18 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
+            sample_times=sample_times_arr,
             seed=int(seed),
             threshold=threshold,
         )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, last_state
+
+        return result
 
     def GALI(
         self,
@@ -1901,7 +2034,9 @@ class ContinuousDynamicalSystem:
         seed: int_t = 13,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
-    ) -> NDArray[np.float64]:
+        return_last_state: bool = False,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
+    ) -> NDArray[np.float64] | tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Calculate the Generalized Alignment Index (GALI_k) for a continuous-time
         dynamical system.
@@ -1935,7 +2070,16 @@ class ContinuousDynamicalSystem:
         endpoint : bool | None, optional
             Deprecated and ignored. The integration always ends at
             `total_time`.
+        return_last_state : bool, optional
+            If `True`, also return the state of the system at the time the
+            integration stopped.
 
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the history is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators. Requires
+            `return_history=True`. If `None`, the history is stored at every
+            accepted integration step.
         Returns
         -------
         NDArray[np.float64]
@@ -1943,9 +2087,14 @@ class ContinuousDynamicalSystem:
               and the final GALI value.
             - If `return_history=True`, returns the time history of GALI.
 
+            - If `return_last_state=True`, returns a tuple `(result, last_state)`,
+              where `result` is as described above and `last_state` is the state
+              of the system at the time the integration stopped.
         Raises
         ------
         ValueError
+            - If `sample_times` is passed without `return_history=True`, or
+              contains values outside `(transient_time, total_time]`.
             - If the Jacobian is not available.
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
@@ -1954,6 +2103,7 @@ class ContinuousDynamicalSystem:
             - If `k > system_dimension`.
             - If `method` is not one of `"DET"`, `"QR"`, or `"QR_HH"`.
         TypeError
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
             - If `total_time`, `transient_time`, or `threshold` is not a valid real number.
             - If `k` or `seed` is not an integer.
             - If `method` is not a string.
@@ -1977,6 +2127,14 @@ class ContinuousDynamicalSystem:
             parameters = validate_parameters(parameters, self.__number_of_parameters)
 
         transient_time, total_time = validate_times(transient_time, total_time)
+
+        sample_times_arr = None
+        if sample_times is not None:
+            if not return_history:
+                raise ValueError("sample_times requires return_history=True")
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
 
         validate_positive(k, "k", Integral)
         if k < 2:
@@ -2007,7 +2165,7 @@ class ContinuousDynamicalSystem:
                 stacklevel=2,
             )
 
-        result = gali_k(
+        result, last_state = gali_k(
             u=u,
             parameters=parameters,
             total_time=total_time,
@@ -2020,15 +2178,19 @@ class ContinuousDynamicalSystem:
             rtol=self.__rtol,
             integrator=self.__integrator_func,
             return_history=return_history,
+            sample_times=sample_times_arr,
             method=method,
             seed=int(seed),
             threshold=threshold,
         )
 
-        if return_history:
-            return result
+        if not return_history:
+            result = result[0]
 
-        return result[0]
+        if return_last_state:
+            return result, last_state
+
+        return result
 
     def recurrence_time_entropy(
         self,

@@ -22,7 +22,7 @@ import numpy as np
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
 from pynamicalsys.common.linalg import qr
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
-from pynamicalsys.continuous_time.step import evolve_system, step
+from pynamicalsys.continuous_time.step import evolve_system, step_to
 
 
 @njit
@@ -39,10 +39,11 @@ def gali_k(
     rtol: np.float64 = np.float64(1e-3),
     integrator=rk4_step_wrapped,
     return_history: bool = False,
+    sample_times: NDArray[np.float64] | None = None,
     method: str = "QR",
     seed: int = 13,
     threshold: np.float64 = np.float64(1e-16),
-) -> NDArray[np.float64]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Generalized Alignment Index of order `k` for a continuous-time
     dynamical system.
@@ -76,6 +77,11 @@ def gali_k(
         `(u_next, time_next, time_step_next, accept)`.
     return_history : bool, optional
         If True, return the time evolution of GALI.
+    sample_times : NDArray[np.float64] | None, optional
+        Sorted times in `(transient_time, total_time]` at which the history
+        is stored when `return_history=True`. The integration lands exactly
+        on each of them. If None, the history is stored at every
+        accepted integration step.
     method : str, optional
         Method used to compute GALI. Supported options are:
 
@@ -107,7 +113,10 @@ def gali_k(
 
     Returns
     -------
-    NDArray[np.float64]
+    tuple[NDArray[np.float64], NDArray[np.float64]]
+        The result and the state of the system at the time the integration
+        stopped. The result is:
+
         - If `return_history=False`, returns an array of shape `(1, 2)`
           containing `[time, GALI_k]`.
         - If `return_history=True`, returns an array of shape `(n_samples, 2)`
@@ -164,13 +173,18 @@ def gali_k(
     history = []
     gali = np.float64(0.0)
 
+    num_samples = len(sample_times) if sample_times is not None else 0
+    sample_index = 0
     while time < total_time:
-        if time + time_step > total_time:
-            time_step = total_time - time
+        if sample_times is not None and sample_index < num_samples:
+            target_time = sample_times[sample_index]
+        else:
+            target_time = total_time
 
-        uv, time, time_step = step(
+        uv, time, time_step, reached = step_to(
             time=time,
             u=uv,
+            target_time=target_time,
             parameters=parameters,
             equations_of_motion=equations_of_motion,
             jacobian=jacobian,
@@ -180,6 +194,10 @@ def gali_k(
             integrator=integrator,
             number_of_deviation_vectors=ndv,
         )
+
+        at_sample = reached and sample_times is not None and sample_index < num_samples
+        if at_sample:
+            sample_index += 1
 
         v = uv[neq:].reshape(neq, ndv)
 
@@ -198,7 +216,7 @@ def gali_k(
         else:
             raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
-        if return_history:
+        if return_history and (sample_times is None or at_sample):
             history.append([time, gali])
 
         if gali <= threshold:
@@ -207,9 +225,9 @@ def gali_k(
         uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64)
+        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
 
     result = np.empty((1, 2), dtype=np.float64)
     result[0, 0] = time
     result[0, 1] = gali
-    return result
+    return result, uv[:neq].copy()
