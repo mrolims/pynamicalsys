@@ -111,6 +111,9 @@ Numerical options
 ``seed``
     Initializes the deviation vectors. For a converged calculation the estimated exponents should not depend materially on this initial orientation.
 
+``return_last_state``
+    With ``return_last_state=True``, the method also returns the coordinates and momenta at the final integration time, as ``(result, q_last, p_last)``. A subsequent calculation can then continue the orbit from where the previous one ended.
+
 References
 ~~~~~~~~~~
 
