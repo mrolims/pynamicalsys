@@ -153,6 +153,18 @@ Use 20,001 maxima to form 20,000 successive pairs :math:`(z_n,z_{n+1})`:
 
 All three methods also accept an ensemble of initial states with shape ``(num_initial_conditions, system_dimension)``. The result then has shape ``(num_initial_conditions, num_points, system_dimension + 1)``, where ``num_points`` is the requested number of intersections, samples, or maxima.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``transient_time``
+    Integration time discarded before points are recorded, in the system's time units. All three methods accept it and default to zero. There is no ``total_time``: the integration continues until the requested number of intersections, samples, or maxima has been recorded.
+
+``crossing``
+    Direction of the Poincaré-section crossings to record. The default ``1`` keeps crossings in which the selected coordinate increases, ``-1`` keeps those in which it decreases, and ``0`` keeps both. The direction is determined from the sign of the corresponding component of the vector field at the interpolated crossing.
+
+``time_step``, ``atol``, and ``rtol``
+    Set with ``integrator``. The recorded points are interpolated between integration steps: linearly for Poincaré sections and stroboscopic maps, and, for maxima maps, quadratically in time and then linearly in the state. The interpolation error therefore depends on the step size and not only on the order of the integrator. A smaller ``time_step`` with ``rk4``, or tighter tolerances with ``rk45``, which shortens the steps, improves the accuracy of the recorded points.
+
 References
 ~~~~~~~~~~
 
