@@ -433,7 +433,8 @@ class ContinuousDynamicalSystem:
         Parameters
         ----------
         integrator : str
-            The integrator name. Available options are 'rk4' and 'rk45'
+            The integrator name, case-insensitive. Available options are
+            'rk4' and 'rk45'
         time_step : np.float64, optional
             The integration time step when `integrator='rk4'`, by default 1e-2
         atol : np.float64, optional
@@ -461,29 +462,26 @@ class ContinuousDynamicalSystem:
         """
 
         if not isinstance(integrator, str):
-            raise ValueError("integrator must be a string.")
+            raise TypeError("integrator must be a string.")
         validate_non_negative(time_step, "time_step", type_=Real)
         validate_non_negative(atol, "atol", type_=Real)
         validate_non_negative(rtol, "rtol", type_=Real)
 
-        if integrator in self.__AVAILABLE_INTEGRATORS:
-            self.__integrator = integrator.lower()
-            integrator_info = self.__AVAILABLE_INTEGRATORS[self.__integrator]
-            self.__integrator_func = integrator_info["integrator"]
-            self.__time_step = time_step
-            self.__atol = atol
-            self.__rtol = rtol
+        integrator = integrator.lower()
+        if integrator not in self.__AVAILABLE_INTEGRATORS:
+            available = "\n".join(
+                f"- {name}: {info['description']}"
+                for name, info in self.__AVAILABLE_INTEGRATORS.items()
+            )
+            raise ValueError(
+                f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
+            )
 
-        else:
-            integrator = integrator.lower()
-            if integrator not in self.__AVAILABLE_INTEGRATORS:
-                available = "\n".join(
-                    f"- {name}: {info['description']}"
-                    for name, info in self.__AVAILABLE_INTEGRATORS.items()
-                )
-                raise ValueError(
-                    f"Integrator '{integrator}' not implemented. Available integrators:\n{available}"
-                )
+        self.__integrator = integrator
+        self.__integrator_func = self.__AVAILABLE_INTEGRATORS[integrator]["integrator"]
+        self.__time_step = time_step
+        self.__atol = atol
+        self.__rtol = rtol
 
     def set_parameters(
         self, parameters: Union[NDArray[np.float64], Sequence[float], float]
