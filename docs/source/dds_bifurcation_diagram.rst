@@ -126,3 +126,15 @@ Continuation sweeps
 ~~~~~~~~~~~~~~~~~~~
 
 By default, every parameter value starts from the initial state supplied through ``u``. Set ``continuation=True`` to start each parameter value from the final state obtained at the preceding value instead. The order of ``start`` and ``stop`` in ``param_range`` determines the sweep direction. Set ``return_last_state=True`` when the final state of the entire sweep is also needed. The returned state has shape ``(system_dimension,)`` and can be used as the initial condition for another continuation sweep.
+
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``transient_time``
+    Number of iterations discarded for each parameter value before samples are stored. It defaults to zero. Each parameter value then contributes ``total_time - transient_time`` samples, so the transient must be long enough for the orbit to reach its attractor at every parameter value, in particular near bifurcation points, where the approach is slow.
+
+``continuation`` and ``return_last_state``
+    With ``continuation=True``, each parameter value starts from the final state of the previous one instead of from ``u``, and with ``return_last_state=True`` the final state of the whole sweep is also returned, as described above. Continuation follows one branch of attractors in the direction of the sweep, so repeating the sweep in the opposite direction reveals hysteresis in systems with coexisting attractors.
+
+``observable_index``
+    Index of the state coordinate stored as the observable. It defaults to ``0``.
