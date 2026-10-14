@@ -334,7 +334,7 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
 
     Wall times for SALI, the three formulations of :math:`\mathrm{GALI}_2`, and SVD-based :math:`\mathrm{LDI}_2` along a regular Hénon-Heiles orbit. Bars show the mean of 20 fixed-workload runs and error bars show one standard deviation.
 
-All three public methods return a two-element array containing the final time and indicator value by default. With ``return_history=True``, they return a two-dimensional array whose columns contain time and the indicator history. The ``parameters``, ``seed``, and ``threshold`` arguments follow the same pattern for SALI, GALI, and LDI. With ``return_last_state=True``, each method also returns the coordinates and momenta at the time the integration stopped, as ``(result, q_last, p_last)``. This option behaves as in ``lyapunov``, described on the :doc:`Lyapunov exponents <hs_lyapunov>` page.
+All three public methods return a two-element array containing the final time and indicator value by default. With ``return_history=True``, they return a two-dimensional array whose columns contain time and the indicator history. The ``parameters``, ``seed``, and ``threshold`` arguments follow the same pattern for SALI, GALI, and LDI. With ``return_last_state=True``, each method also returns the coordinates and momenta at the time the integration stopped, as ``(result, q_last, p_last)``. This option behaves as in ``lyapunov``, described on the :doc:`Lyapunov exponents <hs_lyapunov>` page. The ``sample_times`` argument also behaves as in ``lyapunov``: it stores the history only at the requested times, rounded to the nearest integration step.
 
 References
 ~~~~~~~~~~
