@@ -265,6 +265,23 @@ Then plot the classification, with all orbits together and each type separately.
 
 Island chains appear as regions of constant color, since every orbit in a chain has the same rational rotation number. Rotational circles span the whole range of the angle and their rotation number increases with the action. The chaotic orbits lie in the layers around the separatrices of the island chains. Some orbits that span the whole range of the angle appear in the island panel. They can be island chains of high period, which the grid does not resolve, or rotational circles whose rotation number is close to a rational with a small denominator, which the conservative choice of :math:`\mathrm{dev}_{\mathrm{c}}` classifies as islands.
 
+Numerical options
+^^^^^^^^^^^^^^^^^
+
+``total_time``
+    The length :math:`N` of each window, so ``dig`` and ``classify_orbit`` iterate the map :math:`2N` times. Longer windows raise :math:`\mathrm{dig}` on regular orbits until it saturates near the limit set by double precision, about 15 or 16, while on chaotic orbits it grows only slowly. Sticky chaotic orbits may need much longer windows to be identified.
+
+``func`` and ``period``
+    The observable :math:`h` and the period :math:`T` of the first coordinate used by the default observable, as described above. ``period`` is ignored when ``func`` is given.
+
+``transient_time``
+    Accepted by ``dig`` only. The number of iterations discarded before the first window. ``classify_orbit`` always starts the windows at the initial condition.
+
+``dig_threshold``, ``omega_threshold``, ``tol``, and ``dev_threshold``
+    The settings of ``classify_orbit``: the minimum :math:`\mathrm{dig}` of the observable for an orbit to be regular, by default ``5.5``; the minimum :math:`\mathrm{dig}_\omega` for the rotation number of a slowly converging orbit to be trusted, by default ``9``; the exponent :math:`\mathrm{tol}` of the rationality tolerance :math:`\delta=10^{-\mathrm{tol}}`, by default ``8``; and :math:`\mathrm{dev}_{\mathrm{c}}`, by default ``0.3375``. :math:`\mathrm{tol}` should stay below :math:`\mathrm{dig}_\omega`, otherwise the rationality test is applied to digits that have not converged.
+
+If the two windows agree exactly, :math:`\mathrm{dig}` is infinite and is returned as ``inf``.
+
 References
 ^^^^^^^^^^
 
