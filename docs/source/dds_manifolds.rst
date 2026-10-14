@@ -339,6 +339,27 @@ corners.
    mapping-refinement scheme, together with a normal-displacement approximation
    whose cost decreases with manifold length.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``tolerance``, ``tolerance_decay_factor``, and ``max_iter``
+    Settings of the grid and symmetry-line searches of ``find_periodic_orbit``. ``tolerance``, by default ``1e-5``, is the initial radius used to decide whether a grid point looks periodic, not the accuracy of the result, and must be loose enough that some point of the grid qualifies. After each refinement it is multiplied by ``tolerance_decay_factor``, by default ``0.5``. ``max_iter``, by default ``1000``, limits the refinements of the searches and the steps of Newton's method.
+
+``convergence_threshold``
+    The accuracy at which ``find_periodic_orbit`` stops, by default ``1e-15``. For the searches it applies to the displacement of the orbit and the size of the search box, and for Newton's method to the norm of the residual :math:`F^p(\mathbf{u})-\mathbf{u}`.
+
+``periods`` and ``prime_period``
+    Options of Newton's method only, as described above. ``periods`` gives the wrapping period of each coordinate for maps on a torus, with ``np.inf`` for coordinates that do not wrap, and ``prime_period=True`` raises an error when the point found has a period that divides ``period``.
+
+``delta``, ``n_points``, and ``iter_time``
+    The settings of ``manifold``. ``n_points`` seed points are placed along each eigenvector direction at distances up to ``delta``, by default ``1e-4``, from the periodic point and iterated ``iter_time`` times. A smaller ``delta`` keeps the seeds closer to the linear approximation of the manifold but needs more iterations to grow the same length; more seed points give a continuous curve where the manifold is stretched.
+
+``tolerance`` and ``transient_time`` of ``is_periodic`` and ``period``
+    The absolute tolerance used to accept a recurrence, by default ``1e-10``, and the number of iterations discarded before the test. ``period`` also accepts ``min_period`` and ``max_period``, the range of admissible periods, and ``stability_checks``, the number of identical consecutive detections required before a period is accepted.
+
+``threshold`` and ``tol`` of ``classify_stability``
+    The reference modulus that separates contracting from expanding multipliers, which should remain ``1.0`` for the stability of a periodic orbit, and the tolerance used to decide that a multiplier lies on it, by default ``1e-8``.
+
 References
 ~~~~~~~~~~
 
