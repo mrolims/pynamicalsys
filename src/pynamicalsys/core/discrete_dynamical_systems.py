@@ -2598,6 +2598,9 @@ class DiscreteDynamicalSystem:
         sample_times_arr: NDArray[np.int64] | None = None
         if sample_times is not None:
             sample_times_arr = validate_sample_times(sample_times, total_time)
+            # The average over zero iterations is undefined.
+            if sample_times_arr[0] == 0:
+                raise ValueError("sample_times must be in the range [1, total_time]")
         else:
             sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
 
@@ -2662,6 +2665,9 @@ class DiscreteDynamicalSystem:
         sample_times_arr: NDArray[np.int64] | None = None
         if sample_times is not None:
             sample_times_arr = validate_sample_times(sample_times, total_time)
+            # The average over zero iterations is undefined.
+            if sample_times_arr[0] == 0:
+                raise ValueError("sample_times must be in the range [1, total_time]")
         else:
             sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
 
