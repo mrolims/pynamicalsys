@@ -121,6 +121,30 @@ The columns of ``angles`` follow the arguments: the three subspace angles :math:
 
 Angles approaching zero indicate near-tangencies between the selected directions or subspaces, while values bounded away from zero support a transversal splitting along the sampled trajectory. The chaotic orbit visits only the connected chaotic region of the section, leaving the regular islands empty. A finite trajectory cannot by itself prove uniform hyperbolicity, so the minimum angles should be examined over longer intervals and against changes in ``warmup_time`` and ``tail_time``. The use of CLV angles as a hyperbolicity diagnostic is discussed by `Ginelli et al. (2007) <https://doi.org/10.1103/PhysRevLett.99.130601>`_ and developed in detail by `Kuptsov and Parlitz (2012) <https://doi.org/10.1007/s00332-012-9126-5>`_.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``num_clvs``
+    Number of covariant vectors to compute, between one and :math:`2d`. It defaults to the full set. Computing only the leading vectors reduces the cost of the forward and backward passes.
+
+``qr_time_step``
+    Time between successive QR factorizations, which is also the spacing of the stored samples. It is rounded to a whole number of integration steps and defaults to ``time_step``. A larger value reduces the cost and the memory used by the stored factors, but it must remain short enough that the deviation vectors do not collapse onto the leading direction between factorizations.
+
+``warmup_time`` and ``tail_time``
+    The durations of the forward warmup and of the forward continuation that initializes the backward recursion, as described above. Both default to zero and are rounded to whole multiples of ``qr_time_step``.
+
+``seed``
+    Initializes the random forward basis and the random upper-triangular matrix that starts the backward recursion. It defaults to ``1312``. For sufficiently long ``warmup_time`` and ``tail_time``, the vectors in the stored interval do not depend on it.
+
+``method``
+    The QR decomposition used in the forward pass: ``"QR"`` (default), the package's modified Gram-Schmidt implementation, or ``"QR_HH"``, ``numpy.linalg.qr`` with Householder reflections.
+
+``poincare_section``
+    With ``poincare_section=True``, together with ``section_index``, ``section_value``, ``crossing``, ``periodic_section_coordinate``, and ``period`` as in :doc:`hs_poincare`, the results are restricted to the crossings of a Poincaré section. The state at each crossing is interpolated between the two bracketing samples, while the vectors are those of the sample just before the crossing, so a small ``qr_time_step`` keeps the two consistent.
+
+``time_step``, ``tol``, and ``max_iter``
+    Set with ``integrator``. ``tol`` and ``max_iter`` apply only to ``imp``, as described in :doc:`hs_trajectories`.
+
 References
 ~~~~~~~~~~
 
