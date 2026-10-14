@@ -449,12 +449,13 @@ class HamiltonianSystem:
         Returns
         -------
         dict
-            Dictionary containing the integrator description and associated
-            step functions.
+            A copy of the dictionary containing the integrator description
+            and associated step functions. Modifying the returned dictionary
+            does not affect the integrator.
         """
         integrator = self.__integrator.lower()
 
-        return self.__AVAILABLE_INTEGRATORS[integrator]
+        return dict(self.__AVAILABLE_INTEGRATORS[integrator])
 
     def integrator(
         self,
