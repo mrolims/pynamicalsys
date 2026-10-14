@@ -285,6 +285,21 @@ The observed return times range from 7 iterations to more than 475,000 iteration
 
 Recurrence times measure the intervals between visits to a neighborhood. The :doc:`recurrence time entropy <dds_rte>` instead measures the diversity of recurrence periods obtained from a recurrence plot, so the two quantities provide complementary descriptions of recurrent dynamics.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``method`` and ``threshold`` of ``rotation_number``
+    ``method="wba"``, the default, iterates the orbit ``2 * total_time`` times and returns NaN when the two windows agree in fewer than ``threshold`` digits, by default ``9``. Lowering ``threshold`` accepts rotation numbers of orbits that have not fully converged, such as those near the edge of an island, at the cost of misclassifying some chaotic orbits as regular. ``method="average"`` iterates ``total_time`` times and always returns a value. The ``mod`` argument is deprecated and is used only when no frequency map is set.
+
+``axis``
+    The index of the coordinate whose displacement or average is measured, by default ``1``, which is the action in the maps above.
+
+``sample_times``
+    The iterations at which ``mean_squared_displacement``, ``average_in_time``, ``cumulative_average``, and ``root_mean_squared`` record their values. By default every iteration from ``1`` to ``total_time`` is recorded, so the output has ``total_time`` entries. For long runs, a logarithmically spaced set of integers keeps the output small without losing the shape of a log-log plot. ``diffusion_coefficient`` and ``ensemble_time_average`` use only the final state and the full time average, respectively, and do not accept it.
+
+``eps`` and ``transient_time`` of ``recurrence_times``
+    ``eps``, by default ``1e-2``, is the full side length of the recurrence box, so each coordinate must return within ``eps / 2`` of the reference point. A smaller box gives longer and rarer recurrences and needs a larger ``total_time`` to collect enough of them. ``transient_time`` iterations are performed before the reference point is defined and are not counted in ``total_time``. The box is not wrapped around the boundaries of a periodic coordinate, so reference points closer than ``eps / 2`` to a boundary miss the returns on the other side.
+
 References
 ~~~~~~~~~~
 
