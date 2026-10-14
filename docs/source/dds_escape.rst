@@ -436,6 +436,21 @@ The :py:class:`BasinMetrics <pynamicalsys.core.basin_metrics.BasinMetrics>` clas
 
 The first column of ``entropy_values`` contains :math:`S_b` and the second contains :math:`S_{bb}`. Both depend on the spatial partition, integration time, hole definition, and treatment of censored trajectories. The label :math:`\mathcal{B}_{\infty}` is included as a distinct outcome here, so changing ``max_time`` can change the measured basin entropies.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``max_time``
+    The largest number of iterations of ``escape_analysis``. Trajectories that do not escape return ``(-1, max_time)``, so passing their escape times to ``survival_probability`` counts them as escaping at ``max_time``. The survival probability is therefore reliable only for :math:`n<` ``max_time``, and ``max_time`` should exceed the time range of interest by a wide margin when a large fraction of trajectories remains trapped.
+
+``escape`` and ``hole_size``
+    ``escape="entering"`` records the first entry into one of the holes, which are hyperrectangles of side ``hole_size`` centered on the points of ``exits``. ``escape="exiting"`` records the first exit from the region given by ``exits``, one ``[lower, upper]`` pair per coordinate. In both modes the boundaries belong to the hole or to the region. A smaller hole gives longer escape times, so the number of iterations and of initial conditions needed for a well-sampled distribution grows as ``hole_size`` decreases.
+
+``min_time`` and ``time_step``
+    The first evaluation time and the spacing between evaluation times of ``survival_probability``. They default to ``1``, which evaluates :math:`P(n)` at every iteration. A larger ``time_step`` reduces the size of the output for long escape-time ranges.
+
+``n`` and ``log_base``
+    The options of ``BasinMetrics.basin_entropy``. ``n`` is the number of grid points along each side of a box and must divide the grid dimensions. Small boxes resolve the boundary structure, but contain fewer points to estimate the probabilities of the outcomes. ``log_base`` defaults to :math:`e`; with ``log_base=2``, the entropies are expressed in bits.
+
 References
 ~~~~~~~~~~
 
