@@ -249,7 +249,7 @@ class ContinuousDynamicalSystem:
             "adaptive": False,
         },
         "rk45": {
-            "description": "Adaptive 4th/5th order Runge-Kutta-Fehlberg method (RK45) with embedded error estimation",
+            "description": "Adaptive 5th order Dormand-Prince Runge-Kutta method (RK45) with embedded 4th order error estimation",
             "integrator": rk45_step_wrapped,
             "estimate_initial_step": True,
             "adaptive": True,
