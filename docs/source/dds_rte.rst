@@ -208,6 +208,24 @@ Use :py:meth:`finite_time_recurrence_time_entropy <pynamicalsys.core.discrete_dy
 
 When ``return_points=True``, ``phase_space_points[i]`` is the state at the beginning of the window that produced ``finite_rte[i]``. A multimodal finite-time RTE distribution can reveal transitions between the chaotic sea and sticky layers, but the locations of its modes depend on the window length and threshold settings.
 
+Numerical options
+^^^^^^^^^^^^^^^^^
+
+``total_time`` and ``transient_time``
+    The total number of iterations and the number discarded before the recurrence analysis, which defaults to zero. The recurrence matrix has :math:`(\texttt{total\_time} - \texttt{transient\_time})^2` entries, so the cost in time and memory grows quadratically with the number of analyzed iterations. ``finite_time_recurrence_time_entropy`` has no ``transient_time``: its windows start at the initial condition.
+
+``threshold`` and ``threshold_mode``
+    The recurrence threshold :math:`\varepsilon` and how it is interpreted, as described above. The defaults are ``threshold_mode="std"`` and ``threshold=0.1``.
+
+``metric`` and ``std_metric``
+    The norm used for distances between states and, in the ``"std"`` mode, to combine the coordinate standard deviations. Both default to ``"supremum"``; ``"euclidean"`` and ``"manhattan"`` are also accepted, as is a Python function, which is evaluated without compilation and is therefore slower.
+
+``lmin``
+    The shortest white vertical line counted in the distribution of recurrence times. It defaults to ``1``.
+
+``finite_time``
+    The window length of ``finite_time_recurrence_time_entropy``, in iterations. Each window has its own recurrence matrix and threshold, so short windows resolve changes along the trajectory but sample fewer recurrence times per value.
+
 References
 ^^^^^^^^^^
 
