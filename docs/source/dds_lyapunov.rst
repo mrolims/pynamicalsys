@@ -266,7 +266,7 @@ The distribution is multimodal. For these parameters, its large high-exponent mo
 By default, logarithms use base :math:`e`, so the exponents are measured per iteration in natural-logarithm units. Use ``log_base=2`` or ``log_base=10`` when another logarithm base is required. Set ``return_last_state=True`` in ``lyapunov`` when the state reached after the calculation is also needed.
 
 Numerical options
-~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^
 
 ``num_exponents``
     The number of exponents to compute, between one and the dimension of the map. If omitted, the full spectrum is returned. With ``num_exponents=1``, ``lyapunov`` returns a scalar.
