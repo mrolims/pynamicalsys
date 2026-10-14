@@ -336,6 +336,27 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
 
 All three public methods return a two-element array containing the final time and indicator value by default. With ``return_history=True``, they return a two-dimensional array whose columns contain time and the indicator history. The ``parameters``, ``seed``, and ``threshold`` arguments follow the same pattern for SALI, GALI, and LDI. With ``return_last_state=True``, each method also returns the coordinates and momenta at the time the integration stopped, as ``(result, q_last, p_last)``. This option behaves as in ``lyapunov``, described on the :doc:`Lyapunov exponents <hs_lyapunov>` page. The ``sample_times`` argument also behaves as in ``lyapunov``: it stores the history only at the requested times, rounded to the nearest integration step.
 
+Numerical options
+~~~~~~~~~~~~~~~~~
+
+``k``
+    Number of deviation vectors used by ``GALI`` and ``LDI``, between 2 and :math:`2d`. SALI always uses two vectors. Along a chaotic orbit the indicator decays faster for larger ``k``, while on a regular orbit of a system with :math:`d` degrees of freedom :math:`\mathrm{GALI}_k` remains bounded away from zero only for :math:`k\leq d`.
+
+``method``
+    The formulation of ``GALI``: ``"QR"`` (default), ``"QR_HH"``, or ``"DET"``, as compared above.
+
+``threshold``
+    The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. Set ``threshold=0.0`` to integrate up to ``total_time`` regardless of the indicator.
+
+``seed``
+    Initializes the random deviation vectors. It defaults to ``1312`` for ``SALI`` and to ``13`` for ``GALI`` and ``LDI``.
+
+``sample_times`` and ``return_last_state``
+    With ``return_history=True``, ``sample_times`` stores the history only at the requested times, each rounded to the nearest integration step, and ``return_last_state`` returns the coordinates and momenta at the time the integration stopped. Both behave as in ``lyapunov``, described on the :doc:`Lyapunov exponents <hs_lyapunov>` page.
+
+``time_step``, ``tol``, and ``max_iter``
+    Set with ``integrator``. ``tol`` and ``max_iter`` apply only to ``imp``, as described in :doc:`hs_trajectories`.
+
 References
 ~~~~~~~~~~
 
