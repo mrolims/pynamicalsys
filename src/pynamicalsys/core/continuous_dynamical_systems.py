@@ -610,6 +610,7 @@ class ContinuousDynamicalSystem:
         total_time: numeric_t,
         parameters: numeric_like_t | None = None,
         transient_time: numeric_t | None = None,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> NDArray[np.float64] | list[NDArray[np.float64]]:
         """
         Compute the trajectory of the dynamical system over a specified time interval.
@@ -627,6 +628,12 @@ class ContinuousDynamicalSystem:
             instance are used.
         transient_time : numeric_t | None, optional
             Initial integration time discarded before storing the trajectory.
+        sample_times : array-like | None, optional
+            Times in `(transient_time, total_time]` at which the state is
+            stored. The integration lands exactly on each of them, with both
+            fixed-step and adaptive integrators, so every trajectory of an
+            ensemble has the same number of stored points. If `None`, the state
+            is stored at every accepted integration step.
 
         Returns
         -------
@@ -650,8 +657,11 @@ class ContinuousDynamicalSystem:
             - If the number of parameters does not match the expected number.
             - If `total_time` is negative.
             - If `transient_time` is negative or not smaller than `total_time`.
+            - If `sample_times` contains values outside
+              `(transient_time, total_time]`.
         TypeError
             - If `total_time` or `transient_time` is not a valid real number.
+            - If `sample_times` cannot be converted to a 1D array of real numbers.
 
         Examples
         --------
@@ -677,6 +687,12 @@ class ContinuousDynamicalSystem:
 
         transient_time, total_time = validate_times(transient_time, total_time)
 
+        sample_times_arr = None
+        if sample_times is not None:
+            sample_times_arr = validate_sample_times(
+                sample_times, transient_time, total_time
+            )
+
         time_step = self.__get_initial_time_step(u, parameters)
 
         if u.ndim == 1:
@@ -690,6 +706,7 @@ class ContinuousDynamicalSystem:
                 atol=self.__atol,
                 rtol=self.__rtol,
                 integrator=self.__integrator_func,
+                sample_times=sample_times_arr,
             )
 
         return ensemble_trajectories(
@@ -702,6 +719,7 @@ class ContinuousDynamicalSystem:
             atol=self.__atol,
             rtol=self.__rtol,
             integrator=self.__integrator_func,
+            sample_times=sample_times_arr,
         )
 
     def poincare_section(
