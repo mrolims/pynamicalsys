@@ -3316,10 +3316,20 @@ class DiscreteDynamicalSystem:
         parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
             System parameters of shape (p,) passed to mapping function
         method : str, optional
-            Computation method:
-            - "ER": Eckmann-Ruelle (optimal for 2D systems)
-            - "QR": Gram-Schmidt QR decomposition
-            - "QR_HH": Householder QR (more stable)
+            Method used to reorthonormalize the deviation vectors in each
+            window:
+
+            - "QR": QR decomposition with the package's modified Gram-Schmidt
+              routine. Default.
+            - "QR_HH": QR decomposition with Householder reflections
+              (`numpy.linalg.qr`).
+            - "ER": the QR decomposition written in closed form for
+              two-dimensional maps, after Eckmann and Ruelle, where the
+              orthonormal frame is a rotation by a single angle. Only valid
+              for two-dimensional maps. Over long windows it gives the same
+              exponents as "QR"; over short windows the values differ
+              slightly, because the two methods start each window from
+              different deviation vectors.
         transient_time : Optional[int], optional
             Initial burn-in period to discard (default None → finite_time)
 
@@ -3397,17 +3407,15 @@ class DiscreteDynamicalSystem:
         if not isinstance(method, str):
             raise TypeError("method must be a string")
         method = method.upper()
-        if method not in ("QR", "QR_HH"):
-            raise ValueError("method must be 'QR' or 'QR_HH'")
+        if method not in ("ER", "QR", "QR_HH"):
+            raise ValueError("method must be 'ER', 'QR', or 'QR_HH'")
+        if method == "ER" and self.__system_dimension != 2:
+            raise ValueError("method ER is only valid for 2 dimensional systems.")
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
         elif num_exponents > self.__system_dimension:
             raise ValueError("num_exponents must be <= system_dimension")
-
-        # Validate method for system dimension
-        if method == "QR" and self.__system_dimension == 2:
-            method = "ER"  # Fallback to QR for higher dimensions
 
         validate_positive(log_base, "log_base", Real)
         if log_base == 1:

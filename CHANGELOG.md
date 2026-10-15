@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - With the `imp` integrator, `lyapunov`, `SALI`, `LDI`, `GALI`, and `CLV` of `HamiltonianSystem` continued with an unconverged step when the Newton iteration of the implicit midpoint method did not converge, which could silently corrupt the results. They now raise a `RuntimeError`, as `trajectory` already did.
 - With a fixed-step integrator, round-off accumulated over many steps could leave the integration of `ContinuousDynamicalSystem` slightly short of `total_time`, and an extra step of about `1e-10` was then taken to reach it. `trajectory` returned the final state twice, with almost identical times. A step that ends within round-off of `total_time`, or of a time in `sample_times`, now ends exactly at it.
 - `DiscreteDynamicalSystem.cumulative_average` and `DiscreteDynamicalSystem.root_mean_squared` accepted a sample time of `0` and returned NaN for it, since the average over zero iterations is undefined. They now raise a `ValueError`.
+- `DiscreteDynamicalSystem.finite_time_lyapunov` replaced the default `method="QR"` with `"ER"` on two-dimensional maps, and rejected `method="ER"` when it was requested by name. It now uses the method that is passed, and `"ER"` is accepted for two-dimensional maps. With the default method, results for two-dimensional maps differ slightly from those of earlier versions.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 

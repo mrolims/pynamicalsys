@@ -188,6 +188,39 @@ def test_er_method_rejected_above_two_dimensions():
         ds.lyapunov([0.1, 0.2, 0.3, 0.4], 1_000, method="ER")
 
 
+def test_finite_time_lyapunov_uses_the_requested_method():
+    """
+    finite_time_lyapunov must use the method that is passed. It used to replace
+    "QR" with "ER" on two-dimensional maps and to reject "ER" by name.
+
+    QR and QR_HH start every window from the same deviation vectors, so their
+    window values agree to round-off. ER starts from different vectors, so over
+    windows of 200 iterations it departs from them visibly.
+    """
+    ds = DDS(model="standard map")
+    ds.set_parameters([1.5])
+    u = [0.05, 0.05]
+
+    windows = {
+        method: ds.finite_time_lyapunov(u, 10_000, 200, method=method)
+        for method in ("ER", "QR", "QR_HH")
+    }
+
+    np.testing.assert_allclose(windows["QR"], windows["QR_HH"], atol=1e-10)
+    assert np.abs(windows["ER"] - windows["QR"]).max() > 1e-6
+    np.testing.assert_allclose(
+        ds.finite_time_lyapunov(u, 10_000, 200), windows["QR"], atol=0
+    )
+
+
+def test_finite_time_lyapunov_er_rejected_above_two_dimensions():
+    ds = DDS(model="4d symplectic map")
+    ds.set_parameters([0.5, 0.3, 0.1])
+
+    with pytest.raises(ValueError, match="only valid for 2 dimensional"):
+        ds.finite_time_lyapunov([0.1, 0.2, 0.3, 0.4], 1_000, 100, method="ER")
+
+
 # --------------------------------------------------------------------------
 # 3. Reference values for chaotic orbits
 # --------------------------------------------------------------------------
