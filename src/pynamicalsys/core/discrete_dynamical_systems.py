@@ -3303,18 +3303,28 @@ class DiscreteDynamicalSystem:
         log_base: float = np.e,
         return_points: bool = False,
     ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute finite-time Lyapunov exponents (FTLE) along trajectory.
+        """Compute finite-time Lyapunov exponents along a trajectory.
+
+        After the transient, the trajectory is divided into consecutive
+        non-overlapping windows of `finite_time` iterations, and the Lyapunov
+        exponents are computed independently in each window.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape (d,) where d is system dimension
+        u : Union[NDArray[np.float64], Sequence[float], float]
+            Initial condition of shape `(system_dimension,)`.
         total_time : int
-            Total simulation time steps (must be > finite_time, default 10000)
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`.
         finite_time : int
-            Averaging window size in time steps (default 100)
+            Length of each window, in iterations. It must be positive and not
+            larger than `total_time // 2` or `total_time - transient_time`.
         parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,) passed to mapping function
+            System parameters of shape `(p,)` passed to the mapping function.
+            If None, the parameters set on the system are used.
+        num_exponents : Optional[int], optional
+            Number of exponents computed in each window, from the largest.
+            Default is None, which computes the full spectrum.
         method : str, optional
             Method used to reorthonormalize the deviation vectors in each
             window:
@@ -3331,62 +3341,76 @@ class DiscreteDynamicalSystem:
               slightly, because the two methods start each window from
               different deviation vectors.
         transient_time : Optional[int], optional
-            Initial burn-in period to discard (default None → finite_time)
+            Number of iterations discarded before the first window. Default is
+            None, which means no transient.
+        log_base : float, optional
+            Base of the logarithm used in the exponents. Default is `np.e`.
+        return_points : bool, optional
+            If True, also return the state at the beginning of each window.
+            Default is False.
 
         Returns
         -------
-        NDArray[np.float64]
-            FTLE matrix of shape (n_windows, d) where:
+        NDArray[np.float64] | Tuple[NDArray[np.float64], NDArray[np.float64]]
+            - If `return_points=False`, a 2D array of shape
+              `(num_windows, num_exponents)`. Row `i` holds the exponents of
+              the `i`-th window. Column `j` corresponds to the `j`-th
+              deviation vector, which tends to the `j`-th largest exponent as
+              `finite_time` grows; over short windows the values in a row need
+              not be in decreasing order.
+            - If `return_points=True`, the tuple `(exponents, points)`, where
+              `exponents` is the array above and `points`, of shape
+              `(num_windows, system_dimension)`, holds the state at the
+              beginning of each window.
 
-            - n_windows = (total_time - transient_time) // finite_time
-            - Each row contains exponents for one time window
-            - Columns are ordered by decreasing exponent magnitude
+            Here `num_windows = (total_time - transient_time) // finite_time`.
+            Iterations at the end that do not fill a window are discarded.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
+            - If `u` is not a scalar or 1D array, or if its shape does not match the system dimension.
             - If `parameters` is not None and does not match the expected number of parameters.
             - If `parameters` is None but the system expects parameters.
             - If `parameters` is a scalar or array-like but not 1D.
             - If `total_time` is negative.
-            - If `finite_time` is negative or zero.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `method` is not "QR" or "QR_HH".
-            - If `log_base` is not positive
+            - If `finite_time` is not positive, or larger than `total_time // 2` or `total_time - transient_time`.
+            - If `transient_time` is negative, or greater than or equal to `total_time`.
+            - If `method` is not "ER", "QR", or "QR_HH", or if it is "ER" and the system is not two-dimensional.
+            - If `num_exponents` is larger than the system dimension.
+            - If `log_base` is not positive, or is equal to 1.
         TypeError
             - If `u` is not a scalar or array-like type.
             - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If `log_base` is not float.
+            - If `total_time`, `finite_time`, or `transient_time` is not an integer.
+            - If `log_base` is not a real number.
             - If `method` is not a string.
             - If `return_points` is not a boolean.
 
         Notes
         -----
-        - FTLE measure local stretching rates over finite intervals
-        - For chaotic systems, FTLE → true exponents as finite_time → ∞
-        - ER method is faster but limited to 2D systems
-        - Results are more reliable when:
-        - finite_time >> 1
-        - (total_time - transient_time) // finite_time >> 1
+        - Finite-time exponents measure the local stretching rates over a
+          finite interval. Their distribution reveals variations along the
+          trajectory, such as sticky episodes near stability islands, that a
+          single long-time average hides.
+        - As `finite_time` grows, the values in every window of a chaotic
+          orbit approach the asymptotic Lyapunov exponents.
 
         Examples
         --------
-        >>> # Basic usage with defaults
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> ftle = system.finite_time_lyapunov_exponents(u0, params)
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+        >>> exponents = system.finite_time_lyapunov([0.05, 0.05], 10000, 100)
+        >>> exponents.shape
+        (100, 2)
 
-        >>> # With custom parameters
-        >>> ftle = system.finite_time_lyapunov_exponents(
-        ...     u0, params,
-        ...     total_time=5000,
-        ...     finite_time=50,
-        ...     method="GS"
+        >>> # Largest exponent only, with the state at the start of each window
+        >>> exponents, points = system.finite_time_lyapunov(
+        ...     [0.05, 0.05], 10000, 100, num_exponents=1, return_points=True
         ... )
+        >>> exponents.shape, points.shape
+        ((100, 1), (100, 2))
         """
 
         u = validate_initial_conditions(
