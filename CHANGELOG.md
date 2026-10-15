@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `lyapunov`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem` emit a `UserWarning` when `sample_times` is passed without `return_history=True`, where it has no effect. It was previously ignored without notice. The same applies to `ContinuousDynamicalSystem` and `HamiltonianSystem`.
 - In `lyapunov`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem`, `sample_times` are now iterations counted from the initial condition, like `total_time`, and must lie in `(transient_time, total_time]`. They were previously counted from the end of the transient but checked against `total_time`, so times beyond `total_time - transient_time` returned rows of zeros. With a `transient_time`, add it to the sample times to reproduce previous results.
 - The early-stopping value of `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem` is now passed as `threshold`, as in `ContinuousDynamicalSystem` and `HamiltonianSystem`.
+- When `SALI`, `LDI`, or `GALI` of `DiscreteDynamicalSystem` stops early because the indicator falls below `threshold`, the history returned with `return_history=True` now ends at the stop, as in `ContinuousDynamicalSystem` and `HamiltonianSystem`, instead of being filled with zeros up to `total_time` or the last sample time. It can therefore be shorter than `sample_times`.
 
 ### Deprecated
 

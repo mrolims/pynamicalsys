@@ -37,9 +37,27 @@ def test_threshold_stops_the_computation(system, name):
     stopped = compute(system, threshold=1e-8, return_history=True)
     full = compute(system, threshold=0.0, return_history=True)
 
+    # Every iteration is recorded, so the history ends exactly at the stop.
     stop = np.argmax(full < 1e-8)
     assert stop > 0
-    np.testing.assert_array_equal(stopped[: stop + 1], full[: stop + 1])
+    np.testing.assert_array_equal(stopped, full[: stop + 1])
+
+
+@pytest.mark.parametrize("name", INDICATORS)
+def test_history_is_truncated_at_the_stop_with_sample_times(system, name):
+    compute = INDICATORS[name]
+    sample_times = np.arange(10, TOTAL_TIME + 1, 10)
+    full = compute(system, threshold=0.0, return_history=True)
+    stopped = compute(
+        system, threshold=1e-8, return_history=True, sample_times=sample_times
+    )
+
+    # The stop happens at iteration stop_iteration; only the sample times up
+    # to it are recorded, and there are no trailing zeros.
+    stop_iteration = np.argmax(full < 1e-8) + 1
+    recorded = sample_times[sample_times <= stop_iteration]
+    assert 0 < len(recorded) < len(sample_times)
+    np.testing.assert_array_equal(stopped, full[recorded - 1])
 
 
 @pytest.mark.parametrize("name", INDICATORS)

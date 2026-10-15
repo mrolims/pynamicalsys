@@ -78,8 +78,9 @@ def sali(
           - a 1D array with shape `(1,)` containing the final SALI value
           - the final state of shape `(neq,)`
         - If `return_history=True`, returns:
-          - a 1D array with shape `(len(sample_times),)` containing SALI
-            evaluated at the requested sampling times
+          - a 1D array containing SALI evaluated at the requested sampling
+            times. If the computation stops early, it contains only the values
+            recorded up to the stop, so it may be shorter than `sample_times`
           - the final state of shape `(neq,)`
 
     Notes
@@ -136,6 +137,6 @@ def sali(
             break
 
     if return_history:
-        return history, u
+        return history[:sample_idx], u
 
     return np.array([sali_val]), u

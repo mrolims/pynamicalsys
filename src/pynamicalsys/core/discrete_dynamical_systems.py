@@ -4011,8 +4011,9 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If SALI falls below
-              `threshold`, the computation stops, and the entries after that
-              point are zero.
+              `threshold`, the computation stops, and the array ends with the
+              last value recorded up to the stop, so it is shorter than
+              described above.
             - If `return_history=True` and `return_last_state=True`, returns
               `(sali_history, final_state)`.
 
@@ -4206,8 +4207,9 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If LDI_k falls below
-              `threshold`, the computation stops, and the entries after that
-              point are zero.
+              `threshold`, the computation stops, and the array ends with the
+              last value recorded up to the stop, so it is shorter than
+              described above.
             - If `return_history=True` and `return_last_state=True`, returns
               `(ldi_history, final_state)`.
 
@@ -4432,8 +4434,9 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If GALI_k falls below
-              `threshold`, the computation stops, and the entries after that
-              point are zero.
+              `threshold`, the computation stops, and the array ends with the
+              last value recorded up to the stop, so it is shorter than
+              described above.
             - If `return_history=True` and `return_last_state=True`, returns
               `(gali_history, final_state)`.
 
