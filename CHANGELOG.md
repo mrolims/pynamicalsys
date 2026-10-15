@@ -30,12 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The step-size control of the `rk45` integrator now uses the exponent appropriate to the Dormand-Prince 5(4) pair, so results computed with `rk45` may differ slightly from those of earlier versions.
 - `lyapunov`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem` emit a `UserWarning` when `sample_times` is passed without `return_history=True`, where it has no effect. It was previously ignored without notice. The same applies to `ContinuousDynamicalSystem` and `HamiltonianSystem`.
 - In `lyapunov`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem`, `sample_times` are now iterations counted from the initial condition, like `total_time`, and must lie in `(transient_time, total_time]`. They were previously counted from the end of the transient but checked against `total_time`, so times beyond `total_time - transient_time` returned rows of zeros. With a `transient_time`, add it to the sample times to reproduce previous results.
+- The early-stopping value of `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem` is now passed as `threshold`, as in `ContinuousDynamicalSystem` and `HamiltonianSystem`.
 
 ### Deprecated
 
 - Calling `rotation_number` on a system without a frequency map, which averages the increment of the first coordinate wrapped modulo `mod`, and passing `mod` when a frequency map is set. Set a frequency map instead.
 - Passing to `dig` an observable that acts on an array of states of shape `(n, d)`. Pass a function of a single state instead.
 - The `endpoint` argument of `lyapunov`, `SALI`, `LDI`, and `GALI` in `ContinuousDynamicalSystem`. It is now ignored, and passing it emits a `DeprecationWarning`.
+- The `tol` argument of `SALI`, `LDI`, and `GALI` in `DiscreteDynamicalSystem`. Use `threshold` instead.
 
 ### Fixed
 

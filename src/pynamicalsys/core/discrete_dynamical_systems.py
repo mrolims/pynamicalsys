@@ -157,6 +157,23 @@ from pynamicalsys.common.validators import (
 )
 
 
+def _threshold_from_deprecated_tol(threshold, tol):
+    """Return the early-stopping threshold, honoring the deprecated `tol`."""
+    if tol is None:
+        return threshold
+    if threshold != 1e-16:
+        raise TypeError(
+            "tol is the deprecated name of threshold; pass only threshold."
+        )
+    warnings.warn(
+        "tol is deprecated and will stop working in a future version. "
+        "Use threshold instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return tol
+
+
 class DiscreteDynamicalSystem:
     """
     Class for defining, iterating, and analyzing discrete-time dynamical systems.
@@ -3929,10 +3946,11 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         return_history: bool = False,
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
-        tol: numeric_t = 1e-16,
+        threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
         seed: int_t = 1312,
         return_last_state: bool = False,
+        tol: numeric_t | None = None,
     ) -> (
         float
         | NDArray[np.float64]
@@ -3965,9 +3983,9 @@ class DiscreteDynamicalSystem:
             initial condition, like `total_time`, and are sorted with duplicates
             removed. If None and `return_history=True`, SALI is recorded at
             every iteration after the transient.
-        tol : numeric_t, optional
-            Early stopping threshold. If `SALI < tol`, the computation is
-            interrupted. Default is `1e-16`.
+        threshold : numeric_t, optional
+            Early stopping threshold. If `SALI < threshold`, the computation
+            is interrupted. Default is `1e-16`.
         transient_time : int_t | None, optional
             Number of initial iterations to discard before starting the SALI
             computation. If None, no transient is discarded.
@@ -3975,6 +3993,10 @@ class DiscreteDynamicalSystem:
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
             If True, also return the final state of the trajectory.
+        tol : numeric_t | None, optional
+            Deprecated name of `threshold`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `threshold` instead.
 
         Returns
         -------
@@ -3989,8 +4011,8 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If SALI falls below
-              `tol`, the computation stops, and the entries after that point
-              are zero.
+              `threshold`, the computation stops, and the entries after that
+              point are zero.
             - If `return_history=True` and `return_last_state=True`, returns
               `(sali_history, final_state)`.
 
@@ -4003,17 +4025,20 @@ class DiscreteDynamicalSystem:
             - If `transient_time` is invalid.
             - If `sample_times` is not a 1D array of integers, or contains values
               outside `(transient_time, total_time]`.
-            - If `tol` is negative.
+            - If `threshold` is negative.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `total_time` is not an integer.
             - If `transient_time` is not an integer.
-            - If `tol` is not numeric.
+            - If `threshold` is not numeric.
+            - If both `threshold` and the deprecated `tol` are passed.
             - If `seed` is not an integer.
 
         Warns
         -----
+        DeprecationWarning
+            If `tol` is passed. Use `threshold` instead.
         UserWarning
             If `sample_times` is passed without `return_history=True`. It is
             ignored.
@@ -4077,7 +4102,8 @@ class DiscreteDynamicalSystem:
                 )
                 sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
-        validate_non_negative(tol, "tol", Real)
+        threshold = _threshold_from_deprecated_tol(threshold, tol)
+        validate_non_negative(threshold, "threshold", Real)
 
         if not isinstance(seed, Integral):
             raise TypeError("seed must be an integer")
@@ -4091,7 +4117,7 @@ class DiscreteDynamicalSystem:
             sample_times_arr,
             return_history=return_history,
             transient_time=transient_time,
-            tol=tol,
+            tol=threshold,
             seed=seed,
         )
 
@@ -4114,10 +4140,11 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         return_history: bool = False,
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
-        tol: numeric_t = 1e-16,
+        threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
         seed: int = 1312,
         return_last_state: bool = False,
+        tol: numeric_t | None = None,
     ) -> (
         float
         | NDArray[np.float64]
@@ -4151,9 +4178,9 @@ class DiscreteDynamicalSystem:
             initial condition, like `total_time`, and are sorted with duplicates
             removed. If None and `return_history=True`, LDI_k is recorded at
             every iteration after the transient.
-        tol : numeric_t, optional
-            Early stopping threshold. If `LDI_k < tol`, the computation is
-            interrupted. Default is `1e-16`.
+        threshold : numeric_t, optional
+            Early stopping threshold. If `LDI_k < threshold`, the computation
+            is interrupted. Default is `1e-16`.
         transient_time : int_t | None, optional
             Number of initial iterations to discard before starting the LDI_k
             computation. If None, no transient is discarded.
@@ -4161,6 +4188,10 @@ class DiscreteDynamicalSystem:
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
             If True, also return the final state of the trajectory.
+        tol : numeric_t | None, optional
+            Deprecated name of `threshold`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `threshold` instead.
 
         Returns
         -------
@@ -4175,8 +4206,8 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If LDI_k falls below
-              `tol`, the computation stops, and the entries after that point
-              are zero.
+              `threshold`, the computation stops, and the entries after that
+              point are zero.
             - If `return_history=True` and `return_last_state=True`, returns
               `(ldi_history, final_state)`.
 
@@ -4190,18 +4221,21 @@ class DiscreteDynamicalSystem:
             - If `sample_times` is not a 1D array of integers, or contains values
               outside `(transient_time, total_time]`.
             - If `k` is not in the interval `[2, system_dimension]`.
-            - If `tol` is negative.
+            - If `threshold` is negative.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `total_time` is not an integer.
             - If `transient_time` is not an integer.
-            - If `tol` is not numeric.
+            - If `threshold` is not numeric.
+            - If both `threshold` and the deprecated `tol` are passed.
             - If `seed` is not an integer.
             - If `k` is not an integer.
 
         Warns
         -----
+        DeprecationWarning
+            If `tol` is passed. Use `threshold` instead.
         UserWarning
             If `sample_times` is passed without `return_history=True`. It is
             ignored.
@@ -4212,7 +4246,7 @@ class DiscreteDynamicalSystem:
         Jacobian and renormalized at each step. LDI_k is computed as the product
         of the singular values of the deviation-vector matrix.
 
-        - The computation is terminated early if `LDI_k < tol`.
+        - The computation is terminated early if `LDI_k < threshold`.
 
         Examples
         --------
@@ -4271,7 +4305,8 @@ class DiscreteDynamicalSystem:
                 )
                 sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
-        validate_non_negative(tol, "tol", Real)
+        threshold = _threshold_from_deprecated_tol(threshold, tol)
+        validate_non_negative(threshold, "threshold", Real)
 
         if not isinstance(seed, Integral):
             raise TypeError("seed must be an integer")
@@ -4287,7 +4322,7 @@ class DiscreteDynamicalSystem:
             sample_times_arr,
             return_history=return_history,
             transient_time=transient_time,
-            tol=tol,
+            tol=threshold,
             seed=seed,
         )
 
@@ -4311,10 +4346,11 @@ class DiscreteDynamicalSystem:
         return_history: bool = False,
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
         method: str = "QR",
-        tol: numeric_t = 1e-16,
+        threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
         seed: int = 1312,
         return_last_state: bool = False,
+        tol: numeric_t | None = None,
     ) -> (
         float
         | NDArray[np.float64]
@@ -4368,9 +4404,9 @@ class DiscreteDynamicalSystem:
               `GALI_k = prod_i |R_ii|`.
 
             Default is `"QR"`.
-        tol : numeric_t, optional
-            Early stopping threshold. If `GALI_k < tol`, the computation is
-            interrupted. Default is `1e-16`.
+        threshold : numeric_t, optional
+            Early stopping threshold. If `GALI_k < threshold`, the computation
+            is interrupted. Default is `1e-16`.
         transient_time : int_t | None, optional
             Number of initial iterations to discard before starting the GALI_k
             computation. If None, no transient is discarded.
@@ -4378,6 +4414,10 @@ class DiscreteDynamicalSystem:
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
             If True, also return the final state of the trajectory.
+        tol : numeric_t | None, optional
+            Deprecated name of `threshold`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `threshold` instead.
 
         Returns
         -------
@@ -4392,8 +4432,8 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If GALI_k falls below
-              `tol`, the computation stops, and the entries after that point
-              are zero.
+              `threshold`, the computation stops, and the entries after that
+              point are zero.
             - If `return_history=True` and `return_last_state=True`, returns
               `(gali_history, final_state)`.
 
@@ -4408,19 +4448,22 @@ class DiscreteDynamicalSystem:
               outside `(transient_time, total_time]`.
             - If `k` is not in the interval `[2, system_dimension]`.
             - If `method` is not `"DET"`, `"QR"`, or `"QR_HH"`.
-            - If `tol` is negative.
+            - If `threshold` is negative.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `total_time` is not an integer.
             - If `transient_time` is not an integer.
-            - If `tol` is not numeric.
+            - If `threshold` is not numeric.
+            - If both `threshold` and the deprecated `tol` are passed.
             - If `seed` is not an integer.
             - If `k` is not an integer.
             - If `method` is not a string.
 
         Warns
         -----
+        DeprecationWarning
+            If `tol` is passed. Use `threshold` instead.
         UserWarning
             If `sample_times` is passed without `return_history=True`. It is
             ignored.
@@ -4442,7 +4485,7 @@ class DiscreteDynamicalSystem:
         the decay is slower or GALI_k may remain bounded away from zero, depending
         on `k` and on the dimension of the invariant set.
 
-        The computation is terminated early if `GALI_k < tol`.
+        The computation is terminated early if `GALI_k < threshold`.
 
         Examples
         --------
@@ -4507,7 +4550,8 @@ class DiscreteDynamicalSystem:
                 )
                 sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
-        validate_non_negative(tol, "tol", Real)
+        threshold = _threshold_from_deprecated_tol(threshold, tol)
+        validate_non_negative(threshold, "threshold", Real)
 
         if not isinstance(seed, Integral):
             raise TypeError("seed must be an integer")
@@ -4524,7 +4568,7 @@ class DiscreteDynamicalSystem:
             method=method,
             return_history=return_history,
             transient_time=transient_time,
-            tol=tol,
+            tol=threshold,
             seed=seed,
         )
 
