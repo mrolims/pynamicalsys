@@ -1776,7 +1776,15 @@ class DiscreteDynamicalSystem:
         Returns
         -------
         tuple[NDArray[np.float64], NDArray[np.float64]]
-            Two arrays containing the `+` and `-` manifold branches.
+            The tuple `(branch_plus, branch_minus)`, computed from the seeds
+            placed along the eigenvector and along its negative. Each array
+            has shape `(n_points_branch * iter_time_branch, 2)`, with the
+            values of `n_points` and `iter_time` for that branch. The rows are
+            grouped by seed: rows `i * iter_time_branch` to
+            `(i + 1) * iter_time_branch - 1` hold iterates `1` to
+            `iter_time_branch` of the `i`-th seed, in order of increasing
+            distance from the periodic point. The seeds themselves are not
+            included.
 
         Raises
         ------
@@ -1797,6 +1805,11 @@ class DiscreteDynamicalSystem:
         -----
         This method is only implemented for 2D systems and requires the selected
         periodic orbit to be a saddle.
+
+        If the multipliers of the saddle are negative, each period of the map
+        carries points to the opposite side of the periodic point. Each
+        returned array then alternates between the two branches of the
+        manifold, and only the two arrays together trace both branches.
         """
         if self.__system_dimension != 2:
             raise ValueError("manifold is only implemented for 2D systems")

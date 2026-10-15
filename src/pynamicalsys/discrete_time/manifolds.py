@@ -70,7 +70,11 @@ def calculate_manifolds(
     -------
     tuple[NDArray[np.float64], NDArray[np.float64]]
         Two arrays containing the `+` and `-` manifold branches. Each array has
-        shape `(n_points_branch * iter_time_branch, 2)`.
+        shape `(n_points_branch * iter_time_branch, 2)`, with the rows grouped
+        by seed: iterates `1` to `iter_time_branch` of the first seed, then of
+        the second, and so on. The seeds themselves are not included. If the
+        multipliers are negative, each array alternates between the two
+        branches, since each period carries points to the opposite side.
 
     Raises
     ------
