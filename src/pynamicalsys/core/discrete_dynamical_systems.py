@@ -1758,10 +1758,15 @@ class DiscreteDynamicalSystem:
         parameters : numeric_like_t | None, optional
             System parameters. If None, the stored system parameters are used.
         delta : numeric_t, optional
-            Initial displacement magnitude used to seed the manifold branches.
+            Distance from the periodic point of the closest seed on each
+            branch. Default is `1e-4`.
         n_points : int | tuple[int, int], optional
-            Number of seed points used on each manifold branch. If an integer is
-            given, the same value is used for both branches.
+            Number of seed points used on each manifold branch. The seeds span
+            one fundamental domain along the eigendirection, at distances
+            `delta * s**(i / n_points)` for `i = 0, ..., n_points - 1`, where
+            `s` is the stretching factor over one period (`|lambda_u|` for the
+            unstable manifold and `1 / |lambda_s|` for the stable one). If an
+            integer is given, the same value is used for both branches.
         iter_time : int_t | tuple[int_t, int_t], optional
             Number of iterations used to evolve each branch. If an integer is given,
             the same value is used for both branches.

@@ -56,7 +56,7 @@ def calculate_manifolds(
     period : int_t
         Period of the orbit.
     delta : numeric_t, optional
-        Initial displacement magnitude used to seed the manifold branches.
+        Distance from the periodic point of the closest seed on each branch.
     n_points : int | tuple[int, int], optional
         Number of seed points on each branch. If an integer is given, the same
         value is used for both branches.
@@ -86,7 +86,13 @@ def calculate_manifolds(
     The manifold is seeded by small displacements along the corresponding
     eigendirection of the monodromy matrix. The `"unstable"` manifold is evolved
     with the forward map, and the `"stable"` manifold is evolved with the
-    backward map.
+    backward map. The seeds of each branch span one fundamental domain,
+    at distances `delta * s**(i / n)` from the periodic point for
+    `i = 0, ..., n - 1`, where `n` is the number of seeds and `s` is the
+    stretching factor over one period: `|lambda_u|` for the unstable manifold
+    and `1 / |lambda_s|` for the stable one. Their images after successive
+    periods then join end to end, with the same number of points in each
+    fundamental domain.
     """
     if u.shape != (2,):
         raise ValueError("calculate_manifolds is only implemented for 2D systems")
@@ -139,13 +145,19 @@ def calculate_manifolds(
 
     vu = eigenvectors[:, 0]
     vs = eigenvectors[:, 1]
+    eigenvalues = np.asarray(stability_info["eigenvalues"], dtype=np.complex128)
 
+    # Stretching factor of one period along the selected direction: the
+    # unstable multiplier for the forward map, and the inverse of the stable
+    # multiplier for the backward map.
     if stability == "unstable":
         direction = np.asarray(vu.real, dtype=np.float64)
         mapping = forward_mapping
+        stretching = abs(eigenvalues[0])
     else:
         direction = np.asarray(vs.real, dtype=np.float64)
         mapping = backward_mapping
+        stretching = 1.0 / abs(eigenvalues[1])
 
     norm = np.linalg.norm(direction)
     if norm == 0.0:
@@ -156,7 +168,11 @@ def calculate_manifolds(
     def _calculate_branch(sign: int, branch_index: int) -> NDArray[np.float64]:
         seeds = np.empty((n_points_tuple[branch_index], 2), dtype=np.float64)
 
-        scales = np.linspace(0.0, delta, n_points_tuple[branch_index])
+        # Seeds span one fundamental domain [delta, delta * stretching),
+        # spaced geometrically so that their images under successive periods
+        # join end to end with the same number of points in each domain.
+        exponents = np.arange(n_points_tuple[branch_index]) / n_points_tuple[branch_index]
+        scales = delta * stretching**exponents
         for i in range(n_points_tuple[branch_index]):
             seeds[i] = u + sign * scales[i] * direction
 
