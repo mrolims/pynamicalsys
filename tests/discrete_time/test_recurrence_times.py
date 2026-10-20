@@ -93,3 +93,11 @@ def test_total_time_includes_the_transient(system):
         system.recurrence_times(after_transient, TOTAL_TIME - transient_time, eps=EPS),
     )
     assert times.sum() <= TOTAL_TIME - transient_time
+
+
+@pytest.mark.parametrize("eps", [0.0, -0.01])
+def test_eps_must_be_positive(system, eps):
+    # A box of zero size detects a return only when the orbit comes back to
+    # exactly the same floating-point state, so it is not a neighborhood.
+    with pytest.raises(ValueError, match="eps"):
+        system.recurrence_times([0.2, 0.3], 100, eps=eps)

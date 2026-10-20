@@ -2910,6 +2910,7 @@ class DiscreteDynamicalSystem:
         Raises
         ------
         ValueError
+            - If `eps` is not positive.
             - If `periods` has the wrong shape or a non-positive entry.
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
@@ -2924,7 +2925,7 @@ class DiscreteDynamicalSystem:
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
-        validate_non_negative(eps, "eps", Real)
+        validate_positive(eps, "eps", Real)
 
         if periods is None:
             periods_arr = np.full(self.__system_dimension, np.inf)
