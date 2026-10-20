@@ -2877,7 +2877,9 @@ class DiscreteDynamicalSystem:
         u : numeric_like_t
             Initial condition of shape `(system_dimension,)`.
         total_time : int_t
-            Total number of iterations used to detect recurrences.
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`. Recurrences are detected during the
+            last `total_time - transient_time` iterations.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
@@ -2901,8 +2903,9 @@ class DiscreteDynamicalSystem:
             the reference point to the first return. The iterations after the
             last return are not included, since the orbit has not yet returned
             and that interval is not a complete recurrence time. The entries
-            therefore add up to the iteration of the last return, which is at
-            most `total_time`.
+            therefore add up to the number of iterations from the reference
+            point to the last return, which is at most
+            `total_time - transient_time`.
 
         Raises
         ------

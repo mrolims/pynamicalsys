@@ -331,7 +331,9 @@ def recurrence_times(
     parameters : NDArray[np.float64]
         System parameters passed to ``mapping``.
     total_time : int_t
-        Total number of iterations used to detect recurrences.
+        Total number of iterations, counted from the initial condition, so it
+        includes ``transient_time``. Recurrences are detected during the last
+        ``total_time - transient_time`` iterations.
     mapping : map_t
         System mapping function.
     eps : numeric_t
@@ -353,8 +355,10 @@ def recurrence_times(
     """
     state = u.copy()
 
+    sample_size = total_time
     if transient_time is not None:
         state = iterate_mapping(state, parameters, transient_time, mapping)
+        sample_size = total_time - transient_time
 
     reference = state.copy()
     half_eps = eps / 2.0
@@ -363,7 +367,7 @@ def recurrence_times(
     rt = 0
     rts = []
 
-    for _ in range(total_time):
+    for _ in range(sample_size):
         state = mapping(state, parameters)
         rt += 1
 

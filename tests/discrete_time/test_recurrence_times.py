@@ -74,3 +74,22 @@ def test_periods_far_from_the_boundaries_change_nothing(system):
 def test_invalid_periods_raise(system, periods):
     with pytest.raises(ValueError, match="periods"):
         system.recurrence_times([0.2, 0.3], 100, periods=periods)
+
+
+def test_total_time_includes_the_transient(system):
+    # total_time counts from the initial condition, as in lyapunov and SALI, so
+    # recurrences are detected during the last total_time - transient_time
+    # iterations, starting from the state reached after the transient.
+    u = [0.2, 0.3]
+    transient_time = 1_000
+    after_transient = system.trajectory(u, transient_time)[-1]
+
+    times = system.recurrence_times(
+        u, TOTAL_TIME, eps=EPS, transient_time=transient_time
+    )
+
+    np.testing.assert_array_equal(
+        times,
+        system.recurrence_times(after_transient, TOTAL_TIME - transient_time, eps=EPS),
+    )
+    assert times.sum() <= TOTAL_TIME - transient_time
