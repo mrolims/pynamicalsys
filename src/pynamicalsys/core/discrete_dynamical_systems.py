@@ -2870,7 +2870,14 @@ class DiscreteDynamicalSystem:
         periods: numeric_like_t | None = None,
     ) -> NDArray[np.int64]:
         """
-        Compute recurrence times to an `eps`-neighborhood of the reference point.
+        Compute the recurrence times to a box around a reference point.
+
+        The reference point is the state reached after `transient_time`
+        iterations, or the initial condition if there is no transient. The
+        recurrence box is the hypercube of side `eps` centered on it, so a
+        return happens when every coordinate is within `eps / 2` of the
+        reference point. The recurrence times are the numbers of iterations
+        between successive returns.
 
         Parameters
         ----------
@@ -2884,9 +2891,11 @@ class DiscreteDynamicalSystem:
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
         eps : numeric_t, optional
-            Side length of the recurrence neighborhood.
+            Side length of the recurrence box. It must be positive. Default is
+            `1e-2`.
         transient_time : int_t | None, optional
-            Number of initial iterations discarded before defining the recurrence box.
+            Number of initial iterations performed before the reference point is
+            defined. Default is None, which means no transient.
         periods : numeric_like_t | None, optional
             Wrapping period of each coordinate, of shape `(system_dimension,)`,
             using `np.inf` for coordinates that do not wrap. Supply this for maps
@@ -2905,13 +2914,44 @@ class DiscreteDynamicalSystem:
             and that interval is not a complete recurrence time. The entries
             therefore add up to the number of iterations from the reference
             point to the last return, which is at most
-            `total_time - transient_time`.
+            `total_time - transient_time`. If the orbit never returns, the
+            array is empty.
 
         Raises
         ------
         ValueError
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `total_time` is negative.
+            - If `transient_time` is negative, or greater than or equal to `total_time`.
             - If `eps` is not positive.
             - If `periods` has the wrong shape or a non-positive entry.
+        TypeError
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` or `transient_time` is not an integer.
+            - If `eps` is not a real number.
+
+        Examples
+        --------
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+
+        A quasi-periodic orbit around the elliptic fixed point returns to the
+        box at regular intervals:
+
+        >>> times = system.recurrence_times([0.5, 0.25], 10_000, eps=0.02)
+        >>> times[:5]
+        array([19, 19, 19, 19, 19])
+
+        The standard map is periodic in both coordinates, so for a reference
+        point near a boundary pass the periods to count the returns on the
+        other side of it:
+
+        >>> times = system.recurrence_times(
+        ...     [0.005, 0.3], 100_000, eps=0.02, periods=[1.0, 1.0]
+        ... )
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
