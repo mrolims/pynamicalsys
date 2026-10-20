@@ -320,7 +320,7 @@ def recurrence_times(
     eps: numeric_t,
     periods: NDArray[np.float64],
     transient_time: int_t | None = None,
-) -> NDArray[np.float64]:
+) -> NDArray[np.int64]:
     """
     Compute recurrence times to an ``eps``-neighborhood of the reference point.
 
@@ -348,7 +348,7 @@ def recurrence_times(
 
     Returns
     -------
-    NDArray[np.float64]
+    NDArray[np.int64]
         Array containing the recurrence times between successive returns to the
         ``eps``-neighborhood. The iterations after the last return are not
         included, since they do not form a complete recurrence time.
@@ -387,4 +387,4 @@ def recurrence_times(
             rts.append(rt)
             rt = 0
 
-    return np.asarray(rts, dtype=np.float64)
+    return np.asarray(rts, dtype=np.int64)

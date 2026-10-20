@@ -33,7 +33,7 @@ def expected_recurrence_times(system, u, periods):
     difference[:, finite] = (difference[:, finite] + half) % periods[finite] - half
     inside = np.all(np.abs(difference) <= EPS / 2, axis=1)
     returns = np.flatnonzero(inside) + 1
-    return np.diff(np.concatenate(([0], returns))).astype(np.float64)
+    return np.diff(np.concatenate(([0], returns)))
 
 
 @pytest.mark.parametrize("u", [[0.005, 0.3], [0.3, 0.995], [0.002, 0.996]])
@@ -101,3 +101,8 @@ def test_eps_must_be_positive(system, eps):
     # exactly the same floating-point state, so it is not a neighborhood.
     with pytest.raises(ValueError, match="eps"):
         system.recurrence_times([0.2, 0.3], 100, eps=eps)
+
+
+def test_recurrence_times_are_integers(system):
+    times = system.recurrence_times([0.2, 0.3], 10_000, eps=EPS)
+    assert times.dtype == np.int64

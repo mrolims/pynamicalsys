@@ -2868,7 +2868,7 @@ class DiscreteDynamicalSystem:
         eps: numeric_t = 1e-2,
         transient_time: int_t | None = None,
         periods: numeric_like_t | None = None,
-    ) -> NDArray[np.float64]:
+    ) -> NDArray[np.int64]:
         """
         Compute recurrence times to an `eps`-neighborhood of the reference point.
 
@@ -2897,7 +2897,7 @@ class DiscreteDynamicalSystem:
 
         Returns
         -------
-        NDArray[np.float64]
+        NDArray[np.int64]
             Array containing the recurrence times between successive returns to the
             `eps`-neighborhood. The first entry is the number of iterations from
             the reference point to the first return. The iterations after the
