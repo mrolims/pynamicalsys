@@ -2897,7 +2897,12 @@ class DiscreteDynamicalSystem:
         -------
         NDArray[np.float64]
             Array containing the recurrence times between successive returns to the
-            `eps`-neighborhood.
+            `eps`-neighborhood. The first entry is the number of iterations from
+            the reference point to the first return. The iterations after the
+            last return are not included, since the orbit has not yet returned
+            and that interval is not a complete recurrence time. The entries
+            therefore add up to the iteration of the last return, which is at
+            most `total_time`.
 
         Raises
         ------

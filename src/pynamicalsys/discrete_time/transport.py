@@ -348,7 +348,8 @@ def recurrence_times(
     -------
     NDArray[np.float64]
         Array containing the recurrence times between successive returns to the
-        ``eps``-neighborhood.
+        ``eps``-neighborhood. The iterations after the last return are not
+        included, since they do not form a complete recurrence time.
     """
     state = u.copy()
 
