@@ -2867,6 +2867,7 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         eps: numeric_t = 1e-2,
         transient_time: int_t | None = None,
+        periods: numeric_like_t | None = None,
     ) -> NDArray[np.float64]:
         """
         Compute recurrence times to an `eps`-neighborhood of the reference point.
@@ -2884,12 +2885,24 @@ class DiscreteDynamicalSystem:
             Side length of the recurrence neighborhood.
         transient_time : int_t | None, optional
             Number of initial iterations discarded before defining the recurrence box.
+        periods : numeric_like_t | None, optional
+            Wrapping period of each coordinate, of shape `(system_dimension,)`,
+            using `np.inf` for coordinates that do not wrap. Supply this for maps
+            defined on a torus, such as the standard map (`[1.0, 1.0]`), so that
+            the recurrence box wraps around the boundaries of the periodic
+            coordinates and returns on the other side of a boundary are
+            detected. Default is None, which means no coordinate wraps.
 
         Returns
         -------
         NDArray[np.float64]
             Array containing the recurrence times between successive returns to the
             `eps`-neighborhood.
+
+        Raises
+        ------
+        ValueError
+            - If `periods` has the wrong shape or a non-positive entry.
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
@@ -2905,12 +2918,25 @@ class DiscreteDynamicalSystem:
         validate_transient_time(transient_time, total_time, Integral)
         validate_non_negative(eps, "eps", Real)
 
+        if periods is None:
+            periods_arr = np.full(self.__system_dimension, np.inf)
+        else:
+            periods_arr = np.atleast_1d(np.asarray(periods, dtype=np.float64))
+            if periods_arr.shape != (self.__system_dimension,):
+                raise ValueError(
+                    f"periods must have shape ({self.__system_dimension},), "
+                    f"got {periods_arr.shape}"
+                )
+            if np.any(periods_arr <= 0):
+                raise ValueError("every entry of periods must be positive")
+
         return recurrence_times(
             u=u_arr,
             parameters=parameters_arr,
             total_time=total_time,
             mapping=self.__mapping,
             eps=eps,
+            periods=periods_arr,
             transient_time=transient_time,
         )
 

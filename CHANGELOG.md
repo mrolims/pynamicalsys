@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ContinuousDynamicalSystem.trajectory` accepts `sample_times`, which stores the state only at the requested times. With an adaptive integrator, the integration lands exactly on each of them. With a fixed-step integrator, each time is rounded to the nearest integration step, so the step size stays constant. With an ensemble of initial conditions, every trajectory is stored at the same times.
 - `lyapunov`, `SALI`, `LDI`, and `GALI` of `HamiltonianSystem` accept `return_last_state`. With `return_last_state=True`, they also return the coordinates and momenta at the time the integration stopped, as `(result, q_last, p_last)`.
 - `lyapunov`, `SALI`, `LDI`, and `GALI` of `HamiltonianSystem` accept `sample_times` with `return_history=True`, which stores the history only at the requested times. Each time is rounded to the nearest integration step, so the step size of the symplectic integrators stays constant.
+- `DiscreteDynamicalSystem.recurrence_times` accepts `periods`, the wrapping period of each coordinate, with `np.inf` for coordinates that do not wrap. The recurrence box then wraps around the boundaries of the periodic coordinates, so returns on the other side of a boundary are detected. Without `periods`, the results are unchanged.
 
 ### Changed
 

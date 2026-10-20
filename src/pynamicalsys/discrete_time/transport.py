@@ -318,6 +318,7 @@ def recurrence_times(
     total_time: int_t,
     mapping: map_t,
     eps: numeric_t,
+    periods: NDArray[np.float64],
     transient_time: int_t | None = None,
 ) -> NDArray[np.float64]:
     """
@@ -335,6 +336,11 @@ def recurrence_times(
         System mapping function.
     eps : numeric_t
         Side length of the recurrence neighborhood.
+    periods : NDArray[np.float64]
+        Wrapping period of each coordinate, of shape ``(system_dimension,)``,
+        with ``np.inf`` for coordinates that do not wrap. The distance to the
+        reference point is measured modulo the period, so the box wraps around
+        the boundaries of periodic coordinates.
     transient_time : Optional[int_t], optional
         Number of initial iterations discarded before defining the recurrence box.
 
@@ -349,8 +355,9 @@ def recurrence_times(
     if transient_time is not None:
         state = iterate_mapping(state, parameters, transient_time, mapping)
 
-    lower_bound = state - eps / 2.0
-    upper_bound = state + eps / 2.0
+    reference = state.copy()
+    half_eps = eps / 2.0
+    neq = len(state)
 
     rt = 0
     rts = []
@@ -359,7 +366,19 @@ def recurrence_times(
         state = mapping(state, parameters)
         rt += 1
 
-        if np.all(state >= lower_bound) and np.all(state <= upper_bound):
+        # Distance to the reference point, measured modulo the period of each
+        # periodic coordinate so that the box wraps around its boundaries.
+        inside = True
+        for j in range(neq):
+            difference = state[j] - reference[j]
+            if np.isfinite(periods[j]):
+                half_period = 0.5 * periods[j]
+                difference = (difference + half_period) % periods[j] - half_period
+            if abs(difference) > half_eps:
+                inside = False
+                break
+
+        if inside:
             rts.append(rt)
             rt = 0
 

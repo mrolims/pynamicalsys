@@ -297,8 +297,8 @@ Numerical options
 ``sample_times``
     The iterations at which ``mean_squared_displacement``, ``average_in_time``, ``cumulative_average``, and ``root_mean_squared`` record their values. By default every iteration from ``1`` to ``total_time`` is recorded, so the output has ``total_time`` entries. For long runs, a logarithmically spaced set of integers keeps the output small without losing the shape of a log-log plot. ``diffusion_coefficient`` and ``ensemble_time_average`` use only the final state and the full time average, respectively, and do not accept it.
 
-``eps`` and ``transient_time`` of ``recurrence_times``
-    ``eps``, by default ``1e-2``, is the full side length of the recurrence box, so each coordinate must return within ``eps / 2`` of the reference point. A smaller box gives longer and rarer recurrences and needs a larger ``total_time`` to collect enough of them. ``transient_time`` iterations are performed before the reference point is defined and are not counted in ``total_time``. The box is not wrapped around the boundaries of a periodic coordinate, so reference points closer than ``eps / 2`` to a boundary miss the returns on the other side.
+``eps``, ``transient_time``, and ``periods`` of ``recurrence_times``
+    ``eps``, by default ``1e-2``, is the full side length of the recurrence box, so each coordinate must return within ``eps / 2`` of the reference point. A smaller box gives longer and rarer recurrences and needs a larger ``total_time`` to collect enough of them. ``transient_time`` iterations are performed before the reference point is defined and are not counted in ``total_time``. ``periods`` gives the wrapping period of each coordinate, with ``np.inf`` for coordinates that do not wrap, for example ``periods=[1.0, 1.0]`` for the standard map. The distance to the reference point is then measured modulo the period, so the box wraps around the boundaries of the periodic coordinates. Without ``periods``, no coordinate wraps, and reference points closer than ``eps / 2`` to a boundary miss the returns on the other side.
 
 References
 ~~~~~~~~~~
