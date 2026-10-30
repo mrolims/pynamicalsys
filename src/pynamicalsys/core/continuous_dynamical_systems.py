@@ -1032,7 +1032,7 @@ class ContinuousDynamicalSystem:
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
             - If `num_samples` is negative.
-            - If `sampling_time` is negative.
+            - If `sampling_time` is not positive.
             - If `transient_time` is negative.
         TypeError
             - If `num_samples` is not an integer.
@@ -1074,7 +1074,7 @@ class ContinuousDynamicalSystem:
 
         validate_non_negative(num_samples, "num_samples", Integral)
         num_samples = int(num_samples)
-        validate_non_negative(sampling_time, "sampling_time", Real)
+        validate_positive(sampling_time, "sampling_time", Real)
         sampling_time = np.float64(sampling_time)
 
         transient_time, _ = validate_times(transient_time, 1.0e300)
@@ -1300,6 +1300,7 @@ class ContinuousDynamicalSystem:
             - If `map_type` is not `"SM"` or `"PS"`.
             - If `section_index` is outside the valid coordinate range.
             - If `crossing` is not one of `-1`, `0`, or `1`.
+            - If `sampling_time` is not positive.
         TypeError
             - If `map_type` is not a string.
             - If `section_value`, `sampling_time`, or `transient_time` is not a valid real number.
@@ -1346,7 +1347,7 @@ class ContinuousDynamicalSystem:
                 )
 
         if sampling_time is not None:
-            validate_non_negative(sampling_time, "sampling_time", Real)
+            validate_positive(sampling_time, "sampling_time", Real)
 
         validate_non_negative(eps, "eps", Real)
         validate_non_negative(min_samples, "min_samples", Integral)
