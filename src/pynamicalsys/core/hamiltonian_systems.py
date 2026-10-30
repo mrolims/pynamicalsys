@@ -1213,13 +1213,17 @@ class HamiltonianSystem:
             `2 * degrees_of_freedom`.
         warmup_time : numeric_t, optional
             Forward warmup time used to drive the orthonormal tangent basis
-            toward the backward Lyapunov vectors.
+            toward the backward Lyapunov vectors. It is rounded to a whole
+            number of QR intervals.
         tail_time : numeric_t, optional
             Additional forward integration time after the storage window, used
-            to initialize the backward recursion.
+            to initialize the backward recursion. It is rounded to a whole
+            number of QR intervals.
         qr_time_step : numeric_t | None, optional
-            Time interval between successive QR factorizations. If `None`,
-            defaults to the integrator time step.
+            Time interval between successive QR factorizations, which is also
+            the spacing of the stored samples. It is rounded to the nearest
+            whole number of integration steps. If `None`, defaults to the
+            integrator time step.
         seed : int_t, optional
             Random seed used in the tangent-basis initialization and backward
             recursion.
@@ -1448,12 +1452,16 @@ class HamiltonianSystem:
             Requested pairwise CLV angles. Each entry `(i, j)` returns the angle
             between CLV `i` and CLV `j`.
         warmup_time : numeric_t, optional
-            Forward QR warmup duration passed to the CLV computation.
+            Forward QR warmup duration passed to the CLV computation. It is
+            rounded to a whole number of QR intervals.
         tail_time : numeric_t, optional
-            Backward-recursion convergence duration passed to the CLV computation.
+            Backward-recursion convergence duration passed to the CLV
+            computation. It is rounded to a whole number of QR intervals.
         qr_time_step : numeric_t | None, optional
-            Time spacing between successive QR factorizations. If `None`,
-            defaults to the integrator time step.
+            Time spacing between successive QR factorizations, which is also
+            the spacing of the stored samples. It is rounded to the nearest
+            whole number of integration steps. If `None`, defaults to the
+            integrator time step.
         seed : int_t, optional
             Seed used in the CLV computation.
         poincare_section : bool, optional
