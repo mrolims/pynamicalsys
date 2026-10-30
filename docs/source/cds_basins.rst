@@ -118,7 +118,7 @@ Numerical options
     The DBSCAN parameters. ``eps``, by default ``0.05``, is the largest distance between two centroids of the same cluster and should be smaller than the distance between the centroids of different attractors. ``min_samples``, by default ``1``, is the number of nearby centroids needed to form a cluster. With ``min_samples=1``, no centroid is labeled as noise.
 
 ``time_step``, ``atol``, and ``rtol``
-    Set with ``integrator``. The reduced maps are interpolated between integration steps, as described in :doc:`cds_reduced_maps`, so their accuracy depends on the step size.
+    Set with ``integrator``. Poincaré sections are interpolated between integration steps, and stroboscopic maps are computed exactly at the sampling times, as described in :doc:`cds_reduced_maps`. In both cases their accuracy depends on the step size.
 
 References
 ~~~~~~~~~~

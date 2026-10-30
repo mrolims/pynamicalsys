@@ -20,7 +20,7 @@ import numpy as np
 from numba import njit, prange
 
 from pynamicalsys.common.types import flow_t
-from pynamicalsys.continuous_time.step import evolve_system, step
+from pynamicalsys.continuous_time.step import evolve_system, step_to
 
 
 @njit
@@ -69,13 +69,14 @@ def generate_stroboscopic_map(
     NDArray[np.float64]
         Array of shape `(num_intersections, neq + 1)` whose first column
         contains the sampling times and whose remaining columns contain the
-        interpolated state vectors.
+        state vectors at those times.
 
     Notes
     -----
-    The state is sampled at times separated by `sampling_time`. If the
-    integrator overshoots a target sampling time, the state is linearly
-    interpolated between the two bracketing integration points.
+    The state is sampled at times separated by `sampling_time`. The
+    integration lands exactly on every sampling time, shortening the step
+    that would pass it, and then returns to the step size it had before, so
+    each sample has the accuracy of the integrator.
     """
     u = np.asarray(u, dtype=np.float64)
     neq = len(u)
@@ -97,17 +98,19 @@ def generate_stroboscopic_map(
         u_curr = u.copy()
         time_curr = np.float64(0.0)
 
-    time_target = time_curr + sampling_time
-    count = 0
+    time_start = time_curr
 
-    while count < num_intersections:
-        u_prev = u_curr.copy()
-        time_prev = time_curr
+    for count in range(num_intersections):
+        # Computed from the start instead of accumulated, so that round-off
+        # does not drift the sampling times.
+        time_target = time_start + (count + 1) * sampling_time
 
-        while time_curr < time_target:
-            u_curr, time_curr, time_step = step(
+        reached = False
+        while not reached:
+            u_curr, time_curr, time_step, reached = step_to(
                 time=time_curr,
                 u=u_curr,
+                target_time=time_target,
                 parameters=parameters,
                 equations_of_motion=equations_of_motion,
                 time_step=time_step,
@@ -116,12 +119,8 @@ def generate_stroboscopic_map(
                 integrator=integrator,
             )
 
-        lam = (time_target - time_prev) / (time_curr - time_prev)
-        strobe_points[count, 0] = time_target
-        strobe_points[count, 1:] = (1.0 - lam) * u_prev + lam * u_curr
-
-        count += 1
-        time_target += sampling_time
+        strobe_points[count, 0] = time_curr
+        strobe_points[count, 1:] = u_curr
 
     return strobe_points
 

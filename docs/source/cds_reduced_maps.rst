@@ -83,7 +83,7 @@ For a forcing period :math:`T=2\pi/\omega`, use :py:meth:`stroboscopic_map <pyna
         transient_time=500.0,
     )
 
-The ``num_samples`` argument counts the recorded stroboscopic points, while ``transient_time`` remains a duration in the system's time units. Sampling begins one ``sampling_time`` after the transient. When a target time lies between integration steps, the state is linearly interpolated at that time.
+The ``num_samples`` argument counts the recorded stroboscopic points, while ``transient_time`` remains a duration in the system's time units. Sampling begins one ``sampling_time`` after the transient. The integration lands exactly on every sampling time, shortening the step that would pass it, so each sample has the accuracy of the integrator.
 
 Each row contains ``[time, x, x_dot]`` for this two-dimensional first-order representation of the Duffing equation:
 
@@ -163,7 +163,7 @@ Numerical options
     Direction of the Poincaré-section crossings to record. The default ``1`` keeps crossings in which the selected coordinate increases, ``-1`` keeps those in which it decreases, and ``0`` keeps both. The direction is determined from the sign of the corresponding component of the vector field at the interpolated crossing.
 
 ``time_step``, ``atol``, and ``rtol``
-    Set with ``integrator``. The recorded points are interpolated between integration steps: linearly for Poincaré sections and stroboscopic maps, and, for maxima maps, quadratically in time and then linearly in the state. The interpolation error therefore depends on the step size and not only on the order of the integrator. A smaller ``time_step`` with ``rk4``, or tighter tolerances with ``rk45``, which shortens the steps, improves the accuracy of the recorded points.
+    Set with ``integrator``. The points of Poincaré sections and maxima maps are interpolated between integration steps: linearly for Poincaré sections, and, for maxima maps, quadratically in time and then linearly in the state. The interpolation error therefore depends on the step size and not only on the order of the integrator. Stroboscopic maps are not interpolated, since the integration lands exactly on each sampling time. A smaller ``time_step`` with ``rk4``, or tighter tolerances with ``rk45``, which shortens the steps, improves the accuracy of the recorded points.
 
 References
 ~~~~~~~~~~
