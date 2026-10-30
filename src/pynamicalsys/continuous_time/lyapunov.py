@@ -20,9 +20,10 @@ import numpy as np
 from numba import njit
 
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, qr_inplace_log_diagonal
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 from pynamicalsys.continuous_time.step import evolve_system, step_to
+from pynamicalsys.continuous_time.buffers import ensure_row, new_buffer
 
 
 @njit
@@ -151,7 +152,9 @@ def lyapunov_exponents(
     uv[neq:] = v.reshape(neq * num_exponents)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
-    history = []
+    log_diagonal = np.empty(num_exponents, dtype=np.float64)
+    history = new_buffer(num_exponents + 1)
+    count = 0
 
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
@@ -187,25 +190,30 @@ def lyapunov_exponents(
             continue
         steps_since_qr = 0
 
-        v = uv[neq:].reshape(neq, num_exponents).copy()
         if method == "QR":
-            v, R = qr(v)
+            # Orthonormalize the deviation vectors in place, in the
+            # extended state itself
+            qr_inplace_log_diagonal(
+                uv[neq:].reshape(neq, num_exponents), log_diagonal
+            )
+            exponents += log_diagonal
         else:
+            v = uv[neq:].reshape(neq, num_exponents).copy()
             v, R = np.linalg.qr(v)
             v = np.ascontiguousarray(v)
             R = np.ascontiguousarray(R)
-        exponents += np.log(np.abs(np.diag(R)))
+            exponents += np.log(np.abs(np.diag(R)))
+            uv[neq:] = v.reshape(neq * num_exponents)
 
         if return_history and (sample_times is None or at_sample):
-            result = [time]
+            history = ensure_row(history, count)
+            history[count, 0] = time
             for i in range(num_exponents):
-                result.append(exponents[i] / (time - t_ref))
-            history.append(result)
-
-        uv[neq:] = v.reshape(neq * num_exponents)
+                history[count, i + 1] = exponents[i] / (time - t_ref)
+            count += 1
 
     if return_history:
-        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
+        return history[:count].copy(), uv[:neq].copy()
 
     result = np.empty((1, num_exponents), dtype=np.float64)
     for i in range(num_exponents):
@@ -323,7 +331,8 @@ def maximum_lyapunov_exponent(
     uv[neq:] /= norm
 
     exponent = np.float64(0.0)
-    history = []
+    history = new_buffer(2)
+    count = 0
 
     t_ref = transient_time if transient_time is not None else np.float64(0.0)
 
@@ -364,10 +373,13 @@ def maximum_lyapunov_exponent(
         uv[neq:] /= norm
 
         if return_history and (sample_times is None or at_sample):
-            history.append([time, exponent / (time - t_ref)])
+            history = ensure_row(history, count)
+            history[count, 0] = time
+            history[count, 1] = exponent / (time - t_ref)
+            count += 1
 
     if return_history:
-        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
+        return history[:count].copy(), uv[:neq].copy()
 
     result = np.empty((1, 1), dtype=np.float64)
     result[0, 0] = exponent / (time - t_ref)

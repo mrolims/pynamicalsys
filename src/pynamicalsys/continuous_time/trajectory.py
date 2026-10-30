@@ -24,9 +24,12 @@ from joblib import Parallel, delayed
 from pynamicalsys.common.types import flow_t
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 from pynamicalsys.continuous_time.step import evolve_system, step_to
+from pynamicalsys.continuous_time.buffers import ensure_row, new_buffer
 
 
-@njit
+# The GIL is released so that `ensemble_trajectories` can run the trajectories
+# in threads.
+@njit(nogil=True)
 def generate_trajectory(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -101,7 +104,8 @@ def generate_trajectory(
         time = np.float64(0.0)
 
     neq = len(u)
-    trajectory = []
+    trajectory = new_buffer(neq + 1)
+    count = 0
 
     num_samples = len(sample_times) if sample_times is not None else 0
     sample_index = 0
@@ -133,12 +137,13 @@ def generate_trajectory(
         if sample_times is not None and not at_sample:
             continue
 
-        result = [time]
+        trajectory = ensure_row(trajectory, count)
+        trajectory[count, 0] = time
         for i in range(neq):
-            result.append(u[i])
-        trajectory.append(result)
+            trajectory[count, i + 1] = u[i]
+        count += 1
 
-    return np.asarray(trajectory, dtype=np.float64)
+    return trajectory[:count].copy()
 
 
 def ensemble_trajectories(
@@ -210,14 +215,22 @@ def ensemble_trajectories(
             sample_times=sample_times,
         )
 
-    results = Parallel(n_jobs=-1)(
+    if len(u) == 0:
+        return []
+
+    # The first trajectory runs here, which compiles `generate_trajectory` if
+    # needed. The others then run in threads: the compiled function releases
+    # the GIL, so the threads run in parallel without the cost of starting
+    # processes and compiling again in each of them.
+    first = run_one(u[0], parameters, total_time, equations_of_motion)
+    rest = Parallel(n_jobs=-1, prefer="threads")(
         delayed(run_one)(
             u[i],
             parameters,
             total_time,
             equations_of_motion,
         )
-        for i in range(len(u))
+        for i in range(1, len(u))
     )
 
-    return cast(list[NDArray[np.float64]], results)
+    return cast(list[NDArray[np.float64]], [first] + list(rest))

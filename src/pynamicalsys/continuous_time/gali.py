@@ -20,9 +20,10 @@ from numpy.typing import NDArray
 import numpy as np
 
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, qr_inplace_log_diagonal, vector_norm
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 from pynamicalsys.continuous_time.step import evolve_system, step_to
+from pynamicalsys.continuous_time.buffers import ensure_row, new_buffer
 
 
 @njit
@@ -170,7 +171,10 @@ def gali_k(
     v, _ = qr(v)
     uv[neq:] = v.reshape(neq * ndv)
 
-    history = []
+    history = new_buffer(2)
+    count = 0
+    q = np.empty((neq, ndv), dtype=np.float64)
+    log_diagonal = np.empty(ndv, dtype=np.float64)
     gali = np.float64(0.0)
 
     num_samples = len(sample_times) if sample_times is not None else 0
@@ -202,14 +206,17 @@ def gali_k(
         v = uv[neq:].reshape(neq, ndv)
 
         for i in range(ndv):
-            v[:, i] /= np.linalg.norm(v[:, i])
+            v[:, i] /= vector_norm(v[:, i])
 
         if method == "DET":
             G = v.T @ v
             gali = np.sqrt(np.linalg.det(G))
         elif method == "QR":
-            _, R = qr(v)
-            gali = np.exp(np.sum(np.log(np.abs(np.diag(R)))))
+            # The QR factorization is taken of a copy, since the deviation
+            # vectors themselves stay normalized but not orthogonal
+            q[:, :] = v
+            qr_inplace_log_diagonal(q, log_diagonal)
+            gali = np.exp(np.sum(log_diagonal))
         elif method == "QR_HH":
             _, R = np.linalg.qr(v)
             gali = np.exp(np.sum(np.log(np.abs(np.diag(R)))))
@@ -217,7 +224,10 @@ def gali_k(
             raise ValueError("method must be 'DET', 'QR', or 'QR_HH'")
 
         if return_history and (sample_times is None or at_sample):
-            history.append([time, gali])
+            history = ensure_row(history, count)
+            history[count, 0] = time
+            history[count, 1] = gali
+            count += 1
 
         if gali <= threshold:
             break
@@ -225,7 +235,7 @@ def gali_k(
         uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
+        return history[:count].copy(), uv[:neq].copy()
 
     result = np.empty((1, 2), dtype=np.float64)
     result[0, 0] = time
