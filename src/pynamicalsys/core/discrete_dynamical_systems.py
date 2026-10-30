@@ -2120,7 +2120,7 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         func: state_observable_t | None = None,
         transient_time: int_t | None = None,
-        period: numeric_t = 1.0,
+        period: numeric_t | None = None,
         omega_threshold: numeric_t = 9.0,
         dig_threshold: numeric_t = 5.5,
         tol: numeric_t = 8.0,
@@ -2176,10 +2176,13 @@ class DiscreteDynamicalSystem:
             Number of iterations performed before the first window. They are
             not counted in ``window_size``. Default is None, which means no
             transient.
-        period : numeric_t, optional
+        period : numeric_t | None, optional
             Period of the angle ``u[0]`` used by the default observable, for
             example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
-            in radians. Ignored when ``func`` is given. The default is ``1.0``.
+            in radians. If None (default), the period is ``1.0``. It is used
+            only by the default observable: if ``func`` is given, ``period`` is
+            ignored and passing it emits a ``UserWarning``. It must be positive
+            whenever it is given.
         omega_threshold : numeric_t, optional
             Minimum ``dig_omega`` for the rotation number to be considered
             converged. The default is ``9.0``.
@@ -2228,8 +2231,13 @@ class DiscreteDynamicalSystem:
             - If ``parameters`` is not a scalar or array-like numeric object.
             - If ``window_size`` or ``transient_time`` is not an integer.
             - If ``func`` is not callable.
-            - If ``omega_threshold``, ``dig_threshold``, ``tol``, or
-              ``dev_threshold`` is not a real number.
+            - If ``omega_threshold``, ``dig_threshold``, ``tol``,
+              ``dev_threshold``, or ``period`` is not a real number.
+
+        Warns
+        -----
+        UserWarning
+            If ``period`` is given together with ``func``. It is ignored.
 
         Notes
         -----
@@ -2303,9 +2311,17 @@ class DiscreteDynamicalSystem:
                 u_arr, parameters_arr, transient_time, self.__mapping
             )
 
-        if func is None:
+        if period is not None:
             validate_positive(period, "period", Real)
-            func = default_observable(float(period))
+        if func is None:
+            func = default_observable(1.0 if period is None else float(period))
+        elif period is not None:
+            warnings.warn(
+                "period is used only by the default observable and is ignored "
+                "when func is given.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         observable, form = resolve_observable(func, u_arr, allow_legacy=False)
 
@@ -3077,7 +3093,7 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         func: state_observable_t | None = None,
         transient_time: int_t | None = None,
-        period: numeric_t = 1.0,
+        period: numeric_t | None = None,
         total_time: int_t | None = None,
     ) -> float:
         """
@@ -3107,10 +3123,13 @@ class DiscreteDynamicalSystem:
             observable is ``cos(2 pi u[0] / period)``.
         transient_time : int_t | None, optional
             Number of initial iterations discarded before the computation.
-        period : numeric_t, optional
+        period : numeric_t | None, optional
             Period of the angle ``u[0]`` used by the default observable, for
             example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
-            in radians. Ignored when ``func`` is given. The default is ``1.0``.
+            in radians. If None (default), the period is ``1.0``. It is used
+            only by the default observable: if ``func`` is given, ``period`` is
+            ignored and passing it emits a ``UserWarning``. It must be positive
+            whenever it is given.
 
         total_time : int_t | None, optional
             Deprecated name of `window_size`. Passing it emits a
@@ -3143,6 +3162,7 @@ class DiscreteDynamicalSystem:
               deprecated `total_time` are given.
             - If `transient_time` is not an integer.
             - If `func` is not callable.
+            - If `period` is not a real number.
 
         Warns
         -----
@@ -3153,6 +3173,8 @@ class DiscreteDynamicalSystem:
             ``(n, system_dimension)`` and returns an array of shape ``(n,)``,
             the form accepted in previous versions. This will stop working in
             a future version; pass a function of a single state instead.
+        UserWarning
+            If ``period`` is given together with ``func``. It is ignored.
 
         Notes
         -----
@@ -3204,9 +3226,17 @@ class DiscreteDynamicalSystem:
         if transient_time is not None:
             validate_non_negative(transient_time, "transient_time", Integral)
 
-        if func is None:
+        if period is not None:
             validate_positive(period, "period", Real)
-            func = default_observable(float(period))
+        if func is None:
+            func = default_observable(1.0 if period is None else float(period))
+        elif period is not None:
+            warnings.warn(
+                "period is used only by the default observable and is ignored "
+                "when func is given.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         observable, form = resolve_observable(func, u_arr, allow_legacy=True)
 

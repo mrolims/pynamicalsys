@@ -291,7 +291,7 @@ Numerical options
     The length :math:`N` of each window, so ``dig`` and ``classify_orbit`` iterate the map :math:`2N` times. In ``dig`` it was called ``total_time`` in earlier versions; that name still works but is deprecated, since elsewhere ``total_time`` counts every iteration from the initial condition, including the transient. Longer windows raise :math:`\mathrm{dig}` on regular orbits until it saturates near the limit set by double precision, about 15 or 16, while on chaotic orbits it grows only slowly. Sticky chaotic orbits may need much longer windows to be identified.
 
 ``func`` and ``period``
-    The observable :math:`h` and the period :math:`T` of the first coordinate used by the default observable, as described above. ``period`` is ignored when ``func`` is given.
+    The observable :math:`h` and the period :math:`T` of the first coordinate used by the default observable, as described above. ``period`` is used only by the default observable: it is ignored when ``func`` is given, and passing both emits a warning.
 
 ``transient_time``
     The number of iterations discarded before the first window, in ``dig`` and ``classify_orbit``. They are not counted in ``window_size``.

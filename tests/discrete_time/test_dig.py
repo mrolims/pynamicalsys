@@ -77,3 +77,27 @@ def test_default_observable_period():
 
     with pytest.raises(ValueError):
         system.dig(u, TOTAL_TIME, period=0.0)
+
+
+@pytest.mark.parametrize("method", ["dig", "classify_orbit"])
+def test_period_with_func_warns_and_is_ignored(method):
+    system = DDS(model="unbounded standard map")
+    system.set_parameters([0.7])
+    u = [0.2, 0.25]
+    observable = lambda u: np.cos(2 * np.pi * u[0])
+    compute = getattr(system, method)
+
+    expected = compute(u, TOTAL_TIME, func=observable)
+    with pytest.warns(UserWarning, match="period"):
+        result = compute(u, TOTAL_TIME, func=observable, period=2 * np.pi)
+    assert result == expected
+
+
+@pytest.mark.parametrize("method", ["dig", "classify_orbit"])
+def test_period_is_validated_even_with_func(method):
+    system = DDS(model="unbounded standard map")
+    system.set_parameters([0.7])
+    with pytest.raises(ValueError, match="period"):
+        getattr(system, method)(
+            [0.2, 0.25], TOTAL_TIME, func=lambda u: np.cos(u[0]), period=-1.0
+        )
