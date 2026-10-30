@@ -52,7 +52,7 @@ A large value means that the two averages agree to many decimal digits and is ch
 
 The separation between regular and chaotic values depends on the system, observable, window length, and numerical precision. For example, `Sales et al. (2022) <https://doi.org/10.1016/j.physleta.2022.127991>`_ found two modes near :math:`\mathrm{dig}=14` and :math:`\mathrm{dig}=3.5` for a particular standard-map computation and used :math:`11.25` as an empirical threshold. That value is specific to that calculation and is not a universal cutoff.
 
-In :py:meth:`dig <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>`, ``total_time`` is the length :math:`N` of each window, so the trajectory is iterated :math:`2N` times. If ``transient_time`` is supplied, those iterations are discarded first.
+In :py:meth:`dig <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>`, ``window_size`` is the length :math:`N` of each window, so the trajectory is iterated :math:`2N` times. If ``transient_time`` is supplied, those iterations are discarded first.
 
 Classifying the standard map
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -71,13 +71,13 @@ The following example samples initial conditions for the standard map and evalua
     rng = np.random.default_rng(1312)
     num_initial_conditions = 200
     initial_states = rng.uniform(0.0, 1.0, size=(num_initial_conditions, 2))
-    total_time = 10_000
+    window_size = 10_000
 
     digs = np.array(
         [
             system.dig(
                 u=initial_state,
-                total_time=total_time,
+                window_size=window_size,
             )
             for initial_state in initial_states
         ]
@@ -133,7 +133,7 @@ Plot every trajectory with the color assigned by the :math:`\mathrm{dig}` value 
 
     Standard-map trajectories colored by their weighted-Birkhoff classification and the corresponding distribution of :math:`\mathrm{dig}` values.
 
-The high-value mode is associated with regular islands, while the low-value mode is associated with the chaotic sea. Points near island boundaries may be sticky, so increasing ``total_time`` is an important robustness check.
+The high-value mode is associated with regular islands, while the low-value mode is associated with the chaotic sea. Points near island boundaries may be sticky, so increasing ``window_size`` is an important robustness check.
 
 Choosing an observable
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -146,7 +146,7 @@ The observable is a function of a single state, an array of shape ``(system_dime
 
     custom_dig = system.dig(
         u=initial_states[0],
-        total_time=total_time,
+        window_size=window_size,
         func=observable,
     )
 
@@ -163,7 +163,7 @@ Besides separating regular from chaotic orbits, the weighted Birkhoff average gi
 
 and in an island chain otherwise. The defaults :math:`\mathrm{tol}=8` and :math:`\mathrm{dev}_{\mathrm{c}}=0.3375` are those of Sander and Meiss. They are conservative: some rotational circles are reported as islands, but island orbits are rarely reported as circles.
 
-The :py:meth:`classify_orbit <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.classify_orbit>` method combines this test with the :math:`\mathrm{dig}` indicator of an observable :math:`h`. It requires a frequency map, so the example below uses the ``unbounded standard map``, which provides one. Like :py:meth:`dig <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>`, it compares two consecutive windows of ``total_time`` iterations each, and it also returns the number of converged digits of the rotation number, :math:`\mathrm{dig}_\omega`. An orbit with :math:`\mathrm{dig}` at least ``dig_threshold``, which is 5.5 by default, is regular. If its rotation number has converged, with :math:`\mathrm{dig}_\omega` at least ``omega_threshold``, which is 9 by default, it is classified by the test above. Otherwise, the test would be applied to digits that are not yet reliable, and the orbit is reported as ``undetermined``. An orbit with a smaller :math:`\mathrm{dig}` is still classified as an island if its rotation number has converged (:math:`\mathrm{dig}_\omega` at least ``omega_threshold``) and is a rational with a small denominator, which covers island orbits on which the average of :math:`h` converges slowly. All other orbits are chaotic. The default observable is :math:`h=\cos(2\pi u_0/T)`, where the first coordinate :math:`u_0` is assumed to be the angle and :math:`T` is its period, given by ``period`` (1 by default). For other systems, pass the observable as ``func``.
+The :py:meth:`classify_orbit <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.classify_orbit>` method combines this test with the :math:`\mathrm{dig}` indicator of an observable :math:`h`. It requires a frequency map, so the example below uses the ``unbounded standard map``, which provides one. Like :py:meth:`dig <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.dig>`, it compares two consecutive windows of ``window_size`` iterations each, and it also returns the number of converged digits of the rotation number, :math:`\mathrm{dig}_\omega`. An orbit with :math:`\mathrm{dig}` at least ``dig_threshold``, which is 5.5 by default, is regular. If its rotation number has converged, with :math:`\mathrm{dig}_\omega` at least ``omega_threshold``, which is 9 by default, it is classified by the test above. Otherwise, the test would be applied to digits that are not yet reliable, and the orbit is reported as ``undetermined``. An orbit with a smaller :math:`\mathrm{dig}` is still classified as an island if its rotation number has converged (:math:`\mathrm{dig}_\omega` at least ``omega_threshold``) and is a rational with a small denominator, which covers island orbits on which the average of :math:`h` converges slowly. All other orbits are chaotic. The default observable is :math:`h=\cos(2\pi u_0/T)`, where the first coordinate :math:`u_0` is assumed to be the angle and :math:`T` is its period, given by ``period`` (1 by default). For other systems, pass the observable as ``func``.
 
 To see where each type of orbit lies, classify a grid of initial conditions covering one period of both coordinates of the unbounded standard map, :math:`[0,1)\times[0,1)`. For a map whose coordinates are taken modulo :math:`2\pi`, the grid would cover :math:`[0,2\pi)\times[0,2\pi)` instead. With a :math:`500\times500` grid, the computation takes a few minutes:
 
@@ -172,7 +172,7 @@ To see where each type of orbit lies, classify a grid of initial conditions cove
     system = dds(model="unbounded standard map")
     system.set_parameters([0.9])
 
-    total_time = 10_000
+    window_size = 10_000
     grid_size = 500
     x = np.linspace(0.0, 1.0, grid_size, endpoint=False)
     y = np.linspace(0.0, 1.0, grid_size, endpoint=False)
@@ -183,7 +183,7 @@ To see where each type of orbit lies, classify a grid of initial conditions cove
     dig = np.empty(X.shape)
     for i in range(grid_size):
         for j in range(grid_size):
-            result = system.classify_orbit([X[i, j], Y[i, j]], total_time)
+            result = system.classify_orbit([X[i, j], Y[i, j]], window_size)
             classes[i, j] = result["classification"]
             omega[i, j] = result["rotation_number"]
             dig[i, j] = result["dig"]
@@ -223,7 +223,7 @@ Orbits classified as ``undetermined`` are regular, since their :math:`\mathrm{di
     undetermined = np.argwhere(classes == "undetermined")
     print(len(undetermined))
     for i, j in undetermined:
-        result = system.classify_orbit([X[i, j], Y[i, j]], 4 * total_time)
+        result = system.classify_orbit([X[i, j], Y[i, j]], 4 * window_size)
         classes[i, j] = result["classification"]
         omega[i, j] = result["rotation_number"]
     print(np.count_nonzero(classes == "undetermined"))
@@ -287,8 +287,8 @@ Island chains appear as regions of constant color, since every orbit in a chain 
 Numerical options
 ^^^^^^^^^^^^^^^^^
 
-``total_time``
-    The length :math:`N` of each window, so ``dig`` and ``classify_orbit`` iterate the map :math:`2N` times. Longer windows raise :math:`\mathrm{dig}` on regular orbits until it saturates near the limit set by double precision, about 15 or 16, while on chaotic orbits it grows only slowly. Sticky chaotic orbits may need much longer windows to be identified.
+``window_size``
+    The length :math:`N` of each window, so ``dig`` and ``classify_orbit`` iterate the map :math:`2N` times. In ``dig`` it was called ``total_time`` in earlier versions; that name still works but is deprecated, since elsewhere ``total_time`` counts every iteration from the initial condition, including the transient. Longer windows raise :math:`\mathrm{dig}` on regular orbits until it saturates near the limit set by double precision, about 15 or 16, while on chaotic orbits it grows only slowly. Sticky chaotic orbits may need much longer windows to be identified.
 
 ``func`` and ``period``
     The observable :math:`h` and the period :math:`T` of the first coordinate used by the default observable, as described above. ``period`` is ignored when ``func`` is given.

@@ -24,13 +24,13 @@ For the unbounded standard map, :math:`x_{n+1}=x_n+y_{n+1}` with :math:`y_{n+1}=
 
 The :py:meth:`rotation_number <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.rotation_number>` method requires a frequency map. The ``unbounded standard map``, ``standard nontwist map``, ``extended standard nontwist map``, and ``leonel map`` models provide one, and any other map can be given one with :py:meth:`set_frequency_map <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.set_frequency_map>` or the ``frequency_map`` argument of the constructor. The bounded ``standard map`` does not provide one: there, :math:`y` is also an angle, so the advance of :math:`x` is defined only modulo one turn and no continuous frequency map exists. The rotation number is not reduced modulo one, so orbits whose angles advance by different integer numbers of turns, such as accelerator modes, have different rotation numbers.
 
-By default, the rotation number is computed with the :doc:`weighted Birkhoff average <dds_wba>`, as proposed by `Sander and Meiss (2020) <https://doi.org/10.1016/j.physd.2020.132569>`_. The frequency map is averaged over two consecutive windows of ``total_time`` iterations each, and the rotation number is the mean of the two averages, :math:`\omega=(\omega_0+\omega_1)/2`. On a regular orbit, both averages converge faster than any power of ``total_time``, so they agree in many digits, while on a chaotic orbit they converge as slowly as a plain time average. The number of digits in which they agree,
+By default, the rotation number is computed with the :doc:`weighted Birkhoff average <dds_wba>`, as proposed by `Sander and Meiss (2020) <https://doi.org/10.1016/j.physd.2020.132569>`_. The frequency map is averaged over two consecutive windows of ``window_size`` iterations each, and the rotation number is the mean of the two averages, :math:`\omega=(\omega_0+\omega_1)/2`. On a regular orbit, both averages converge faster than any power of ``window_size``, so they agree in many digits, while on a chaotic orbit they converge as slowly as a plain time average. The number of digits in which they agree,
 
 .. math::
 
     \mathrm{dig}_\omega=-\log_{10}\left|\omega_0-\omega_1\right|,
 
-therefore separates both cases. If :math:`\mathrm{dig}_\omega` is at least ``threshold``, which is 9 by default, the rotation number is returned. Otherwise, the orbit is considered chaotic and NaN is returned. With ``method="average"``, the plain time average over ``total_time`` iterations is returned instead. It always returns a value, but it converges only as :math:`1/N` on regular orbits and does not distinguish regular from chaotic orbits. The same averages also separate island chains from rotational invariant circles, as shown in the :doc:`weighted Birkhoff average <dds_wba>` guide.
+therefore separates both cases. If :math:`\mathrm{dig}_\omega` is at least ``threshold``, which is 9 by default, the rotation number is returned. Otherwise, the orbit is considered chaotic and NaN is returned. With ``method="average"``, the plain time average over ``window_size`` iterations is returned instead. It always returns a value, but it converges only as :math:`1/N` on regular orbits and does not distinguish regular from chaotic orbits. The same averages also separate island chains from rotational invariant circles, as shown in the :doc:`weighted Birkhoff average <dds_wba>` guide.
 
 The following example computes the rotation number of the unbounded standard map with :math:`k=0.9` along the line :math:`x_0=0.5`, which crosses the centers of the main island chains:
 
@@ -41,9 +41,9 @@ The following example computes the rotation number of the unbounded standard map
 
     x0 = 0.5
     actions = np.linspace(0.0, 2.0, 2000)
-    total_time = 10_000
+    window_size = 10_000
 
-    omega = np.array([system.rotation_number([x0, y0], total_time) for y0 in actions])
+    omega = np.array([system.rotation_number([x0, y0], window_size) for y0 in actions])
 
 Plot the rotation number as a function of the initial action. Chaotic orbits return NaN and are left out:
 
@@ -92,7 +92,7 @@ The same procedure is applied to the standard nontwist map with :math:`a=0.53` a
     x0 = 0.5
     actions = np.linspace(-0.5, 0.5, 5000)
 
-    omega = np.array([system.rotation_number([x0, y0], total_time) for y0 in actions])
+    omega = np.array([system.rotation_number([x0, y0], window_size) for y0 in actions])
 
 The maximum of the profile is small compared with the range of the plot, so an inset magnifies it:
 
@@ -289,7 +289,7 @@ Numerical options
 ~~~~~~~~~~~~~~~~~
 
 ``method`` and ``threshold`` of ``rotation_number``
-    ``method="wba"``, the default, iterates the orbit ``2 * total_time`` times and returns NaN when the two windows agree in fewer than ``threshold`` digits, by default ``9``. Lowering ``threshold`` accepts rotation numbers of orbits that have not fully converged, such as those near the edge of an island, at the cost of misclassifying some chaotic orbits as regular. ``method="average"`` iterates ``total_time`` times and always returns a value. The ``mod`` argument is deprecated and is used only when no frequency map is set.
+    ``method="wba"``, the default, iterates the orbit ``2 * window_size`` times and returns NaN when the two windows agree in fewer than ``threshold`` digits, by default ``9``. Lowering ``threshold`` accepts rotation numbers of orbits that have not fully converged, such as those near the edge of an island, at the cost of misclassifying some chaotic orbits as regular. ``method="average"`` iterates ``window_size`` times and always returns a value. The ``mod`` argument is deprecated and is used only when no frequency map is set. ``window_size`` was called ``total_time`` in earlier versions; that name still works but is deprecated, since elsewhere ``total_time`` counts every iteration from the initial condition, including the transient.
 
 ``axis``
     The index of the coordinate whose displacement or average is measured, by default ``1``, which is the action in the maps above.

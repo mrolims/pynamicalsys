@@ -175,6 +175,26 @@ def _threshold_from_deprecated_tol(threshold, tol):
     return tol
 
 
+def _window_size_from_deprecated_total_time(window_size, total_time):
+    """Return the window length, honoring the deprecated `total_time`."""
+    if total_time is None:
+        if window_size is None:
+            raise TypeError("missing required argument: window_size")
+        return window_size
+    if window_size is not None:
+        raise TypeError(
+            "total_time is the deprecated name of window_size; pass only "
+            "window_size."
+        )
+    warnings.warn(
+        "total_time is deprecated and will stop working in a future version. "
+        "Use window_size, the length of each averaging window, instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return total_time
+
+
 class DiscreteDynamicalSystem:
     """
     Class for defining, iterating, and analyzing discrete-time dynamical systems.
@@ -1883,11 +1903,12 @@ class DiscreteDynamicalSystem:
     def rotation_number(
         self,
         u: numeric_like_t,
-        total_time: int_t,
+        window_size: int_t | None = None,
         parameters: numeric_like_t | None = None,
         mod: numeric_t | None = None,
         method: Literal["wba", "average"] | None = None,
         threshold: numeric_t = 9.0,
+        total_time: int_t | None = None,
     ) -> float:
         """
         Compute the rotation number of a trajectory.
@@ -1899,24 +1920,26 @@ class DiscreteDynamicalSystem:
         those of accelerator modes, are kept apart. Two methods are available:
 
         - ``"wba"`` (default): the frequency map is averaged with the weighted
-          Birkhoff average over two consecutive windows of ``total_time``
+          Birkhoff average over two consecutive windows of ``window_size``
           iterations each (Sander and Meiss, 2020). If the two averages agree
           in at least ``threshold`` digits, the rotation number has converged
           and their mean is returned. Otherwise, the orbit is considered
           chaotic and NaN is returned.
         - ``"average"``: plain time average of the frequency map over
-          ``total_time`` iterations. It always returns a value, but it
-          converges only as ``1 / total_time`` on regular orbits and does not
+          ``window_size`` iterations. It always returns a value, but it
+          converges only as ``1 / window_size`` on regular orbits and does not
           distinguish chaotic from regular orbits.
 
         Parameters
         ----------
         u : numeric_like_t
             Initial condition of shape ``(system_dimension,)``.
-        total_time : int_t
-            Number of iterations used in the average. With ``method="wba"``,
-            this is the length of each window, so the trajectory is iterated
-            ``2 * total_time`` times.
+        window_size : int_t
+            Length of the averaging window. With ``method="wba"``, the
+            frequency map is averaged over two consecutive windows of this
+            length, so the trajectory is iterated ``2 * window_size`` times.
+            With ``method="average"``, it is the number of iterations of the
+            single average.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping and frequency map. If
             ``None``, the stored system parameters are used.
@@ -1930,6 +1953,13 @@ class DiscreteDynamicalSystem:
             must agree for the rotation number to be considered converged.
             Used only with ``method="wba"``. The default is ``9.0``.
 
+        total_time : int_t | None, optional
+            Deprecated name of `window_size`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `window_size` instead. It was renamed because
+            elsewhere in the package `total_time` counts every iteration from
+            the initial condition, including the transient, while here it is
+            the length of one window.
         Returns
         -------
         float
@@ -1942,7 +1972,7 @@ class DiscreteDynamicalSystem:
             - If the system dimension is less than 1.
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
-            - If ``total_time`` is not positive, or is less than 2 with
+            - If ``window_size`` is not positive, or is less than 2 with
               ``method="wba"``.
             - If ``method`` is not ``"wba"``, ``"average"``, or ``None``.
             - If ``method="wba"`` and no frequency map is set.
@@ -1950,11 +1980,15 @@ class DiscreteDynamicalSystem:
         TypeError
             - If ``u`` is not a scalar or array-like numeric object.
             - If ``parameters`` is not a scalar or array-like numeric object.
-            - If ``total_time`` is not an integer.
+            - If ``window_size`` is not an integer.
+            - If ``window_size`` is not given, or if both ``window_size`` and the
+              deprecated ``total_time`` are given.
             - If ``threshold`` or ``mod`` is not a real number.
 
         Warns
         -----
+        DeprecationWarning
+            If `total_time` is passed. Use `window_size` instead.
         DeprecationWarning
             - If no frequency map is set. The rotation number is then computed,
               as in previous versions, as the plain time average of the
@@ -1965,7 +1999,7 @@ class DiscreteDynamicalSystem:
         Notes
         -----
         On a regular orbit, the weighted Birkhoff average converges faster than
-        any power of ``total_time``, while on a chaotic orbit it converges as
+        any power of ``window_size``, while on a chaotic orbit it converges as
         slowly as the plain average. The agreement between the two windows
         therefore separates both cases. On an island chain of period ``q``, the
         rotation number converges to a rational ``p / q``. Use
@@ -1996,7 +2030,10 @@ class DiscreteDynamicalSystem:
             parameters, self.__number_of_parameters
         )
 
-        validate_positive(total_time, "total_time", Integral)
+        window_size = _window_size_from_deprecated_total_time(
+            window_size, total_time
+        )
+        validate_positive(window_size, "window_size", Integral)
 
         if method not in (None, "wba", "average"):
             raise ValueError(f"method must be 'wba' or 'average', got {method!r}.")
@@ -2026,7 +2063,7 @@ class DiscreteDynamicalSystem:
             return rotation_number(
                 u=u_arr,
                 parameters=parameters_arr,
-                total_time=total_time,
+                total_time=window_size,
                 mapping=self.__mapping,
                 mod=mod,
             )
@@ -2045,18 +2082,18 @@ class DiscreteDynamicalSystem:
                 rotation_number_average(
                     u_arr,
                     parameters_arr,
-                    total_time,
+                    window_size,
                     self.__mapping,
                     self.__frequency_map,
                 )
             )
 
-        if total_time < 2:
-            raise ValueError("total_time must be at least 2 with method='wba'.")
+        if window_size < 2:
+            raise ValueError("window_size must be at least 2 with method='wba'.")
         validate_positive(threshold, "threshold", Real)
 
         omega, dig_omega = rotation_number_wba(
-            u_arr, parameters_arr, total_time, self.__mapping, self.__frequency_map
+            u_arr, parameters_arr, window_size, self.__mapping, self.__frequency_map
         )
 
         if not dig_omega >= threshold:
@@ -2067,7 +2104,7 @@ class DiscreteDynamicalSystem:
     def classify_orbit(
         self,
         u: numeric_like_t,
-        total_time: int_t,
+        window_size: int_t,
         parameters: numeric_like_t | None = None,
         func: state_observable_t | None = None,
         period: numeric_t = 1.0,
@@ -2082,7 +2119,7 @@ class DiscreteDynamicalSystem:
 
         The classification follows Sander and Meiss (2020). Two weighted
         Birkhoff averages are computed over two consecutive windows of
-        ``total_time`` iterations: one of the observable ``func``, whose
+        ``window_size`` iterations: one of the observable ``func``, whose
         convergence ``dig`` separates regular from chaotic orbits, and one of
         the frequency map (see :py:meth:`set_frequency_map`), which gives the
         rotation number ``omega`` and its convergence ``dig_omega``.
@@ -2111,9 +2148,9 @@ class DiscreteDynamicalSystem:
         ----------
         u : numeric_like_t
             Initial condition of shape ``(system_dimension,)``.
-        total_time : int_t
+        window_size : int_t
             Length of each of the two windows. The trajectory is iterated
-            ``2 * total_time`` times. Must be at least 2.
+            ``2 * window_size`` times. Must be at least 2.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping and frequency map. If
             ``None``, the stored system parameters are used.
@@ -2163,7 +2200,7 @@ class DiscreteDynamicalSystem:
             - If no frequency map is set.
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
-            - If ``total_time`` is less than 2.
+            - If ``window_size`` is less than 2.
             - If ``func`` does not return a real number for a single state.
             - If ``omega_threshold``, ``dig_threshold``, ``dev_threshold``, or
               ``period`` is not positive.
@@ -2171,7 +2208,7 @@ class DiscreteDynamicalSystem:
         TypeError
             - If ``u`` is not a scalar or array-like numeric object.
             - If ``parameters`` is not a scalar or array-like numeric object.
-            - If ``total_time`` is not an integer.
+            - If ``window_size`` is not an integer.
             - If ``func`` is not callable.
             - If ``omega_threshold``, ``dig_threshold``, ``tol``, or
               ``dev_threshold`` is not a real number.
@@ -2184,8 +2221,8 @@ class DiscreteDynamicalSystem:
         applied to digits that are not yet reliable, so island chains and
         rotational circles cannot be told apart. On a regular orbit, the
         weighted Birkhoff average converges faster than any power of
-        ``total_time``, so classifying the orbit again with a longer
-        ``total_time`` usually settles it. With longer windows, some of these
+        ``window_size``, so classifying the orbit again with a longer
+        ``window_size`` usually settles it. With longer windows, some of these
         orbits turn out to be chaotic. Lowering ``omega_threshold`` also
         classifies them, but ``tol`` must then stay below it, which makes the
         rationality test coarser.
@@ -2232,9 +2269,9 @@ class DiscreteDynamicalSystem:
             parameters, self.__number_of_parameters
         )
 
-        validate_positive(total_time, "total_time", Integral)
-        if total_time < 2:
-            raise ValueError("total_time must be at least 2.")
+        validate_positive(window_size, "window_size", Integral)
+        if window_size < 2:
+            raise ValueError("window_size must be at least 2.")
         validate_positive(omega_threshold, "omega_threshold", Real)
         validate_positive(dig_threshold, "dig_threshold", Real)
         validate_positive(tol, "tol", Real)
@@ -2251,7 +2288,7 @@ class DiscreteDynamicalSystem:
         orbit_class, omega, dig_h, dig_omega = classify_orbit(
             u_arr,
             parameters_arr,
-            total_time,
+            window_size,
             self.__mapping,
             self.__frequency_map,
             observable,
@@ -3012,18 +3049,19 @@ class DiscreteDynamicalSystem:
     def dig(
         self,
         u: numeric_like_t,
-        total_time: int_t,
+        window_size: int_t | None = None,
         parameters: numeric_like_t | None = None,
         func: state_observable_t | None = None,
         transient_time: int_t | None = None,
         period: numeric_t = 1.0,
+        total_time: int_t | None = None,
     ) -> float:
         """
         Compute the number of correct decimal digits in the convergence of a
         weighted Birkhoff average.
 
         This diagnostic compares weighted Birkhoff averages computed over two
-        consecutive windows of the trajectory, each of length ``total_time``. Larger values indicate better
+        consecutive windows of the trajectory, each of length ``window_size``. Larger values indicate better
         convergence of the observable average and are typically associated with
         more regular dynamics.
 
@@ -3031,9 +3069,9 @@ class DiscreteDynamicalSystem:
         ----------
         u : numeric_like_t
             Initial condition of shape `(system_dimension,)`.
-        total_time : int_t
+        window_size : int_t
             Length of each of the two consecutive windows. The trajectory is
-            iterated ``2 * total_time`` times after the transient. Must be at
+            iterated ``2 * window_size`` times after the transient. Must be at
             least 2.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
@@ -3050,6 +3088,13 @@ class DiscreteDynamicalSystem:
             example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
             in radians. Ignored when ``func`` is given. The default is ``1.0``.
 
+        total_time : int_t | None, optional
+            Deprecated name of `window_size`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `window_size` instead. It was renamed because
+            elsewhere in the package `total_time` counts every iteration from
+            the initial condition, including the transient, while here it is
+            the length of one window.
         Returns
         -------
         float
@@ -3062,19 +3107,23 @@ class DiscreteDynamicalSystem:
         ValueError
             - If `u` is not compatible with the system dimension.
             - If `parameters` does not match the expected number of parameters.
-            - If `total_time` is less than 2.
+            - If `window_size` is less than 2.
             - If `transient_time` is negative.
             - If `period` is not positive.
             - If `func` does not return a real number for a single state.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
-            - If `total_time` is not an integer.
+            - If `window_size` is not an integer.
+            - If `window_size` is not given, or if both `window_size` and the
+              deprecated `total_time` are given.
             - If `transient_time` is not an integer.
             - If `func` is not callable.
 
         Warns
         -----
+        DeprecationWarning
+            If `total_time` is passed. Use `window_size` instead.
         DeprecationWarning
             If ``func`` acts on an array of states of shape
             ``(n, system_dimension)`` and returns an array of shape ``(n,)``,
@@ -3122,9 +3171,12 @@ class DiscreteDynamicalSystem:
             parameters, self.__number_of_parameters
         )
 
-        validate_positive(total_time, "total_time", Integral)
-        if total_time < 2:
-            raise ValueError("total_time must be at least 2.")
+        window_size = _window_size_from_deprecated_total_time(
+            window_size, total_time
+        )
+        validate_positive(window_size, "window_size", Integral)
+        if window_size < 2:
+            raise ValueError("window_size must be at least 2.")
         if transient_time is not None:
             validate_non_negative(transient_time, "transient_time", Integral)
 
@@ -3137,7 +3189,7 @@ class DiscreteDynamicalSystem:
         return dig(
             u=u_arr,
             parameters=parameters_arr,
-            total_time=total_time,
+            total_time=window_size,
             mapping=self.__mapping,
             func=observable,
             form=form,
