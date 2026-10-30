@@ -30,7 +30,7 @@ from pynamicalsys.common.clv import (
     clv_solve_upper_inplace,
 )
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
-from pynamicalsys.continuous_time.step import evolve_system, step
+from pynamicalsys.continuous_time.step import evolve_system, step, step_to
 
 
 @njit(error_model="numpy")
@@ -180,13 +180,12 @@ def compute_clvs(
         if t_target > t_end:
             t_target = t_end
 
-        while time < t_target:
-            if time + dt > t_target:
-                dt = t_target - time
-
-            uv, time, dt = step(
+        reached = False
+        while not reached:
+            uv, time, dt, reached = step_to(
                 time=time,
                 u=uv,
+                target_time=t_target,
                 parameters=parameters,
                 equations_of_motion=equations_of_motion,
                 jacobian=jacobian,
@@ -267,13 +266,12 @@ def compute_clvs(
     for k in range(tail_blocks):
         t_target = time + qr_time_step
 
-        while time < t_target:
-            if time + dt > t_target:
-                dt = t_target - time
-
-            uv, time, dt = step(
+        reached = False
+        while not reached:
+            uv, time, dt, reached = step_to(
                 time=time,
                 u=uv,
+                target_time=t_target,
                 parameters=parameters,
                 equations_of_motion=equations_of_motion,
                 jacobian=jacobian,
