@@ -21,7 +21,12 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.discrete_time.trajectory import iterate_mapping
+from pynamicalsys.common.linalg import (
+    multiply_columns_into,
+    qr,
+    qr_inplace_log_diagonal,
+)
 
 
 @njit
@@ -448,19 +453,26 @@ def lyapunov_qr(
     if return_history and sample_times is not None:
         history = np.zeros((num_samples, num_exponents), dtype=np.float64)
 
+    # Buffers reused at every step by the "QR" method, which then allocates
+    # nothing in the loop
+    w = np.empty_like(v)
+    log_diagonal = np.empty(num_exponents, dtype=np.float64)
+
     sample_idx = 0
     for n in range(sample_size):
         u = np.ascontiguousarray(mapping(u, parameters))
         J = np.ascontiguousarray(jacobian(u, parameters, mapping))
 
-        for i in range(num_exponents):
-            v[:, i] = J @ np.ascontiguousarray(v[:, i])
-
         if method == "QR":
-            v, R = qr(v)
+            multiply_columns_into(J, v, w)
+            qr_inplace_log_diagonal(w, log_diagonal)
+            exponents += log_diagonal
+            v, w = w, v
         else:
+            for i in range(num_exponents):
+                v[:, i] = J @ np.ascontiguousarray(v[:, i])
             v, R = np.linalg.qr(v)
-        exponents += np.log(np.abs(np.diag(R)))
+            exponents += np.log(np.abs(np.diag(R)))
 
         if (
             return_history
@@ -475,6 +487,62 @@ def lyapunov_qr(
         return history, u
 
     return (exponents / (sample_size * log_den)).reshape(1, -1), u
+
+
+@njit
+def _finite_time_windows(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    finite_time: int_t,
+    mapping: map_t,
+    jacobian: jacobian_t,
+    num_exponents: int,
+    method: str,
+    log_base: numeric_t,
+    exponents: NDArray[np.float64],
+    phase_space_points: NDArray[np.float64],
+) -> None:
+    # Compiled loop over the windows of `finite_time_lyapunov`. Each window
+    # starts from the state at the end of the previous one, and the exponents
+    # and starting states are written into the given arrays.
+    for i in range(exponents.shape[0]):
+        phase_space_points[i] = u
+
+        if method == "ER":
+            if num_exponents == 1:
+                window_exponents, u_new = maximum_lyapunov_er(
+                    u,
+                    parameters,
+                    finite_time,
+                    mapping,
+                    jacobian,
+                    log_base=log_base,
+                )
+                exponents[i] = window_exponents.ravel()
+            else:
+                window_exponents_er, u_new = lyapunov_er(
+                    u,
+                    parameters,
+                    finite_time,
+                    mapping,
+                    jacobian,
+                    log_base=log_base,
+                )
+                exponents[i] = window_exponents_er.ravel()
+        else:
+            window_exponents_qr, u_new = lyapunov_qr(
+                u,
+                parameters,
+                finite_time,
+                mapping,
+                jacobian,
+                num_exponents,
+                method=method,
+                log_base=log_base,
+            )
+            exponents[i] = window_exponents_qr.ravel()
+
+        u = u_new.copy()
 
 
 def finite_time_lyapunov(
@@ -563,8 +631,7 @@ def finite_time_lyapunov(
 
     sample_size = total_time - (transient_time if transient_time is not None else 0)
     if transient_time is not None:
-        for _ in range(transient_time):
-            u = mapping(u, parameters)
+        u = iterate_mapping(u, parameters, transient_time, mapping)
 
     if finite_time > sample_size:
         raise ValueError(
@@ -585,52 +652,18 @@ def finite_time_lyapunov(
     exponents = np.zeros((num_windows, num_exponents), dtype=np.float64)
     phase_space_points = np.zeros((num_windows, neq), dtype=np.float64)
 
-    for i in range(num_windows):
-        phase_space_points[i] = u
-
-        if method == "ER":
-            if num_exponents == 1:
-                window_exponents, u_new = maximum_lyapunov_er(
-                    u,
-                    parameters,
-                    finite_time,
-                    mapping,
-                    jacobian,
-                    log_base=log_base,
-                )
-            else:
-                window_exponents, u_new = lyapunov_er(
-                    u,
-                    parameters,
-                    finite_time,
-                    mapping,
-                    jacobian,
-                    log_base=log_base,
-                )
-        elif method == "QR":
-            window_exponents, u_new = lyapunov_qr(
-                u,
-                parameters,
-                finite_time,
-                mapping,
-                jacobian,
-                num_exponents,
-                log_base=log_base,
-            )
-        else:  # method == "QR_HH"
-            window_exponents, u_new = lyapunov_qr(
-                u,
-                parameters,
-                finite_time,
-                mapping,
-                jacobian,
-                num_exponents,
-                method=method,
-                log_base=log_base,
-            )
-
-        exponents[i] = window_exponents.ravel()
-        u = u_new.copy()
+    _finite_time_windows(
+        u,
+        parameters,
+        finite_time,
+        mapping,
+        jacobian,
+        num_exponents,
+        method,
+        log_base,
+        exponents,
+        phase_space_points,
+    )
 
     if return_points:
         return exponents, phase_space_points

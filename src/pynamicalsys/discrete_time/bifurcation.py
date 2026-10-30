@@ -18,14 +18,53 @@
 from typing import Callable
 
 import numpy as np
+from numba import njit
 from numpy.typing import NDArray
 
-from pynamicalsys.common.types import int_t, numeric_t, state_observable_t
+from pynamicalsys.common.types import int_t
 from pynamicalsys.discrete_time.trajectory import generate_trajectory
 
 
-def _default_state_observable(x: NDArray[np.float64]) -> numeric_t:
-    return x[0]
+@njit
+def _sweep(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    param_index: int,
+    param_values: NDArray[np.float64],
+    total_time: int_t,
+    mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
+    transient_time: int_t,
+    continuation: bool,
+    observable_index: int,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    # Compiled loop over the parameter values of `bifurcation_diagram`.
+    state = u.copy()
+    sample_size = total_time - transient_time
+    num_points = param_values.shape[0]
+
+    results = np.empty((num_points, sample_size), dtype=np.float64)
+    current_params = parameters.copy()
+    last_state = state.copy()
+
+    for i in range(num_points):
+        current_params[param_index] = param_values[i]
+
+        trajectory = generate_trajectory(
+            state,
+            current_params,
+            total_time,
+            mapping,
+            transient_time=transient_time,
+        )
+
+        for j in range(sample_size):
+            results[i, j] = trajectory[j, observable_index]
+
+        last_state = trajectory[-1].copy()
+        if continuation:
+            state = last_state.copy()
+
+    return results, last_state
 
 
 def bifurcation_diagram(
@@ -38,7 +77,7 @@ def bifurcation_diagram(
     transient_time: int_t = 0,
     continuation: bool = False,
     return_last_state: bool = False,
-    observable_fn: state_observable_t | None = None,
+    observable_index: int = 0,
 ) -> (
     tuple[NDArray[np.float64], NDArray[np.float64]]
     | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
@@ -71,9 +110,9 @@ def bifurcation_diagram(
         initial condition for the next one.
     return_last_state : bool, optional
         If True, also return the final state from the last parameter value.
-    observable_fn : state_observable_t | None, optional
-        Observable applied to each state of the trajectory. If None, the first
-        coordinate is used.
+    observable_index : int, optional
+        Index of the state coordinate recorded along each trajectory. Default
+        is `0`.
 
     Returns
     -------
@@ -91,44 +130,27 @@ def bifurcation_diagram(
     Notes
     -----
     The output `results[i, j]` stores the observable evaluated at the `j`-th
-    post-transient iterate for the `i`-th parameter value.
+    post-transient iterate for the `i`-th parameter value. The sweep runs in
+    compiled code.
     """
-    state = u.copy()
-
     if isinstance(param_range, tuple):
         param_values = np.linspace(param_range[0], param_range[1], param_range[2])
     else:
-        param_values = np.ascontiguousarray(param_range)
+        param_values = np.ascontiguousarray(param_range, dtype=np.float64)
 
-    sample_size = total_time - transient_time
-    num_points = len(param_values)
-
-    results = np.empty((num_points, sample_size), dtype=np.float64)
-    current_params = parameters.copy()
-
-    trajectory = np.empty((sample_size, state.shape[0]), dtype=np.float64)
-
-    for i in range(num_points):
-        current_params[param_index] = param_values[i]
-
-        trajectory = generate_trajectory(
-            state,
-            current_params,
-            total_time,
-            mapping,
-            transient_time=transient_time,
-        )
-
-        for j in range(sample_size):
-            if observable_fn is None:
-                results[i, j] = _default_state_observable(trajectory[j])
-            else:
-                results[i, j] = observable_fn(trajectory[j])
-
-        if continuation:
-            state = trajectory[-1].copy()
+    results, last_state = _sweep(
+        u,
+        np.asarray(parameters, dtype=np.float64),
+        param_index,
+        param_values,
+        total_time,
+        mapping,
+        0 if transient_time is None else transient_time,
+        continuation,
+        observable_index,
+    )
 
     if return_last_state:
-        return param_values, results, trajectory[-1].copy()
+        return param_values, results, last_state
 
     return param_values, results
