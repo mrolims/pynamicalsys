@@ -60,15 +60,21 @@ def velocity_verlet_2nd_step(
     """
     q_new = q.copy()
     p_new = p.copy()
+    half_step = np.float64(0.5) * time_step
 
+    # Element loops perform the operations of the array expressions, in the
+    # same order, without temporary arrays.
     gradV = grad_V(q, parameters)
-    p_new -= np.float64(0.5) * time_step * gradV
+    for i in range(p_new.shape[0]):
+        p_new[i] -= half_step * gradV[i]
 
     gradT = grad_T(p_new, parameters)
-    q_new += time_step * gradT
+    for i in range(q_new.shape[0]):
+        q_new[i] += time_step * gradT[i]
 
     gradV = grad_V(q_new, parameters)
-    p_new -= np.float64(0.5) * time_step * gradV
+    for i in range(p_new.shape[0]):
+        p_new[i] -= half_step * gradV[i]
 
     return q_new, p_new
 
@@ -144,6 +150,42 @@ def _symplectic_J_inv_matmul(
 
 
 @njit
+def _midpoint_residual(
+    z_bar: NDArray[np.float64],
+    z_n: NDArray[np.float64],
+    half_step: np.float64,
+    qdot: NDArray[np.float64],
+    pdot: NDArray[np.float64],
+    F: NDArray[np.float64],
+) -> None:
+    """Store `F = z_bar - z_n - (h / 2) f(z_bar)` in `F`."""
+    n = qdot.shape[0]
+    for i in range(n):
+        F[i] = z_bar[i] - z_n[i] - half_step * qdot[i]
+        F[n + i] = z_bar[n + i] - z_n[n + i] - half_step * pdot[i]
+
+
+@njit
+def _midpoint_newton_matrix(
+    n: int, half_step: np.float64, H: NDArray[np.float64], DF: NDArray[np.float64]
+) -> None:
+    """
+    Store `DF = I - (h / 2) J^{-1} H` in `DF`.
+
+    `J^{-1} H` stacks the momentum rows of `H` over the negated position rows,
+    as in `_symplectic_J_inv_matmul`, and is read from `H` directly.
+    """
+    for row in range(2 * n):
+        for col in range(2 * n):
+            if row < n:
+                jinv_h = H[row + n, col]
+            else:
+                jinv_h = -H[row - n, col]
+            identity = 1.0 if row == col else 0.0
+            DF[row, col] = identity - half_step * jinv_h
+
+
+@njit
 def implicit_midpoint_step(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
@@ -199,23 +241,26 @@ def implicit_midpoint_step(
     n = q.shape[0]
     h = time_step
 
-    z_n = np.concatenate((q, p))
+    half_step = np.float64(0.5) * h
 
-    # Initial guess for the midpoint: z_n itself
-    q_bar = q.copy()
-    p_bar = p.copy()
-
-    identity = np.eye(2 * n)
+    # z_n, the midpoint z_bar (initially z_n itself), the residual F, and the
+    # Newton matrix DF are kept in buffers that are reused by every Newton
+    # iteration.
+    z_n = np.empty(2 * n, dtype=np.float64)
+    z_n[:n] = q
+    z_n[n:] = p
+    z_bar = z_n.copy()
+    F = np.empty(2 * n, dtype=np.float64)
+    DF = np.empty((2 * n, 2 * n), dtype=np.float64)
 
     converged = False
     residual_norm = np.float64(0.0)
 
     for _ in range(max_iter):
-        qdot, pdot = eom(q_bar, p_bar, parameters)
-        f_mid = np.concatenate((qdot, pdot))  # J^{-1} grad_H(z_bar)
-
-        z_bar = np.concatenate((q_bar, p_bar))
-        F = z_bar - z_n - np.float64(0.5) * h * f_mid
+        q_bar = z_bar[:n]
+        p_bar = z_bar[n:]
+        qdot, pdot = eom(q_bar, p_bar, parameters)  # J^{-1} grad_H(z_bar)
+        _midpoint_residual(z_bar, z_n, half_step, qdot, pdot, F)
 
         residual_norm = np.sqrt(np.sum(F * F))
         if residual_norm < tol:
@@ -223,13 +268,14 @@ def implicit_midpoint_step(
             break
 
         H_mid = hess_H(q_bar, p_bar, parameters)  # (2n,2n)
-        Jinv_Hmid = _symplectic_J_inv_matmul(n, H_mid)  # J^{-1} grad^2 H
-        DF = identity - np.float64(0.5) * h * Jinv_Hmid
+        _midpoint_newton_matrix(n, half_step, H_mid, DF)
 
         delta = np.linalg.solve(DF, -F)
-        z_bar = z_bar + delta
-        q_bar = z_bar[:n]
-        p_bar = z_bar[n:]
+        for i in range(2 * n):
+            z_bar[i] = z_bar[i] + delta[i]
+
+    q_bar = z_bar[:n]
+    p_bar = z_bar[n:]
 
     if not converged:
         print(
