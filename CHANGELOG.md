@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `lyapunov`, `SALI`, `LDI`, and `GALI` of `HamiltonianSystem` accept `sample_times` with `return_history=True`, which stores the history only at the requested times. Each time is rounded to the nearest integration step, so the step size of the symplectic integrators stays constant.
 - `DiscreteDynamicalSystem.recurrence_times` accepts `periods`, the wrapping period of each coordinate, with `np.inf` for coordinates that do not wrap. The recurrence box then wraps around the boundaries of the periodic coordinates, so returns on the other side of a boundary are detected. Without `periods`, the results are unchanged.
 - `rotation_number` and `classify_orbit` accept `transient_time`, the number of iterations discarded before the averaging windows, as `dig` already did.
+- `DiscreteDynamicalSystem.trajectory` accepts `sample_times`, which stores the state only at the requested iterations, counted from the initial condition like `total_time`, and stops iterating at the last of them. With an ensemble of initial conditions, every trajectory is stored at the same iterations.
+- `DiscreteDynamicalSystem.trajectory` accepts `concatenate`. With `concatenate=False`, an ensemble is returned as an array of shape `(num_initial_conditions, sample_size, system_dimension)`, so that `result[i]` is the trajectory of the `i`-th initial condition, and as `(num_initial_conditions, sample_size)` for one-dimensional maps. With `concatenate=True`, the trajectories are concatenated as before.
 
 ### Changed
 
@@ -45,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `endpoint` argument of `lyapunov`, `SALI`, `LDI`, and `GALI` in `ContinuousDynamicalSystem`. It is now ignored, and passing it emits a `DeprecationWarning`.
 - The `tol` argument of `SALI`, `LDI`, and `GALI` in `DiscreteDynamicalSystem`. Use `threshold` instead.
 - The `total_time` argument of `dig` and `rotation_number` in `DiscreteDynamicalSystem`. Use `window_size`, the length of each averaging window, instead. Elsewhere in the package `total_time` counts every iteration from the initial condition, including the transient.
+- Calling `DiscreteDynamicalSystem.trajectory` with an ensemble of initial conditions without `concatenate`, which returns the trajectories concatenated into one array of shape `(num_initial_conditions * sample_size, system_dimension)`. In a future version the default will be the shape `(num_initial_conditions, sample_size, system_dimension)`. Pass `concatenate=False` to use it now, or `concatenate=True` to keep the concatenated array.
 
 ### Fixed
 

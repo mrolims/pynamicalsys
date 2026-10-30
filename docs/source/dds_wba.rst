@@ -87,7 +87,8 @@ The following example samples initial conditions for the standard map and evalua
     trajectories = system.trajectory(
         u=initial_states,
         total_time=trajectory_time,
-    ).reshape(num_initial_conditions, trajectory_time, 2)
+        concatenate=False,
+    )
 
 Plot every trajectory with the color assigned by the :math:`\mathrm{dig}` value of its initial condition, together with the distribution of finite values. The shorter ``trajectory_time`` controls only the phase-space visualization and does not change the WBA windows used for the classification:
 

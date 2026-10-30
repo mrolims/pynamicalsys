@@ -48,6 +48,8 @@ from pynamicalsys.discrete_time.trajectory import (
     iterate_mapping,
     generate_trajectory,
     ensemble_trajectories,
+    sampled_trajectory,
+    ensemble_sampled_trajectories,
 )
 from pynamicalsys.discrete_time.bifurcation import bifurcation_diagram
 from pynamicalsys.discrete_time.periodic_orbits import (
@@ -830,14 +832,16 @@ class DiscreteDynamicalSystem:
         total_time: int_t,
         parameters: numeric_like_t | None = None,
         transient_time: int_t | None = None,
+        sample_times: NDArray[np.integer] | Sequence[int_t] | None = None,
+        concatenate: bool | None = None,
     ) -> NDArray[np.float64]:
         """
         Generate a trajectory from a single initial condition or from an ensemble of
         initial conditions.
 
         If `u` is one-dimensional, the trajectory of a single initial condition is
-        returned. If `u` is two-dimensional, trajectories are computed for all
-        initial conditions in the ensemble and returned in concatenated form.
+        returned. If `u` is two-dimensional, a trajectory is computed for each
+        initial condition in the ensemble.
 
         Parameters
         ----------
@@ -848,29 +852,56 @@ class DiscreteDynamicalSystem:
             - Ensemble of initial conditions: shape
               `(num_initial_conditions, system_dimension)`
         total_time : int_t
-            Total number of iterations used to generate the trajectory.
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`. Must be positive.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If `None`, the stored
             system parameters are used.
         transient_time : int_t | None, optional
-            Number of initial iterations discarded before storing the trajectory.
-            If provided, it must satisfy `0 <= transient_time < total_time`.
+            Number of initial iterations whose states are not stored. If
+            provided, it must satisfy `0 <= transient_time < total_time`.
+        sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
+            Iterations in `(transient_time, total_time]` at which the state is
+            stored, counted from the initial condition, like `total_time`. They
+            are sorted with duplicates removed, and the map is iterated only up
+            to the last of them. If None (default), the state is stored at every
+            iteration after the transient.
+        concatenate : bool | None, optional
+            How the trajectories of an ensemble are returned. Single initial
+            conditions are not affected.
+
+            - `False`: as an array of shape
+              `(num_initial_conditions, sample_size, system_dimension)`, so
+              that `result[i]` is the trajectory of the `i`-th initial
+              condition. This will be the default in a future version.
+            - `True`: concatenated along the first axis, as an array of shape
+              `(num_initial_conditions * sample_size, system_dimension)`.
+            - `None` (default): `False` if `sample_times` is given. Otherwise,
+              the concatenated array is returned, as in previous versions, and
+              a `DeprecationWarning` is emitted.
 
         Returns
         -------
         NDArray[np.float64]
-            Trajectory array.
+            Trajectory array, where `sample_size` is `len(sample_times)` if
+            `sample_times` is given and `total_time - transient_time`
+            otherwise (with `transient_time = 0` if it is not given). Row `k`
+            of a trajectory is the state after iteration `transient_time + k + 1`,
+            or after iteration `sample_times[k]`. The initial condition is not
+            stored.
 
-            - Single initial condition:
-              shape `(sample_size, system_dimension)`
-            - Ensemble of initial conditions:
-              shape `(num_initial_conditions * sample_size, system_dimension)`
+            - Single initial condition: shape `(sample_size, system_dimension)`.
+            - Ensemble with `concatenate=False`: shape
+              `(num_initial_conditions, sample_size, system_dimension)`.
+            - Ensemble with `concatenate=True`: shape
+              `(num_initial_conditions * sample_size, system_dimension)`, with
+              the trajectories stacked in the order of the initial conditions.
 
-            where `sample_size = total_time - transient_time` if a transient is
-            used, and `sample_size = total_time` otherwise.
-
-            For one-dimensional systems with a single initial condition, the output
-            is returned as a one-dimensional array of shape `(sample_size,)`.
+            For one-dimensional maps, the last axis is dropped: a single initial
+            condition gives shape `(sample_size,)` and an ensemble with
+            `concatenate=False` gives shape
+            `(num_initial_conditions, sample_size)`. The concatenated form keeps
+            the shape `(num_initial_conditions * sample_size, 1)`.
 
         Raises
         ------
@@ -878,27 +909,47 @@ class DiscreteDynamicalSystem:
             - If `u` is incompatible with the system dimension.
             - If `parameters` does not match the expected number of parameters.
             - If `total_time` is not positive.
-            - If `transient_time` is invalid.
+            - If `transient_time` is negative, or greater than or equal to `total_time`.
+            - If `sample_times` is not a 1D array of integers, or contains values
+              outside `(transient_time, total_time]`.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
-            - If `total_time` is not an integer.
-            - If `transient_time` is not an integer.
+            - If `total_time` or `transient_time` is not an integer.
+            - If `sample_times` cannot be converted to a 1D array of integers.
+            - If `concatenate` is not a boolean or None.
 
-        Notes
+        Warns
         -----
-        For ensembles, trajectories are concatenated along the first axis. To recover
-        the individual trajectories, reshape the output as
-        `(num_initial_conditions, sample_size, system_dimension)`.
+        DeprecationWarning
+            If an ensemble is passed without `sample_times` and `concatenate` is
+            not given. The concatenated output will stop being the default in a
+            future version; pass `concatenate=False` for the new shape or
+            `concatenate=True` to keep the concatenated array.
 
         Examples
         --------
-        >>> u0 = np.array([0.1, 0.2])
-        >>> ts = system.trajectory(u0, 5000, parameters=[0.5, 1.0])
+        >>> import numpy as np
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+        >>> system.trajectory([0.2, 0.5], 5000).shape
+        (5000, 2)
 
-        >>> ics = np.random.rand(100, 2)
-        >>> ts = system.trajectory(ics, 10000, parameters=[1.0, 0.1], transient_time=1000)
-        >>> ts = ts.reshape(100, 9000, 2)
+        Store an ensemble, one trajectory per initial condition:
+
+        >>> initial_conditions = np.random.default_rng(0).uniform(size=(100, 2))
+        >>> trajectories = system.trajectory(
+        ...     initial_conditions, 10_000, transient_time=1_000, concatenate=False
+        ... )
+        >>> trajectories.shape
+        (100, 9000, 2)
+
+        Store a long trajectory only at logarithmically spaced iterations:
+
+        >>> sample_times = np.unique(np.logspace(0, 6, 200).astype(int))
+        >>> system.trajectory([0.2, 0.5], 1_000_000, sample_times=sample_times).shape
+        (174, 2)
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u,
@@ -916,25 +967,73 @@ class DiscreteDynamicalSystem:
         validate_positive(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, type_=Integral)
 
+        if concatenate is not None and not isinstance(concatenate, bool):
+            raise TypeError("concatenate must be a boolean or None")
+
+        sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None:
+            start = 0 if transient_time is None else int(transient_time)
+            sample_times_arr = (
+                self.__sample_times_after_transient(
+                    sample_times, transient_time, total_time
+                )
+                + start
+            ).astype(np.int64)
+
         if u_arr.ndim == 1:
-            trajectory = generate_trajectory(
+            if sample_times_arr is None:
+                trajectory = generate_trajectory(
+                    u=u_arr,
+                    parameters=parameters_arr,
+                    total_time=total_time,
+                    mapping=self.__mapping,
+                    transient_time=transient_time,
+                )
+            else:
+                trajectory = sampled_trajectory(
+                    u_arr, parameters_arr, sample_times_arr, self.__mapping
+                )
+            if self.__system_dimension == 1:
+                return trajectory[:, 0]
+            return trajectory
+
+        num_initial_conditions = u_arr.shape[0]
+        if sample_times_arr is None:
+            trajectories = ensemble_trajectories(
                 u=u_arr,
                 parameters=parameters_arr,
                 total_time=total_time,
                 mapping=self.__mapping,
                 transient_time=transient_time,
             )
-            if self.__system_dimension == 1:
-                return trajectory[:, 0]
-            return trajectory
+            if concatenate is None:
+                warnings.warn(
+                    "Returning the trajectories of an ensemble concatenated into "
+                    "one array of shape (num_initial_conditions * sample_size, "
+                    "system_dimension) is deprecated as the default and will "
+                    "change in a future version. Pass concatenate=False to get an "
+                    "array of shape (num_initial_conditions, sample_size, "
+                    "system_dimension), or concatenate=True to keep the "
+                    "concatenated array.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return trajectories
+            if concatenate:
+                return trajectories
+            trajectories = trajectories.reshape(
+                num_initial_conditions, -1, self.__system_dimension
+            )
+        else:
+            trajectories = ensemble_sampled_trajectories(
+                u_arr, parameters_arr, sample_times_arr, self.__mapping
+            )
+            if concatenate:
+                return trajectories.reshape(-1, self.__system_dimension)
 
-        return ensemble_trajectories(
-            u=u_arr,
-            parameters=parameters_arr,
-            total_time=total_time,
-            mapping=self.__mapping,
-            transient_time=transient_time,
-        )
+        if self.__system_dimension == 1:
+            return trajectories[:, :, 0]
+        return trajectories
 
     def bifurcation_diagram(
         self,

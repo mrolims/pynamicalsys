@@ -70,14 +70,9 @@ The following example samples 20 initial conditions in the unit square:
         size=(num_initial_conditions, 2),
     )
 
-    trajectories = system.trajectory(initial_conditions, total_time)
-    trajectories = trajectories.reshape(
-        num_initial_conditions,
-        total_time,
-        2,
-    )
+    trajectories = system.trajectory(initial_conditions, total_time, concatenate=False)
 
-Before reshaping, the output has shape ``(num_initial_conditions * total_time, 2)``. After reshaping, it has shape ``(20, 100000, 2)``, so ``trajectories[i]`` contains the orbit generated from ``initial_conditions[i]``.
+With ``concatenate=False``, the output has shape ``(20, 100000, 2)``, so ``trajectories[i]`` contains the orbit generated from ``initial_conditions[i]``. Without it, the trajectories are concatenated into one array of shape ``(num_initial_conditions * total_time, 2)``, as in earlier versions. That default is deprecated and will change to the shape above in a future version.
 
 Plot each orbit with a different color:
 
@@ -156,10 +151,16 @@ The result has shape ``(90000, 2)`` because ``total_time`` includes the discarde
 
     The Hénon attractor for :math:`a=1.4` and :math:`b=0.3` after discarding the transient.
 
-For a one-dimensional map and one initial condition, ``trajectory`` returns a one-dimensional array with shape ``(sample_size,)``. For higher-dimensional maps, the final axis always follows the state-variable order documented by the model's ``info`` property.
+For a one-dimensional map, the last axis is dropped: one initial condition gives an array of shape ``(sample_size,)``, and an ensemble with ``concatenate=False`` gives an array of shape ``(num_initial_conditions, sample_size)``. For higher-dimensional maps, the final axis always follows the state-variable order documented by the model's ``info`` property.
 
 Numerical options
 ~~~~~~~~~~~~~~~~~
 
 ``transient_time``
     Number of initial iterations discarded before the trajectory is stored. It defaults to zero and must be smaller than ``total_time``, which remains the total number of iterations. The stored trajectory therefore has ``total_time - transient_time`` rows and starts at the iterate that follows the transient; the initial condition itself is not stored.
+
+``sample_times``
+    Iterations at which the state is stored, counted from the initial condition like ``total_time``, so they must lie in ``(transient_time, total_time]``. They are sorted with duplicates removed, only those states are stored, and the map is iterated up to the last of them. This keeps the output small for long trajectories, for example with logarithmically spaced sample times. Every trajectory of an ensemble is stored at the same iterations.
+
+``concatenate``
+    How the trajectories of an ensemble are returned: ``False`` gives an array of shape ``(num_initial_conditions, sample_size, system_dimension)``, and ``True`` concatenates them along the first axis into shape ``(num_initial_conditions * sample_size, system_dimension)``. If it is not given, the concatenated array is returned with a ``DeprecationWarning``, unless ``sample_times`` is given, in which case the first shape is used. Single initial conditions are not affected.
