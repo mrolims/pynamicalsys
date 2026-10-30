@@ -20,7 +20,7 @@ import numpy as np
 from numba import njit
 
 from pynamicalsys.common.types import system_func_t, symplectic_tangent_step_t
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, qr_inplace_log_diagonal, vector_norm
 
 
 @njit
@@ -128,6 +128,8 @@ def gali_k_sep(
     dv = np.ascontiguousarray(dv)
 
     history = np.zeros((num_steps, 2), dtype=np.float64)
+    q_buffer = np.empty((neq, k), dtype=np.float64)
+    log_diagonal = np.empty(k, dtype=np.float64)
     gali_val = np.float64(0.0)
     time = np.float64(0.0)
     count = 0
@@ -159,15 +161,18 @@ def gali_k_sep(
         )
 
         for j in range(k):
-            norm = np.linalg.norm(dv[:, j])
+            norm = vector_norm(dv[:, j])
             dv[:, j] /= norm
 
         if method == "DET":
             G = dv.T @ dv
             gali_val = np.sqrt(np.linalg.det(G))
         elif method == "QR":
-            _, R = qr(dv)
-            gali_val = np.exp(np.sum(np.log(np.abs(np.diag(R)))))
+            # The QR factorization is taken of a copy, since the deviation
+            # vectors stay normalized but not orthogonal
+            q_buffer[:, :] = dv
+            qr_inplace_log_diagonal(q_buffer, log_diagonal)
+            gali_val = np.exp(np.sum(log_diagonal))
         elif method == "QR_HH":
             _, R = np.linalg.qr(dv)
             gali_val = np.exp(np.sum(np.log(np.abs(np.diag(R)))))
@@ -296,6 +301,8 @@ def gali_k_imp(
     dv = np.ascontiguousarray(dv)
 
     history = np.zeros((num_steps, 2), dtype=np.float64)
+    q_buffer = np.empty((neq, k), dtype=np.float64)
+    log_diagonal = np.empty(k, dtype=np.float64)
     gali_val = np.float64(0.0)
     time = np.float64(0.0)
     count = 0
@@ -319,15 +326,18 @@ def gali_k_imp(
         )
 
         for j in range(k):
-            norm = np.linalg.norm(dv[:, j])
+            norm = vector_norm(dv[:, j])
             dv[:, j] /= norm
 
         if method == "DET":
             G = dv.T @ dv
             gali_val = np.sqrt(np.linalg.det(G))
         elif method == "QR":
-            _, R = qr(dv)
-            gali_val = np.exp(np.sum(np.log(np.abs(np.diag(R)))))
+            # The QR factorization is taken of a copy, since the deviation
+            # vectors stay normalized but not orthogonal
+            q_buffer[:, :] = dv
+            qr_inplace_log_diagonal(q_buffer, log_diagonal)
+            gali_val = np.exp(np.sum(log_diagonal))
         elif method == "QR_HH":
             _, R = np.linalg.qr(dv)
             gali_val = np.exp(np.sum(np.log(np.abs(np.diag(R)))))

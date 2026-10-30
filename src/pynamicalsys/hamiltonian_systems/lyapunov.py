@@ -31,7 +31,7 @@ from pynamicalsys.common.types import (
     system_func_t,
     symplectic_tangent_step_t,
 )
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, qr_inplace_log_diagonal
 
 
 @njit
@@ -140,6 +140,7 @@ def lyapunov_spectrum_sep(
     dv = np.ascontiguousarray(dv)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
+    log_diagonal = np.empty(num_exponents, dtype=np.float64)
     n_qr = (num_steps + qr_interval - 1) // qr_interval
     if sample_steps is not None:
         n_qr = len(sample_steps)
@@ -174,12 +175,13 @@ def lyapunov_spectrum_sep(
 
         if (i + 1) % qr_interval == 0 or i == num_steps - 1 or at_sample:
             if method == "QR":
-                dv, R = qr(dv)
+                # Orthonormalize the deviation vectors in place
+                qr_inplace_log_diagonal(dv, log_diagonal)
+                exponents += log_diagonal
             else:
                 dv, R = np.linalg.qr(dv)
-
-            dv = np.ascontiguousarray(dv)
-            exponents += np.log(np.abs(np.diag(R)))
+                dv = np.ascontiguousarray(dv)
+                exponents += np.log(np.abs(np.diag(R)))
 
             if return_history and (sample_steps is None or at_sample):
                 history[count, 0] = time
@@ -300,6 +302,7 @@ def lyapunov_spectrum_imp(
     dv = np.ascontiguousarray(dv)
 
     exponents = np.zeros(num_exponents, dtype=np.float64)
+    log_diagonal = np.empty(num_exponents, dtype=np.float64)
     n_qr = (num_steps + qr_interval - 1) // qr_interval
     if sample_steps is not None:
         n_qr = len(sample_steps)
@@ -326,12 +329,13 @@ def lyapunov_spectrum_imp(
 
         if (i + 1) % qr_interval == 0 or i == num_steps - 1 or at_sample:
             if method == "QR":
-                dv, R = qr(dv)
+                # Orthonormalize the deviation vectors in place
+                qr_inplace_log_diagonal(dv, log_diagonal)
+                exponents += log_diagonal
             else:
                 dv, R = np.linalg.qr(dv)
-
-            dv = np.ascontiguousarray(dv)
-            exponents += np.log(np.abs(np.diag(R)))
+                dv = np.ascontiguousarray(dv)
+                exponents += np.log(np.abs(np.diag(R)))
 
             if return_history and (sample_steps is None or at_sample):
                 history[count, 0] = time
