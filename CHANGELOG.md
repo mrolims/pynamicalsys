@@ -68,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DiscreteDynamicalSystem.cumulative_average` and `DiscreteDynamicalSystem.root_mean_squared` accepted a sample time of `0` and returned NaN for it, since the average over zero iterations is undefined. They now raise a `ValueError`.
 - `DiscreteDynamicalSystem.finite_time_lyapunov` replaced the default `method="QR"` with `"ER"` on two-dimensional maps, and rejected `method="ER"` when it was requested by name. It now uses the method that is passed, and `"ER"` is accepted for two-dimensional maps. With the default method, results for two-dimensional maps differ slightly from those of earlier versions.
 - `DiscreteDynamicalSystem.recurrence_times` accepted `eps=0`, a box of zero size that detects a return only when the orbit comes back to exactly the same floating-point state. `eps` must now be positive, and `eps=0` raises a `ValueError`.
+- `DiscreteDynamicalSystem.classify_orbit` could take minutes or hours when the rotation number was close to a rational with a small denominator and `tol` was large, since the smallest denominator was searched one Stern-Brocot mediant at a time. The search now takes negligible time for every `tol`, with the same results.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
