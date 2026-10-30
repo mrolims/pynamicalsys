@@ -27,6 +27,7 @@ from numba.core.registry import CPUDispatcher
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t, map_t
+from pynamicalsys.discrete_time.trajectory import iterate_mapping
 
 # Forms in which an observable can be evaluated
 OBSERVABLE_COMPILED = "compiled"
@@ -351,8 +352,7 @@ def dig(
     u = u.copy()
 
     if transient_time is not None:
-        for _ in range(transient_time):
-            u = mapping(u, parameters)
+        u = iterate_mapping(u, parameters, transient_time, mapping)
 
     states = orbit_states(u, parameters, 2 * total_time, mapping)
     values = evaluate_observable(states, func, form)

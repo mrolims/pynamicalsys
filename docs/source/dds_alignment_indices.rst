@@ -372,7 +372,7 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
     :align: center
     :width: 100%
 
-    Wall times for SALI, the three formulations of :math:`\mathrm{GALI}_2`, and SVD-based :math:`\mathrm{LDI}_2` along a regular trajectory. Bars show the mean of five fixed-workload runs and error bars show one standard deviation.
+    Wall times for SALI, the three formulations of :math:`\mathrm{GALI}_2`, and SVD-based :math:`\mathrm{LDI}_2` along a regular trajectory. Bars show the mean of one hundred fixed-workload runs and error bars show one standard deviation.
 
 All three public methods return a scalar by default and a one-dimensional array with ``return_history=True``. The ``sample_times``, ``threshold``, ``transient_time``, ``seed``, and ``return_last_state`` arguments follow the same pattern for SALI, GALI, and LDI.
 

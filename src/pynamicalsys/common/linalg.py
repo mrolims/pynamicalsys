@@ -82,6 +82,73 @@ def qr(
 
 
 @njit
+def multiply_columns_into(
+    A: NDArray[np.float64], V: NDArray[np.float64], out: NDArray[np.float64]
+) -> None:
+    """
+    Store `A @ V` in `out` without allocating.
+
+    Each column is computed as `A @ V[:, i]`, summing over the columns of
+    `A` in order. `out` must not be `V`.
+    """
+    m, n = A.shape
+    for i in range(V.shape[1]):
+        for row in range(m):
+            s = 0.0
+            for col in range(n):
+                s += A[row, col] * V[col, i]
+            out[row, i] = s
+
+
+@njit
+def vector_norm(w: NDArray[np.float64]) -> float:
+    """
+    Euclidean norm of a 1D array, as the square root of the sum of squares.
+
+    Unlike `np.linalg.norm`, it does not call BLAS, which makes it faster for
+    the short vectors of tangent-space computations. It does not rescale the
+    entries, so it is meant for vectors that are renormalized regularly.
+    """
+    s = 0.0
+    for x in w:
+        s += x * x
+    return np.sqrt(s)
+
+
+@njit
+def qr_inplace_log_diagonal(Q: NDArray[np.float64], log_diagonal: NDArray[np.float64]) -> None:
+    """
+    Orthonormalize the columns of `Q` in place with modified Gram-Schmidt.
+
+    The operations are those of :func:`qr`, in the same order, so `Q` ends
+    equal to the `Q` that `qr` returns. Instead of building `R`, the logarithm
+    of `|R_ii|` is stored in `log_diagonal[i]`.
+    """
+    m, n = Q.shape
+    for i in range(n):
+        for j in range(i):
+            s = 0.0
+            for row in range(m):
+                s += Q[row, j] * Q[row, i]
+
+            for row in range(m):
+                Q[row, i] -= s * Q[row, j]
+
+        norm_sq = 0.0
+        for row in range(m):
+            norm_sq += Q[row, i] * Q[row, i]
+        norm = np.sqrt(norm_sq)
+        log_diagonal[i] = np.log(np.abs(norm))
+
+        if norm == 0.0:
+            continue
+
+        inv_norm = 1.0 / norm
+        for row in range(m):
+            Q[row, i] *= inv_norm
+
+
+@njit
 def householder_qr(
     M: NDArray[np.float64],
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:

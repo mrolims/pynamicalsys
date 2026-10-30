@@ -1174,9 +1174,6 @@ class DiscreteDynamicalSystem:
                 "parameters, or set all of them with set_parameters()."
             )
 
-        def observable_fn(x: NDArray[np.float64]) -> numeric_t:
-            return x[observable_index]
-
         return bifurcation_diagram(
             u=u_arr,
             parameters=parameters,
@@ -1187,7 +1184,7 @@ class DiscreteDynamicalSystem:
             transient_time=transient_time,
             continuation=continuation,
             return_last_state=return_last_state,
-            observable_fn=observable_fn,
+            observable_index=int(observable_index),
         )
 
     def period(

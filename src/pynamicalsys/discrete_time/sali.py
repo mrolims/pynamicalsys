@@ -21,7 +21,7 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import Optional, Tuple
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, vector_norm
 
 
 @njit
@@ -109,6 +109,11 @@ def sali(
     if return_history and sample_times is not None:
         history = np.zeros(num_samples, dtype=np.float64)
 
+    # Buffers reused at every step, so that the loop allocates nothing
+    w = np.empty(neq, dtype=np.float64)
+    vector_sum = np.empty(neq, dtype=np.float64)
+    vector_difference = np.empty(neq, dtype=np.float64)
+
     sali_val = np.sqrt(2)
     sample_idx = 0
     for n in range(sample_size):
@@ -116,12 +121,21 @@ def sali(
         J = np.ascontiguousarray(jacobian(u, parameters, mapping))
 
         for i in range(2):
-            v[:, i] = J @ np.ascontiguousarray(v[:, i])
-            v[:, i] /= np.linalg.norm(v[:, i])
+            for row in range(neq):
+                s = 0.0
+                for col in range(neq):
+                    s += J[row, col] * v[col, i]
+                w[row] = s
+            norm = vector_norm(w)
+            for row in range(neq):
+                v[row, i] = w[row] / norm
 
         # Compute SALI
-        PAI = np.linalg.norm(v[:, 0] + v[:, 1])
-        AAI = np.linalg.norm(v[:, 0] - v[:, 1])
+        for row in range(neq):
+            vector_sum[row] = v[row, 0] + v[row, 1]
+            vector_difference[row] = v[row, 0] - v[row, 1]
+        PAI = vector_norm(vector_sum)
+        AAI = vector_norm(vector_difference)
         sali_val = min(PAI, AAI)
 
         if (

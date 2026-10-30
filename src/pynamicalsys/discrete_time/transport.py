@@ -71,7 +71,123 @@ def diffusion_coefficient(
     return np.float64(msd / (2.0 * total_time))
 
 
+# Quantities recorded per initial condition by `_ensemble_series`
+_AVERAGE = 0
+_CUMULATIVE_AVERAGE = 1
+_ROOT_MEAN_SQUARED = 2
+_MEAN_SQUARED_DISPLACEMENT = 3
+
+# Number of values buffered per chunk of sample times, which bounds the memory
+# used by `_ensemble_series`
+_CHUNK_VALUES = 2**20
+
+
 @njit(parallel=True)
+def _advance_ensemble(
+    states: NDArray[np.float64],
+    sums: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    mapping: map_t,
+    sample_times: NDArray[np.integer],
+    start_time: int_t,
+    axis: int,
+    kind: int,
+) -> NDArray[np.float64]:
+    """
+    Advance every initial condition through a chunk of sample times.
+
+    Each initial condition is iterated from `start_time` to the last sample
+    time in its own thread, so the parallel region is entered once per chunk
+    instead of once per iteration. `states` and `sums` are updated in place.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Values of shape `(len(sample_times), num_ic)`: the coordinate `axis`
+        at each sample time, or its running sum (`_CUMULATIVE_AVERAGE`) or
+        running sum of squares (`_ROOT_MEAN_SQUARED`) up to it.
+    """
+    num_ic = states.shape[0]
+    num_samples = sample_times.shape[0]
+    values = np.empty((num_samples, num_ic), dtype=np.float64)
+
+    for i in prange(num_ic):
+        state = states[i].copy()
+        total = sums[i]
+        time = start_time
+        for k in range(num_samples):
+            while time < sample_times[k]:
+                state = mapping(state, parameters)
+                time += 1
+                if kind == _CUMULATIVE_AVERAGE:
+                    total += state[axis]
+                elif kind == _ROOT_MEAN_SQUARED:
+                    total += state[axis] ** 2
+            if kind == _CUMULATIVE_AVERAGE or kind == _ROOT_MEAN_SQUARED:
+                values[k, i] = total
+            else:
+                values[k, i] = state[axis]
+        states[i] = state
+        sums[i] = total
+
+    return values
+
+
+@njit
+def _ensemble_series(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    total_time: int_t,
+    mapping: map_t,
+    sample_times: NDArray[np.integer] | None,
+    axis: int,
+    kind: int,
+) -> NDArray[np.float64]:
+    """
+    Compute an ensemble statistic of one coordinate at each sample time.
+
+    The sample times are processed in chunks of at most `_CHUNK_VALUES`
+    values. For each sample, the statistic is reduced over the initial
+    conditions with the same expression as a direct computation, so the
+    result does not depend on the chunking or on the number of threads.
+    """
+    num_ic = u.shape[0]
+
+    if sample_times is None:
+        sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
+    else:
+        sample_times_arr = sample_times
+
+    num_samples = sample_times_arr.shape[0]
+    output = np.empty(num_samples, dtype=np.float64)
+    states = u.copy()
+    sums = np.zeros(num_ic, dtype=np.float64)
+    initial_values = u[:, axis].copy()
+    chunk_size = max(1, _CHUNK_VALUES // max(1, num_ic))
+
+    start_time = 0
+    for chunk_start in range(0, num_samples, chunk_size):
+        chunk_times = sample_times_arr[chunk_start : chunk_start + chunk_size]
+        values = _advance_ensemble(
+            states, sums, parameters, mapping, chunk_times, start_time, axis, kind
+        )
+        for k in range(chunk_times.shape[0]):
+            st = chunk_times[k]
+            row = values[k]
+            if kind == _AVERAGE:
+                output[chunk_start + k] = np.mean(row)
+            elif kind == _CUMULATIVE_AVERAGE:
+                output[chunk_start + k] = np.mean(row / st)
+            elif kind == _ROOT_MEAN_SQUARED:
+                output[chunk_start + k] = np.sqrt(np.mean(row / st))
+            else:
+                output[chunk_start + k] = np.mean((row - initial_values) ** 2)
+        start_time = chunk_times[-1]
+
+    return output
+
+
+@njit
 def average_vs_time(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -104,32 +220,12 @@ def average_vs_time(
     NDArray[np.float64]
         Ensemble-average time series evaluated at the requested sample times.
     """
-    num_ic = u.shape[0]
-    u_current = u.copy()
-
-    if sample_times is None:
-        sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
-        output = np.empty(total_time, dtype=np.float64)
-    else:
-        sample_times_arr = sample_times
-        output = np.empty(sample_times_arr.shape[0], dtype=np.float64)
-
-    prev_t = 0
-    for sample_idx in range(sample_times_arr.shape[0]):
-        st = sample_times_arr[sample_idx]
-        steps = st - prev_t
-
-        for _ in range(steps):
-            for i in prange(num_ic):
-                u_current[i] = mapping(u_current[i], parameters)
-
-        output[sample_idx] = np.mean(u_current[:, axis])
-        prev_t = st
-
-    return output
+    return _ensemble_series(
+        u, parameters, total_time, mapping, sample_times, axis, _AVERAGE
+    )
 
 
-@njit(parallel=True)
+@njit
 def cumulative_average_vs_time(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -163,34 +259,12 @@ def cumulative_average_vs_time(
         Cumulative ensemble-average time series evaluated at the requested
         sample times.
     """
-    num_ic = u.shape[0]
-    u_current = u.copy()
-    sum_values = np.zeros(num_ic, dtype=np.float64)
-
-    if sample_times is None:
-        sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
-        output = np.empty(total_time, dtype=np.float64)
-    else:
-        sample_times_arr = sample_times
-        output = np.empty(sample_times_arr.shape[0], dtype=np.float64)
-
-    prev_t = 0
-    for sample_idx in range(sample_times_arr.shape[0]):
-        st = sample_times_arr[sample_idx]
-        steps = st - prev_t
-
-        for _ in range(steps):
-            for i in prange(num_ic):
-                u_current[i] = mapping(u_current[i], parameters)
-            sum_values += u_current[:, axis]
-
-        output[sample_idx] = np.mean(sum_values / st)
-        prev_t = st
-
-    return output
+    return _ensemble_series(
+        u, parameters, total_time, mapping, sample_times, axis, _CUMULATIVE_AVERAGE
+    )
 
 
-@njit(parallel=True)
+@njit
 def root_mean_squared(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -223,34 +297,12 @@ def root_mean_squared(
     NDArray[np.float64]
         RMS time series evaluated at the requested sample times.
     """
-    num_ic = u.shape[0]
-    u_current = u.copy()
-    sum_squares = np.zeros(num_ic, dtype=np.float64)
-
-    if sample_times is None:
-        sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
-        output = np.empty(total_time, dtype=np.float64)
-    else:
-        sample_times_arr = sample_times
-        output = np.empty(sample_times_arr.shape[0], dtype=np.float64)
-
-    prev_t = 0
-    for sample_idx in range(sample_times_arr.shape[0]):
-        st = sample_times_arr[sample_idx]
-        steps = st - prev_t
-
-        for _ in range(steps):
-            for i in prange(num_ic):
-                u_current[i] = mapping(u_current[i], parameters)
-            sum_squares += u_current[:, axis] ** 2
-
-        output[sample_idx] = np.sqrt(np.mean(sum_squares / st))
-        prev_t = st
-
-    return output
+    return _ensemble_series(
+        u, parameters, total_time, mapping, sample_times, axis, _ROOT_MEAN_SQUARED
+    )
 
 
-@njit(parallel=True)
+@njit
 def mean_squared_displacement(
     u0: NDArray[np.float64],
     parameters: NDArray[np.float64],
@@ -284,31 +336,9 @@ def mean_squared_displacement(
         Mean-squared-displacement time series evaluated at the requested sample
         times.
     """
-    num_ic = u0.shape[0]
-    u = u0.copy()
-    initial_values = u0[:, axis].copy()
-
-    if sample_times is None:
-        sample_times_arr = np.arange(1, total_time + 1, dtype=np.int64)
-        output = np.empty(total_time, dtype=np.float64)
-    else:
-        sample_times_arr = sample_times
-        output = np.empty(sample_times_arr.shape[0], dtype=np.float64)
-
-    prev_t = 0
-    for sample_idx in range(sample_times_arr.shape[0]):
-        st = sample_times_arr[sample_idx]
-        steps = st - prev_t
-
-        for _ in range(steps):
-            for i in prange(num_ic):
-                u[i] = mapping(u[i], parameters)
-
-        displacements = u[:, axis] - initial_values
-        output[sample_idx] = np.mean(displacements**2)
-        prev_t = st
-
-    return output
+    return _ensemble_series(
+        u0, parameters, total_time, mapping, sample_times, axis, _MEAN_SQUARED_DISPLACEMENT
+    )
 
 
 @njit

@@ -20,7 +20,7 @@ from numba import njit
 from numpy.typing import NDArray
 from typing import Tuple
 from pynamicalsys.common.types import int_t, numeric_t, map_t, jacobian_t
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, qr_inplace_log_diagonal, vector_norm
 
 
 @njit
@@ -161,6 +161,13 @@ def gali_k(
     if return_history and sample_times is not None:
         history = np.zeros(num_samples, dtype=np.float64)
 
+    # Buffers reused at every step. With the "QR" method, the loop allocates
+    # nothing.
+    v = np.ascontiguousarray(v)
+    w = np.empty(neq, dtype=np.float64)
+    q = np.empty_like(v)
+    log_diagonal = np.empty(k, dtype=np.float64)
+
     gali_val = np.sqrt(k)
     sample_idx = 0
     for n in range(sample_size):
@@ -168,16 +175,22 @@ def gali_k(
         J = np.ascontiguousarray(jacobian(u, parameters, mapping))
 
         for i in range(k):
-            v[:, i] = J @ np.ascontiguousarray(v[:, i])
-            v[:, i] = v[:, i] / np.linalg.norm(v[:, i])
+            for row in range(neq):
+                s = 0.0
+                for col in range(neq):
+                    s += J[row, col] * v[col, i]
+                w[row] = s
+            norm = vector_norm(w)
+            for row in range(neq):
+                v[row, i] = w[row] / norm
 
-        v = np.ascontiguousarray(v)
         if method == "DET":
             G = v.T @ v
             gali_val = np.sqrt(np.linalg.det(G))
         elif method == "QR":
-            _, R = qr(v)
-            gali_val = np.exp(np.sum(np.log(np.abs(np.diag(R)))))
+            q[:, :] = v
+            qr_inplace_log_diagonal(q, log_diagonal)
+            gali_val = np.exp(np.sum(log_diagonal))
         elif method == "QR_HH":
             _, R = np.linalg.qr(v)
             gali_val = np.exp(np.sum(np.log(np.abs(np.diag(R)))))
