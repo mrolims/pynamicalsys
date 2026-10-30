@@ -74,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DiscreteDynamicalSystem.finite_time_lyapunov` replaced the default `method="QR"` with `"ER"` on two-dimensional maps, and rejected `method="ER"` when it was requested by name. It now uses the method that is passed, and `"ER"` is accepted for two-dimensional maps. With the default method, results for two-dimensional maps differ slightly from those of earlier versions.
 - `DiscreteDynamicalSystem.recurrence_times` accepted `eps=0`, a box of zero size that detects a return only when the orbit comes back to exactly the same floating-point state. `eps` must now be positive, and `eps=0` raises a `ValueError`.
 - `DiscreteDynamicalSystem` accepted `system_dimension=0` for a custom map, and the system was then built with no state variables. `system_dimension` must now be positive, and `0` raises a `ValueError`.
+- `DiscreteDynamicalSystem.bifurcation_diagram` failed for systems with more than one parameter when `parameters` was passed while parameters were also stored, because the swept parameter was not inserted into them. It also failed when `parameters` was omitted and none were stored. Explicit `parameters` are now always the parameters other than the swept one, and omitting them on a system with several parameters and none stored raises a `ValueError` that names what is missing.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 

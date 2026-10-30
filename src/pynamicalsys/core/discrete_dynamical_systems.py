@@ -1067,8 +1067,11 @@ class DiscreteDynamicalSystem:
         total_time : int_t
             Number of iterations computed for each parameter value.
         parameters : numeric_like_t | None, optional
-            Base parameter array. The entry at `param_index` is overwritten during
-            the sweep.
+            The parameters other than the one at `param_index`, in order, so
+            it has `number_of_parameters - 1` entries. If None, the stored
+            system parameters are used, with the entry at `param_index`
+            overwritten during the sweep. It can be omitted for systems with a
+            single parameter.
         transient_time : int_t, optional
             Number of initial iterations discarded for each parameter value.
             Default is `0`.
@@ -1098,7 +1101,9 @@ class DiscreteDynamicalSystem:
         ------
         ValueError
             - If `u` is not compatible with the system dimension.
-            - If `parameters` does not match the expected number of parameters.
+            - If `parameters` does not have `number_of_parameters - 1` entries.
+            - If `parameters` is None, no parameters are stored, and the system
+              has more than one parameter.
             - If `param_index` is out of bounds.
             - If `observable_index` is out of bounds.
             - If `total_time` is negative.
@@ -1147,21 +1152,27 @@ class DiscreteDynamicalSystem:
         if not isinstance(return_last_state, bool):
             raise TypeError("return_last_state must be a boolean")
 
-        if self.__parameters is not None:
-            if parameters is None:
-                parameters = self.__parameters
+        # The entry at param_index is overwritten by the kernel, so explicit
+        # parameters hold only the other ones and a placeholder is inserted.
+        if parameters is not None:
+            parameters = validate_parameters(
+                parameters, self.__number_of_parameters - 1
+            )
+            if self.__number_of_parameters == 1:
+                # validate_parameters returns a placeholder when none are expected.
+                parameters = np.zeros(1, dtype=np.float64)
             else:
-                parameters = validate_parameters(
-                    parameters, self.__number_of_parameters - 1
-                )
+                parameters = np.insert(parameters, param_index, 0.0)
+        elif self.__parameters is not None:
+            parameters = self.__parameters
+        elif self.__number_of_parameters == 1:
+            parameters = np.zeros(1, dtype=np.float64)
         else:
-            if parameters is not None:
-                parameters = validate_parameters(
-                    parameters, self.__number_of_parameters - 1
-                )
-                parameters = np.insert(parameters, param_index, 0)
-            else:
-                parameters = np.array([0], dtype=np.float64)
+            raise ValueError(
+                f"bifurcation_diagram needs the {self.__number_of_parameters - 1} "
+                "parameters other than the one at param_index. Pass them as "
+                "parameters, or set all of them with set_parameters()."
+            )
 
         def observable_fn(x: NDArray[np.float64]) -> numeric_t:
             return x[observable_index]
