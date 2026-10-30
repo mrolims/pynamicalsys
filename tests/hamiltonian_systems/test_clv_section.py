@@ -4,6 +4,11 @@ HamiltonianSystem.CLV and CLV_angles with poincare_section=True.
 The section is defined by `section_index`, `section_value`, and `crossing`,
 so every returned point must lie on the requested section and cross it in the
 requested direction.
+
+The crossings are interpolated between the stored samples, which are the same
+with and without the section, so each crossing time must lie between the
+times of the two samples that bracket it, including after a warmup and when
+`qr_time_step` is not a multiple of the integration step.
 """
 
 import numpy as np
@@ -42,3 +47,31 @@ def test_clv_angles_use_the_requested_section(system):
     )
     assert section.shape[0] > 0
     check_on_section(section)
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        dict(warmup_time=10.0),
+        dict(qr_time_step=0.025),
+    ],
+)
+def test_clv_section_times_interpolate_the_stored_times(system, options):
+    section_options = dict(section_index=0, section_value=0.0, crossing=1)
+    _, stored = system.CLV(Q0, P0, 50.0, **options)
+    _, section = system.CLV(
+        Q0, P0, 50.0, poincare_section=True, **section_options, **options
+    )
+
+    time = stored[:, 0]
+    x = stored[:, 1]
+    px = stored[:, 3]
+    # Upward crossings of x = 0, counting a sample exactly on the section once.
+    i = np.nonzero((x[:-1] < 0.0) & (x[1:] >= 0.0))[0]
+    if x[0] == 0.0 and px[0] > 0.0:
+        i = np.concatenate(([0], i))
+    lam = -x[i] / (x[i + 1] - x[i])
+    expected = time[i] + lam * (time[i + 1] - time[i])
+
+    assert section.shape[0] == i.size > 0
+    np.testing.assert_allclose(section[:, 0], expected, rtol=1e-14)

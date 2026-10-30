@@ -267,7 +267,7 @@ def ensemble_poincare_section(
 def generate_poincare_section_from_traj(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
-    time_step: np.float64,
+    times: NDArray[np.float64],
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
     crossing: int = 1,
@@ -289,8 +289,8 @@ def generate_poincare_section_from_traj(
         Sampled generalized coordinates of shape `(num_points, dof)`.
     p : NDArray[np.float64]
         Sampled generalized momenta of shape `(num_points, dof)`.
-    time_step : np.float64
-        Time interval between successive stored trajectory samples.
+    times : NDArray[np.float64]
+        Times of the samples, of shape `(num_points,)`.
     section_index : int, optional
         Index of the coordinate used to define the section.
     section_value : np.float64, optional
@@ -361,7 +361,7 @@ def generate_poincare_section_from_traj(
             lam = g_old / (g_old - g_new)
             q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
             p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
-            t_cross = np.float64(i - 1) * time_step + lam * time_step
+            t_cross = times[i - 1] + lam * (times[i] - times[i - 1])
             section_points[hit, 0] = t_cross
             for j in range(dof):
                 section_points[hit, 1 + j] = q_cross[j]

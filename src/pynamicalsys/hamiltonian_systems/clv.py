@@ -302,7 +302,7 @@ def compute_clvs_sep(
         section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
-            qr_time_step,
+            times,
             section_index,
             section_value,
             crossing,
@@ -753,7 +753,7 @@ def compute_clvs_imp(
         section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
-            qr_time_step,
+            times,
             section_index,
             section_value,
             crossing,
