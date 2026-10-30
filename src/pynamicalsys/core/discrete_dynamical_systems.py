@@ -1969,7 +1969,9 @@ class DiscreteDynamicalSystem:
         -------
         float
             Estimated rotation number, in turns per iteration. With
-            ``method="wba"``, NaN if it has not converged.
+            ``method="wba"``, NaN if it has not converged. If the two averages
+            agree exactly, as on a fixed point, the number of agreeing digits
+            is infinite and the rotation number is returned.
 
         Raises
         ------
@@ -2212,6 +2214,10 @@ class DiscreteDynamicalSystem:
               averages of the observable agree
             - ``"dig_omega"`` : number of digits in which the two weighted
               Birkhoff averages of the rotation number agree
+
+            ``"dig"`` and ``"dig_omega"`` are ``inf`` when the two averages
+            agree exactly, for example on a fixed point or with a constant
+            observable. An infinite value counts as converged.
 
         Raises
         ------
@@ -3143,7 +3149,9 @@ class DiscreteDynamicalSystem:
         float
             Weighted-Birkhoff convergence indicator defined as
             `-log10(|WB_0 - WB_1|)`, where `WB_0` and `WB_1` are the weighted
-            Birkhoff averages over the first and second windows.
+            Birkhoff averages over the first and second windows. It is `inf`
+            when the two averages agree exactly, for example on a fixed point
+            or with a constant observable.
 
         Raises
         ------
