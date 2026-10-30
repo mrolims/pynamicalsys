@@ -294,7 +294,7 @@ Numerical options
     The observable :math:`h` and the period :math:`T` of the first coordinate used by the default observable, as described above. ``period`` is ignored when ``func`` is given.
 
 ``transient_time``
-    Accepted by ``dig`` only. The number of iterations discarded before the first window. ``classify_orbit`` always starts the windows at the initial condition.
+    The number of iterations discarded before the first window, in ``dig`` and ``classify_orbit``. They are not counted in ``window_size``.
 
 ``dig_threshold``, ``omega_threshold``, ``tol``, and ``dev_threshold``
     The settings of ``classify_orbit``: the minimum :math:`\mathrm{dig}` of the observable for an orbit to be regular, by default ``5.5``; the minimum :math:`\mathrm{dig}_\omega` for the rotation number to be trusted, by default ``9``, below which a regular orbit is reported as ``undetermined``; the exponent :math:`\mathrm{tol}` of the rationality tolerance :math:`\delta=10^{-\mathrm{tol}}`, by default ``8``; and :math:`\mathrm{dev}_{\mathrm{c}}`, by default ``0.3375``. :math:`\mathrm{tol}` should stay below :math:`\mathrm{dig}_\omega`, otherwise the rationality test is applied to digits that have not converged.

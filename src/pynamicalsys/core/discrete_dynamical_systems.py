@@ -1908,6 +1908,7 @@ class DiscreteDynamicalSystem:
         mod: numeric_t | None = None,
         method: Literal["wba", "average"] | None = None,
         threshold: numeric_t = 9.0,
+        transient_time: int_t | None = None,
         total_time: int_t | None = None,
     ) -> float:
         """
@@ -1952,6 +1953,10 @@ class DiscreteDynamicalSystem:
             Minimum number of digits in which the two weighted Birkhoff averages
             must agree for the rotation number to be considered converged.
             Used only with ``method="wba"``. The default is ``9.0``.
+        transient_time : int_t | None, optional
+            Number of iterations performed before the averaging starts. They
+            are not counted in ``window_size``. Default is None, which means
+            no transient.
 
         total_time : int_t | None, optional
             Deprecated name of `window_size`. Passing it emits a
@@ -1977,10 +1982,11 @@ class DiscreteDynamicalSystem:
             - If ``method`` is not ``"wba"``, ``"average"``, or ``None``.
             - If ``method="wba"`` and no frequency map is set.
             - If ``threshold`` or ``mod`` is not positive.
+            - If ``transient_time`` is negative.
         TypeError
             - If ``u`` is not a scalar or array-like numeric object.
             - If ``parameters`` is not a scalar or array-like numeric object.
-            - If ``window_size`` is not an integer.
+            - If ``window_size`` or ``transient_time`` is not an integer.
             - If ``window_size`` is not given, or if both ``window_size`` and the
               deprecated ``total_time`` are given.
             - If ``threshold`` or ``mod`` is not a real number.
@@ -2037,6 +2043,12 @@ class DiscreteDynamicalSystem:
 
         if method not in (None, "wba", "average"):
             raise ValueError(f"method must be 'wba' or 'average', got {method!r}.")
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Integral)
+            u_arr = iterate_mapping(
+                u_arr, parameters_arr, transient_time, self.__mapping
+            )
 
         if self.__frequency_map is None:
             if method == "wba":
@@ -2107,6 +2119,7 @@ class DiscreteDynamicalSystem:
         window_size: int_t,
         parameters: numeric_like_t | None = None,
         func: state_observable_t | None = None,
+        transient_time: int_t | None = None,
         period: numeric_t = 1.0,
         omega_threshold: numeric_t = 9.0,
         dig_threshold: numeric_t = 5.5,
@@ -2159,6 +2172,10 @@ class DiscreteDynamicalSystem:
             single state of shape ``(system_dimension,)`` and returns a real
             number. It should be smooth and nonconstant. If ``None``
             (default), the observable is ``cos(2 pi u[0] / period)``.
+        transient_time : int_t | None, optional
+            Number of iterations performed before the first window. They are
+            not counted in ``window_size``. Default is None, which means no
+            transient.
         period : numeric_t, optional
             Period of the angle ``u[0]`` used by the default observable, for
             example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
@@ -2201,6 +2218,7 @@ class DiscreteDynamicalSystem:
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
             - If ``window_size`` is less than 2.
+            - If ``transient_time`` is negative.
             - If ``func`` does not return a real number for a single state.
             - If ``omega_threshold``, ``dig_threshold``, ``dev_threshold``, or
               ``period`` is not positive.
@@ -2208,7 +2226,7 @@ class DiscreteDynamicalSystem:
         TypeError
             - If ``u`` is not a scalar or array-like numeric object.
             - If ``parameters`` is not a scalar or array-like numeric object.
-            - If ``window_size`` is not an integer.
+            - If ``window_size`` or ``transient_time`` is not an integer.
             - If ``func`` is not callable.
             - If ``omega_threshold``, ``dig_threshold``, ``tol``, or
               ``dev_threshold`` is not a real number.
@@ -2278,6 +2296,12 @@ class DiscreteDynamicalSystem:
         if tol > 15:
             raise ValueError(f"tol must be in (0, 15], got {tol}.")
         validate_positive(dev_threshold, "dev_threshold", Real)
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Integral)
+            u_arr = iterate_mapping(
+                u_arr, parameters_arr, transient_time, self.__mapping
+            )
 
         if func is None:
             validate_positive(period, "period", Real)

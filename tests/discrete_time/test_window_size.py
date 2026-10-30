@@ -62,3 +62,22 @@ def test_window_size_is_required(system, method):
 def test_classify_orbit_takes_window_size(system):
     result = system.classify_orbit(U, window_size=WINDOW)
     assert result["classification"] in ("chaotic", "island", "circle", "undetermined")
+
+
+@pytest.mark.parametrize("method", ["rotation_number", "classify_orbit", "dig"])
+def test_transient_time_starts_the_windows_later(system, method):
+    # The windows start after the transient and are not shortened by it, so
+    # passing transient_time equals starting from the state after the transient.
+    transient_time = 500
+    after_transient = system.trajectory(U, transient_time)[-1]
+    compute = getattr(system, method)
+
+    with_transient = compute(U, WINDOW, transient_time=transient_time)
+    from_later_state = compute(after_transient, WINDOW)
+    assert with_transient == from_later_state
+
+
+@pytest.mark.parametrize("method", ["rotation_number", "classify_orbit"])
+def test_negative_transient_time_raises(system, method):
+    with pytest.raises(ValueError, match="transient_time"):
+        getattr(system, method)(U, WINDOW, transient_time=-1)
