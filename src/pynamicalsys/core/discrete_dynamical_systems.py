@@ -1980,7 +1980,6 @@ class DiscreteDynamicalSystem:
         Raises
         ------
         ValueError
-            - If the system dimension is less than 1.
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
             - If ``window_size`` is not positive, or is less than 2 with
@@ -2040,11 +2039,6 @@ class DiscreteDynamicalSystem:
         >>> round(omega_avg, 5)
         0.33333
         """
-        if self.__system_dimension < 1:
-            raise ValueError(
-                f"rotation_number requires system_dimension >= 1, got {self.__system_dimension}."
-            )
-
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
@@ -2246,7 +2240,6 @@ class DiscreteDynamicalSystem:
         Raises
         ------
         ValueError
-            - If the system dimension is less than 1.
             - If no frequency map is set.
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
@@ -2305,11 +2298,6 @@ class DiscreteDynamicalSystem:
         >>> result["classification"], round(result["rotation_number"], 9)
         ('island', 0.333333333)
         """
-        if self.__system_dimension < 1:
-            raise ValueError(
-                f"classify_orbit requires system_dimension >= 1, got {self.__system_dimension}."
-            )
-
         if self.__frequency_map is None:
             raise ValueError(
                 "classify_orbit requires a frequency map. Set one with "
