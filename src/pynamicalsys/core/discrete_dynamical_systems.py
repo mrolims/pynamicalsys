@@ -227,7 +227,7 @@ class DiscreteDynamicalSystem:
     backwards_mapping : callable or None, optional
         Inverse or backward mapping associated with the system.
     system_dimension : int or None, optional
-        Dimension of the state space for a custom mapping.
+        Dimension of the state space for a custom mapping. Must be positive.
     parameters : array_like or None, optional
         Parameter vector for the system.
     number_of_parameters : int or None, optional
@@ -488,7 +488,8 @@ class DiscreteDynamicalSystem:
         backwards_mapping : callable, optional
             Custom inverse mapping function with signature f_inv(u, parameters) -> array_like
         system_dimension : int, optional
-            Dimension of the system (number of variables in the mapping).
+            Dimension of the system (number of variables in the mapping). Must
+            be positive.
         parameters : sequence, optional
             The parameters of the system. If provided, automatically defines the number of parameters.
         number_of_parameters : int, optional
@@ -507,6 +508,9 @@ class DiscreteDynamicalSystem:
             - If neither model nor mapping is provided.
             - If both model or mapping are provided.
             - If provided model name is not implemented.
+            - If `system_dimension` is not positive.
+        TypeError
+            - If `system_dimension` is not an integer.
 
         Notes
         -----
@@ -581,7 +585,7 @@ class DiscreteDynamicalSystem:
             )
             self.__backwards_mapping = backwards_mapping
 
-            validate_non_negative(system_dimension, "system_dimension", Integral)
+            validate_positive(system_dimension, "system_dimension", Integral)
             if number_of_parameters is not None:
                 validate_non_negative(
                     number_of_parameters, "number_of_parameters", Integral
