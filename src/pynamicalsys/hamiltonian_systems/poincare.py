@@ -277,11 +277,14 @@ def generate_poincare_section_from_traj(
     """
     Extract Poincaré-section crossings from precomputed trajectory samples.
 
-    Works for both separable and non-separable Hamiltonian systems:
-    `system_func_1` must be the full equations-of-motion function
-    `(qdot, pdot) = system_func_1(q, p, parameters)`. For a separable
-    system, `qdot` may depend only on `p` internally; this function does
-    not assume otherwise.
+    Only the samples are used, so this works for separable and non-separable
+    Hamiltonian systems alike. A crossing is detected when
+    `q[:, section_index] - section_value` changes sign between two successive
+    samples, and its direction is the direction of that change. The crossing
+    time, coordinates, and momenta are linearly interpolated between the two
+    samples. A sample exactly on the section is counted once, as the end of
+    the interval that arrives on it, and the first sample is counted when it
+    lies on the section.
 
     Parameters
     ----------
