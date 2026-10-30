@@ -52,7 +52,7 @@ Calculate all three CLVs and the corresponding sampled trajectory:
 
 The array ``clvs`` has shape ``(num_samples, system_dimension, num_clvs)``. The vector ``clvs[n, :, i]`` is the :math:`i`-th CLV at sample :math:`n`. The matching row of ``clv_trajectory`` contains ``[time, x, y, z]``.
 
-The time arguments control different parts of the two-pass algorithm. ``transient_time`` moves the state onto the invariant set before CLV sampling begins. ``warmup_time`` optionally advances the forward tangent basis before the stored QR stage. ``tail_time`` continues the forward stage beyond the stored interval and improves the initialization of the backward recursion. The vectors near the beginning and end of the stored interval should be checked by varying the warmup and tail durations.
+The time arguments control different parts of the two-pass algorithm. ``transient_time`` moves the state onto the invariant set before CLV sampling begins. ``warmup_time`` optionally advances the forward tangent basis before the stored QR stage. Both are part of ``total_time``, which is the end of the stored interval, so the samples run from ``transient_time + warmup_time`` to ``total_time``. ``tail_time`` continues the forward stage beyond the stored interval and improves the initialization of the backward recursion. The vectors near the beginning and end of the stored interval should be checked by varying the warmup and tail durations.
 
 Angles between CLV subspaces
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

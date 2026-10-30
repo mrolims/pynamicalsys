@@ -165,10 +165,6 @@ def compute_clvs(
         if warm_blocks < 0:
             warm_blocks = 0
 
-    total_blocks = int(np.floor((t_end - t0) / qr_time_step))
-    if total_blocks < 1:
-        total_blocks = 1
-
     tail_blocks = 0
     if tail_time > 0.0:
         tail_blocks = int(np.floor(tail_time / qr_time_step))
@@ -204,6 +200,12 @@ def compute_clvs(
         if time >= t_end:
             break
 
+    # The stored stage starts where the warmup ends and ends at t_end.
+    t_start = time
+    total_blocks = int(np.floor((t_end - t_start) / qr_time_step))
+    if total_blocks < 1:
+        total_blocks = 1
+
     Q_store = np.zeros((total_blocks + 1, neq, p), dtype=np.float64)
     R_store = np.zeros((total_blocks, p, p), dtype=np.float64)
     traj = np.zeros((total_blocks + 1, neq + 1), dtype=np.float64)
@@ -216,7 +218,7 @@ def compute_clvs(
     dt_min = np.float64(100.0) * np.finfo(np.float64).eps
 
     for k in range(total_blocks):
-        t_target = t0 + (k + 1) * qr_time_step
+        t_target = t_start + (k + 1) * qr_time_step
         if t_target > t_end:
             t_target = t_end
 
