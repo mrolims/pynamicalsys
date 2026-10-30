@@ -489,8 +489,14 @@ def lyapunov_qr(
     return (exponents / (sample_size * log_den)).reshape(1, -1), u
 
 
+# Compiled loops over the windows of `finite_time_lyapunov`, one per method,
+# so that only the kernel of the requested method is compiled. Each window
+# starts from the state at the end of the previous one, and the exponents and
+# starting states are written into the given arrays.
+
+
 @njit
-def _finite_time_windows(
+def _finite_time_windows_qr(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
     finite_time: int_t,
@@ -502,46 +508,69 @@ def _finite_time_windows(
     exponents: NDArray[np.float64],
     phase_space_points: NDArray[np.float64],
 ) -> None:
-    # Compiled loop over the windows of `finite_time_lyapunov`. Each window
-    # starts from the state at the end of the previous one, and the exponents
-    # and starting states are written into the given arrays.
     for i in range(exponents.shape[0]):
         phase_space_points[i] = u
+        window_exponents, u_new = lyapunov_qr(
+            u,
+            parameters,
+            finite_time,
+            mapping,
+            jacobian,
+            num_exponents,
+            method=method,
+            log_base=log_base,
+        )
+        exponents[i] = window_exponents.ravel()
+        u = u_new.copy()
 
-        if method == "ER":
-            if num_exponents == 1:
-                window_exponents, u_new = maximum_lyapunov_er(
-                    u,
-                    parameters,
-                    finite_time,
-                    mapping,
-                    jacobian,
-                    log_base=log_base,
-                )
-                exponents[i] = window_exponents.ravel()
-            else:
-                window_exponents_er, u_new = lyapunov_er(
-                    u,
-                    parameters,
-                    finite_time,
-                    mapping,
-                    jacobian,
-                    log_base=log_base,
-                )
-                exponents[i] = window_exponents_er.ravel()
-        else:
-            window_exponents_qr, u_new = lyapunov_qr(
-                u,
-                parameters,
-                finite_time,
-                mapping,
-                jacobian,
-                num_exponents,
-                method=method,
-                log_base=log_base,
-            )
-            exponents[i] = window_exponents_qr.ravel()
 
+@njit
+def _finite_time_windows_er(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    finite_time: int_t,
+    mapping: map_t,
+    jacobian: jacobian_t,
+    log_base: numeric_t,
+    exponents: NDArray[np.float64],
+    phase_space_points: NDArray[np.float64],
+) -> None:
+    for i in range(exponents.shape[0]):
+        phase_space_points[i] = u
+        window_exponents, u_new = lyapunov_er(
+            u,
+            parameters,
+            finite_time,
+            mapping,
+            jacobian,
+            log_base=log_base,
+        )
+        exponents[i] = window_exponents.ravel()
+        u = u_new.copy()
+
+
+@njit
+def _finite_time_windows_maximum_er(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    finite_time: int_t,
+    mapping: map_t,
+    jacobian: jacobian_t,
+    log_base: numeric_t,
+    exponents: NDArray[np.float64],
+    phase_space_points: NDArray[np.float64],
+) -> None:
+    for i in range(exponents.shape[0]):
+        phase_space_points[i] = u
+        window_exponents, u_new = maximum_lyapunov_er(
+            u,
+            parameters,
+            finite_time,
+            mapping,
+            jacobian,
+            log_base=log_base,
+        )
+        exponents[i] = window_exponents.ravel()
         u = u_new.copy()
 
 
@@ -652,18 +681,41 @@ def finite_time_lyapunov(
     exponents = np.zeros((num_windows, num_exponents), dtype=np.float64)
     phase_space_points = np.zeros((num_windows, neq), dtype=np.float64)
 
-    _finite_time_windows(
-        u,
-        parameters,
-        finite_time,
-        mapping,
-        jacobian,
-        num_exponents,
-        method,
-        log_base,
-        exponents,
-        phase_space_points,
-    )
+    if method != "ER":
+        _finite_time_windows_qr(
+            u,
+            parameters,
+            finite_time,
+            mapping,
+            jacobian,
+            num_exponents,
+            method,
+            log_base,
+            exponents,
+            phase_space_points,
+        )
+    elif num_exponents == 1:
+        _finite_time_windows_maximum_er(
+            u,
+            parameters,
+            finite_time,
+            mapping,
+            jacobian,
+            log_base,
+            exponents,
+            phase_space_points,
+        )
+    else:
+        _finite_time_windows_er(
+            u,
+            parameters,
+            finite_time,
+            mapping,
+            jacobian,
+            log_base,
+            exponents,
+            phase_space_points,
+        )
 
     if return_points:
         return exponents, phase_space_points
