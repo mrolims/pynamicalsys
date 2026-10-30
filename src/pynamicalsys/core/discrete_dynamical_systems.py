@@ -2016,12 +2016,25 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> system = DiscreteDynamicalSystem(model="unbounded standard map")
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="unbounded standard map")
         >>> system.set_parameters([0.7])
-        >>> omega = system.rotation_number([0.15, 0.30], 10000)
+
+        The orbit lies in an island chain of period 3. The weighted Birkhoff
+        average gives the rotation number 1/3 to about 15 digits:
+
+        >>> omega = system.rotation_number([0.15, 0.30], 10_000)
+        >>> round(omega, 12)
+        0.333333333333
+
+        The plain average over the same number of iterations is accurate to
+        only about 5 digits:
+
         >>> omega_avg = system.rotation_number(
-        ...     [0.15, 0.30], 20000, method="average"
+        ...     [0.15, 0.30], 20_000, method="average"
         ... )
+        >>> round(omega_avg, 5)
+        0.33333
         """
         if self.__system_dimension < 1:
             raise ValueError(
@@ -2132,7 +2145,7 @@ class DiscreteDynamicalSystem:
         Classify an orbit as chaotic, in an island chain, or on a rotational
         invariant circle, or report that its type is undetermined.
 
-        The classification follows Sander and Meiss (2020). Two weighted
+        The classification is based on Sander and Meiss (2020). Two weighted
         Birkhoff averages are computed over two consecutive windows of
         ``window_size`` iterations: one of the observable ``func``, whose
         convergence ``dig`` separates regular from chaotic orbits, and one of
@@ -2158,6 +2171,13 @@ class DiscreteDynamicalSystem:
           ``log10(q_min) < tol / 2 - dev_threshold``, which covers island
           orbits on which the average of the observable converges slowly.
           Otherwise, the orbit is chaotic.
+
+        The first rule, with ``dig_threshold = 5.5``, ``tol = 8``, and
+        ``dev_threshold = 0.3375``, is the criterion of Sander and Meiss
+        (2020). The convergence requirement on the rotation number,
+        ``omega_threshold``, and the second rule are additions of this
+        package; the paper gives no convergence threshold for the rotation
+        number.
 
         Parameters
         ----------
@@ -2261,10 +2281,10 @@ class DiscreteDynamicalSystem:
 
         Orbits in an island chain encircle a periodic orbit, so their rotation
         number averages to that of the periodic orbit, a rational number. The
-        default ``dev_threshold`` is conservative: about 19% of randomly chosen
-        irrationals are classified as rationals, so some rotational circles are
-        reported as islands, while island orbits are rarely reported as
-        circles. ``tol`` must be compatible with the accuracy of the rotation
+        default ``dev_threshold`` is conservative: Sander and Meiss report
+        that it keeps slightly above 81% of randomly chosen floating-point
+        values as irrational, so some rotational circles are reported as
+        islands, while island orbits are rarely reported as circles. ``tol`` must be compatible with the accuracy of the rotation
         number, which is set by ``omega_threshold``.
 
         The default observable assumes that the first coordinate, ``u[0]``,
@@ -2274,10 +2294,12 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> system = DiscreteDynamicalSystem(model="unbounded standard map")
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="unbounded standard map")
         >>> system.set_parameters([0.7])
-        >>> result = system.classify_orbit([0.15, 0.30], 10000)
-        >>> result["classification"], result["rotation_number"]
+        >>> result = system.classify_orbit([0.15, 0.30], 10_000)
+        >>> result["classification"], round(result["rotation_number"], 9)
+        ('island', 0.333333333)
         """
         if self.__system_dimension < 1:
             raise ValueError(
@@ -3197,22 +3219,25 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> x_obs = lambda u: np.cos(2 * np.pi * u[0])
-        >>> value = system.dig(u0, 1000, parameters=params, func=x_obs)
+        >>> import numpy as np
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+
+        A regular orbit agrees in many more digits than a chaotic one:
+
+        >>> regular = system.dig([0.5, 0.25], 10_000)
+        >>> chaotic = system.dig([0.05, 0.05], 10_000)
+        >>> bool(regular > 5.5), bool(chaotic > 5.5)
+        (True, False)
+
+        With a custom observable and a transient:
 
         >>> value = system.dig(
-        ...     u0,
-        ...     1000,
-        ...     parameters=params,
+        ...     [0.5, 0.25],
+        ...     10_000,
         ...     func=lambda u: np.sin(2 * np.pi * (u[0] + u[1])),
-        ... )
-
-        >>> value = system.dig(
-        ...     u0,
-        ...     2000,
-        ...     parameters=params,
-        ...     func=x_obs,
-        ...     transient_time=500,
+        ...     transient_time=1_000,
         ... )
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
