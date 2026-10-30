@@ -19,6 +19,7 @@ from numpy.typing import NDArray
 import numpy as np
 from numba import njit, prange
 
+from pynamicalsys.common.poincare import detect_crossing
 from pynamicalsys.common.types import flow_t
 from pynamicalsys.continuous_time.step import evolve_system, step
 
@@ -85,7 +86,9 @@ def generate_poincare_section(
     Crossings are detected when the selected coordinate changes sign relative to
     `section_value` between two successive integration steps. The crossing time
     and state are estimated by linear interpolation between the two bracketing
-    states.
+    states. A state exactly on the section is counted once, at the step that
+    arrives on it, and the initial state is counted when it lies on the
+    section.
     """
     neq = len(u)
     section_points = np.zeros((num_intersections, neq + 1), dtype=np.float64)
@@ -110,6 +113,7 @@ def generate_poincare_section(
     time_step_prev = time_step
     time_prev = time
     u_prev = u.copy()
+    first_step = True
 
     while count < num_intersections:
         u_new, time_new, time_step_new = step(
@@ -123,9 +127,10 @@ def generate_poincare_section(
             integrator=integrator,
         )
 
-        if (u_prev[section_index] - section_value) * (
-            u_new[section_index] - section_value
-        ) < 0.0:
+        g_old = u_prev[section_index] - section_value
+        g_new = u_new[section_index] - section_value
+
+        if detect_crossing(g_old, g_new, 0, first_step):
             lam = (section_value - u_prev[section_index]) / (
                 u_new[section_index] - u_prev[section_index]
             )
@@ -142,6 +147,7 @@ def generate_poincare_section(
         time_prev = time_new
         time_step_prev = time_step_new
         u_prev = u_new
+        first_step = False
 
     return section_points
 
