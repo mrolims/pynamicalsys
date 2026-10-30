@@ -30,6 +30,7 @@ from pynamicalsys.discrete_time.birkhoff import (
 CHAOTIC = 0
 ISLAND = 1
 CIRCLE = 2
+UNDETERMINED = 3
 
 
 @njit
@@ -211,6 +212,13 @@ def smallest_denominator(x: float, delta: float) -> int:
     -----
     Since `q_min` is invariant under integer shifts of `x`, only the
     fractional part of `x` is used.
+
+    The descent moves in runs: while it keeps going in one direction, the
+    successive mediants are `(p_l + k p_r) / (q_l + k q_r)` or
+    `(k p_l + p_r) / (k q_l + q_r)` for `k = 1, 2, ...`. The length of each
+    run is computed in one step instead of one mediant at a time, so the
+    number of operations grows with the number of direction changes, which
+    is logarithmic in `1 / delta`, rather than with `1 / delta` itself.
     """
     x = x - np.floor(x)
 
@@ -228,9 +236,110 @@ def smallest_denominator(x: float, delta: float) -> int:
             return q
 
         if x < p / q:
-            p_right, q_right = p, q
-        else:
+            # Run to the left: the mediants (k p_l + p_r) / (k q_l + q_r)
+            # decrease toward p_l / q_l. Find the first k at which the
+            # one-step descent would stop running left.
+            k = _run_length(x, delta, p_right, q_right, p_left, q_left, True)
+            p = k * p_left + p_right
+            q = k * q_left + q_right
+            if abs(x - p / q) < delta:
+                return q
+            p_right = (k - 1) * p_left + p_right
+            q_right = (k - 1) * q_left + q_right
             p_left, q_left = p, q
+        else:
+            # Run to the right: the mediants (p_l + k p_r) / (q_l + k q_r)
+            # increase toward p_r / q_r.
+            k = _run_length(x, delta, p_left, q_left, p_right, q_right, False)
+            p = p_left + k * p_right
+            q = q_left + k * q_right
+            if abs(x - p / q) < delta:
+                return q
+            p_left = p_left + (k - 1) * p_right
+            q_left = q_left + (k - 1) * q_right
+            p_right, q_right = p, q
+
+
+@njit
+def _run_stops(
+    x: float, delta: float, p_fixed: int, q_fixed: int, p_step: int, q_step: int,
+    k: int, left: bool,
+) -> bool:
+    # Whether the one-step descent stops at the k-th mediant of a run, using
+    # the same comparisons as a single step: either the mediant lies within
+    # delta of x, or x is no longer on the side the run is moving toward.
+    mediant = (p_fixed + k * p_step) / (q_fixed + k * q_step)
+    if abs(x - mediant) < delta:
+        return True
+    if left:
+        return not x < mediant
+    return x < mediant
+
+
+@njit
+def _run_length(
+    x: float, delta: float, p_fixed: int, q_fixed: int, p_step: int, q_step: int,
+    left: bool,
+) -> int:
+    """
+    Length of a run of the Stern-Brocot descent.
+
+    The k-th mediant of the run is `(p_fixed + k p_step) / (q_fixed + k q_step)`.
+    Returns the smallest `k >= 1` at which the one-step descent stops, either
+    because the mediant lies within `delta` of `x` or because the descent
+    changes direction. The value is estimated in closed form and then
+    located by bisection on the stopping condition itself, so that it agrees
+    with the one-step descent even when rounding spoils the estimate.
+    """
+    if left:
+        # The mediants decrease toward p_step / q_step < x + delta.
+        target = x + delta
+        numerator = p_fixed - target * q_fixed
+        denominator = target * q_step - p_step
+    else:
+        # The mediants increase toward p_step / q_step > x - delta.
+        target = x - delta
+        numerator = target * q_fixed - p_fixed
+        denominator = p_step - target * q_step
+
+    guess = 1
+    if denominator > 0.0:
+        estimate = numerator / denominator + 1.0
+        if estimate > 1.0:
+            guess = int(min(estimate, 1e15))
+
+    # Bracket the first stopping k between a k that does not stop (or 0) and
+    # one that does, starting from the estimate and widening geometrically.
+    if _run_stops(x, delta, p_fixed, q_fixed, p_step, q_step, guess, left):
+        high = guess
+        low = 0
+        step = 1
+        while high - step > 0:
+            if _run_stops(
+                x, delta, p_fixed, q_fixed, p_step, q_step, high - step, left
+            ):
+                high -= step
+                step *= 2
+            else:
+                low = high - step
+                break
+    else:
+        low = guess
+        step = 1
+        high = low + step
+        while not _run_stops(x, delta, p_fixed, q_fixed, p_step, q_step, high, left):
+            low = high
+            step *= 2
+            high = low + step
+
+    # Invariant: the run does not stop at low (or low == 0) and stops at high.
+    while high - low > 1:
+        middle = (low + high) // 2
+        if _run_stops(x, delta, p_fixed, q_fixed, p_step, q_step, middle, left):
+            high = middle
+        else:
+            low = middle
+    return high
 
 
 @njit
@@ -309,8 +418,11 @@ def classify_orbit(
     Returns
     -------
     tuple[int, float, float, float]
-        Orbit class (`CHAOTIC`, `ISLAND`, or `CIRCLE`), rotation number (NaN if
-        chaotic), `dig_h`, and `dig_omega`.
+        Orbit class (`CHAOTIC`, `ISLAND`, `CIRCLE`, or `UNDETERMINED`),
+        rotation number (NaN if chaotic), `dig_h`, and `dig_omega`. A regular
+        orbit (`dig_h >= dig_threshold`) is `UNDETERMINED` when its rotation
+        number has not converged (`dig_omega < omega_threshold`), since the
+        rationality test would then be applied to unconverged digits.
 
     Notes
     -----
@@ -332,6 +444,14 @@ def classify_orbit(
     if not np.isfinite(omega):
         return CHAOTIC, np.nan, dig_h, dig_omega
 
+    # The rationality test is meaningful only if the rotation number has
+    # converged; otherwise it would be applied to digits that are not yet
+    # reliable.
+    if dig_omega < omega_threshold:
+        if dig_h >= dig_threshold:
+            return UNDETERMINED, omega, dig_h, dig_omega
+        return CHAOTIC, np.nan, dig_h, dig_omega
+
     log_q_min = np.log10(smallest_denominator(omega, 10.0 ** (-tol)))
 
     if dig_h >= dig_threshold:
@@ -339,7 +459,7 @@ def classify_orbit(
             return CIRCLE, omega, dig_h, dig_omega
         return ISLAND, omega, dig_h, dig_omega
 
-    if dig_omega >= omega_threshold and log_q_min < 0.5 * tol - dev_threshold:
+    if log_q_min < 0.5 * tol - dev_threshold:
         return ISLAND, omega, dig_h, dig_omega
 
     return CHAOTIC, np.nan, dig_h, dig_omega

@@ -89,7 +89,8 @@ The following example keeps the same ensemble of random initial conditions and c
             u=initial_states,
             total_time=total_time,
             parameters=[k],
-        ).reshape(num_initial_conditions, total_time, 2)
+            concatenate=False,
+        )
 
 Plot every trajectory in color because the ensemble is small enough to preserve the phase-space structures without subsampling:
 

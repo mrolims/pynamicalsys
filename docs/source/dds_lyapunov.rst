@@ -272,7 +272,7 @@ Numerical options
     The number of exponents to compute, between one and the dimension of the map. If omitted, the full spectrum is returned. With ``num_exponents=1``, ``lyapunov`` returns a scalar.
 
 ``method``
-    ``"QR"`` (default) uses the package's modified Gram-Schmidt decomposition, ``"QR_HH"`` uses ``numpy.linalg.qr`` with Householder reflections, and ``"ER"`` uses the Eckmann-Ruelle algorithm, available only for two-dimensional maps. In ``finite_time_lyapunov``, the default ``"QR"`` is replaced by ``"ER"`` when the map is two-dimensional.
+    ``"QR"`` (default) uses the package's modified Gram-Schmidt decomposition, ``"QR_HH"`` uses ``numpy.linalg.qr`` with Householder reflections, and ``"ER"`` uses the Eckmann-Ruelle algorithm, available only for two-dimensional maps. The Eckmann-Ruelle algorithm is the QR decomposition written in closed form for two dimensions, where the orthonormal frame is a rotation by a single angle. It converges to the same exponents as ``"QR"``, but the windows of ``finite_time_lyapunov`` give slightly different values with the two methods, because each method starts every window from different deviation vectors.
 
 ``transient_time``
     Number of iterations discarded before the averages start. It defaults to zero in both methods. For ``finite_time_lyapunov``, the number of complete windows is ``(total_time - transient_time) // finite_time``, and iterations that do not fill a window are discarded.

@@ -39,21 +39,23 @@ Compute SALI for two trajectories of the four-dimensional symplectic map with :p
     )
     total_time = 1_000_000
     sample_times = np.unique(np.logspace(0, np.log10(total_time), 1_000).astype(int))
-    tol = 1e-16
+    threshold = 1e-16
     seed = 1312
 
-    sali_histories = np.empty((len(initial_states), len(sample_times)))
-    for i, initial_state in enumerate(initial_states):
-        sali_histories[i] = system.SALI(
-            u=initial_state,
-            total_time=total_time,
-            return_history=True,
-            sample_times=sample_times,
-            tol=tol,
-            seed=seed,
+    sali_histories = []
+    for initial_state in initial_states:
+        sali_histories.append(
+            system.SALI(
+                u=initial_state,
+                total_time=total_time,
+                return_history=True,
+                sample_times=sample_times,
+                threshold=threshold,
+                seed=seed,
+            )
         )
 
-The computation stops when SALI falls below ``tol``. Entries after an early stop remain zero in the returned history, so ``np.maximum`` is used only to place them at the tolerance floor on the logarithmic axis:
+The computation stops when SALI falls below ``threshold``, and the returned history then ends at the last sample time before the stop, so it can be shorter than ``sample_times``. Each history is therefore kept in a list and plotted against the sample times it covers:
 
 .. code-block:: python
 
@@ -62,10 +64,10 @@ The computation stops when SALI falls below ``tol``. Entries after an early stop
     ps = PlotStyler()
     ps.apply_style()
     fig, ax = plt.subplots(figsize=(7, 4))
-    for i in range(len(initial_states)):
+    for i, history in enumerate(sali_histories):
         ax.loglog(
-            sample_times,
-            np.maximum(sali_histories[i], tol),
+            sample_times[: len(history)],
+            history,
             color=colors[i],
             label=f"Initial state {i + 1}",
         )
@@ -117,26 +119,29 @@ Compare all three methods for :math:`k=2` using identical initial deviation vect
     colors = ["blue", "orange", "green"]
     gali_methods = ["QR", "QR_HH", "DET"]
     k = 2
-    gali_method_histories = np.empty((len(gali_methods), len(sample_times)))
-    for i, method in enumerate(gali_methods):
-        gali_method_histories[i] = system.GALI(
-            u=initial_states[1],
-            total_time=total_time,
-            k=k,
-            return_history=True,
-            sample_times=sample_times,
-            method=method,
-            tol=tol,
-            seed=seed,
+    gali_method_histories = []
+    for method in gali_methods:
+        gali_method_histories.append(
+            system.GALI(
+                u=initial_states[1],
+                total_time=total_time,
+                k=k,
+                return_history=True,
+                sample_times=sample_times,
+                method=method,
+                threshold=threshold,
+                seed=seed,
+            )
         )
 
     ps = PlotStyler()
     ps.apply_style()
     fig, ax = plt.subplots(figsize=(7, 4))
     for i, method in enumerate(gali_methods):
+        history = gali_method_histories[i]
         ax.loglog(
-            sample_times,
-            np.maximum(gali_method_histories[i], tol),
+            sample_times[: len(history)],
+            history,
             label=method,
             color=colors[i],
         )
@@ -153,7 +158,7 @@ Compare all three methods for :math:`k=2` using identical initial deviation vect
 
     Comparison of the modified Gram-Schmidt QR, Householder QR, and Gram determinant formulations of :math:`\mathrm{GALI}_2`.
 
-The three curves initially overlap, but the determinant formulation drops abruptly to the tolerance floor when :math:`\mathrm{GALI}_2` is approximately :math:`10^{-8}`. At that point, :math:`\det(\mathbf{V}_n^T\mathbf{V}_n)=\mathrm{GALI}_2^2` is approximately :math:`10^{-16}`, so rounding errors dominate the Gram determinant. The QR formulations operate directly on the volume through the diagonal entries of :math:`\mathbf{R}_n` and continue resolving the decay for substantially longer. This illustrates why ``DET`` is the least reliable option when the deviation vectors become strongly aligned.
+The three curves initially overlap, but the determinant formulation ends abruptly when :math:`\mathrm{GALI}_2` is approximately :math:`10^{-8}`. At that point, :math:`\det(\mathbf{V}_n^T\mathbf{V}_n)=\mathrm{GALI}_2^2` is approximately :math:`10^{-16}`, so rounding errors dominate the Gram determinant, which collapses below the threshold and stops the computation. The QR formulations operate directly on the volume through the diagonal entries of :math:`\mathbf{R}_n` and continue resolving the decay for substantially longer. This illustrates why ``DET`` is the least reliable option when the deviation vectors become strongly aligned.
 
 GALI for different values of k
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -163,19 +168,23 @@ Compute GALI for :math:`k=2`, :math:`k=3`, and :math:`k=4` for the same two init
 .. code-block:: python
 
     k_values = np.array([2, 3, 4])
-    gali_histories = np.empty((len(initial_states), len(sample_times), len(k_values)))
-    for i, initial_state in enumerate(initial_states):
-        for j, k in enumerate(k_values):
-            gali_histories[i, :, j] = system.GALI(
-                u=initial_state,
-                total_time=total_time,
-                k=k,
-                return_history=True,
-                sample_times=sample_times,
-                method="QR_HH",
-                tol=tol,
-                seed=seed,
+    gali_histories = []
+    for initial_state in initial_states:
+        histories = []
+        for k in k_values:
+            histories.append(
+                system.GALI(
+                    u=initial_state,
+                    total_time=total_time,
+                    k=k,
+                    return_history=True,
+                    sample_times=sample_times,
+                    method="QR_HH",
+                    threshold=threshold,
+                    seed=seed,
+                )
             )
+        gali_histories.append(histories)
 
     colors = ["blue", "orange", "green"]
 
@@ -184,9 +193,10 @@ Compute GALI for :math:`k=2`, :math:`k=3`, and :math:`k=4` for the same two init
     fig, ax = plt.subplots(2, 1, figsize=(7, 6), sharex=True, sharey=True)
     for i in range(len(initial_states)):
         for j, k in enumerate(k_values):
+            history = gali_histories[i][j]
             ax[i].loglog(
-                sample_times,
-                np.maximum(gali_histories[i, :, j], tol),
+                sample_times[: len(history)],
+                history,
                 color=colors[j],
                 label=rf"$\mathrm{{GALI}}_{k}$",
             )
@@ -224,18 +234,22 @@ Compute :math:`\mathrm{LDI}_2`, :math:`\mathrm{LDI}_3`, and :math:`\mathrm{LDI}_
 .. code-block:: python
 
     k_values = np.array([2, 3, 4])
-    ldi_histories = np.empty((len(initial_states), len(sample_times), len(k_values)))
-    for i, initial_state in enumerate(initial_states):
-        for j, k in enumerate(k_values):
-            ldi_histories[i, :, j] = system.LDI(
-                u=initial_state,
-                total_time=total_time,
-                k=k,
-                return_history=True,
-                sample_times=sample_times,
-                tol=tol,
-                seed=seed,
+    ldi_histories = []
+    for initial_state in initial_states:
+        histories = []
+        for k in k_values:
+            histories.append(
+                system.LDI(
+                    u=initial_state,
+                    total_time=total_time,
+                    k=k,
+                    return_history=True,
+                    sample_times=sample_times,
+                    threshold=threshold,
+                    seed=seed,
+                )
             )
+        ldi_histories.append(histories)
 
     colors = ["blue", "orange", "green"]
 
@@ -244,9 +258,10 @@ Compute :math:`\mathrm{LDI}_2`, :math:`\mathrm{LDI}_3`, and :math:`\mathrm{LDI}_
     fig, ax = plt.subplots(2, 1, figsize=(7, 6), sharex=True, sharey=True)
     for i in range(len(initial_states)):
         for j, k in enumerate(k_values):
+            history = ldi_histories[i][j]
             ax[i].loglog(
-                sample_times,
-                np.maximum(ldi_histories[i, :, j], tol),
+                sample_times[: len(history)],
+                history,
                 color=colors[j],
                 label=rf"$\mathrm{{LDI}}_{k}$",
             )
@@ -284,7 +299,7 @@ This exact identity and the common decay rate for discrete and continuous chaoti
 Benchmarking the formulations
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The most useful benchmark compares SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mathrm{LDI}_2` along a regular trajectory over the same fixed number of iterations. The regular orbit avoids terminating the comparison through rapid chaotic alignment, and setting ``tol=0.0`` disables early stopping so every formulation performs the complete workload. A short preliminary call excludes just-in-time compilation from the measurements. Absolute times depend on the processor and software environment, so the benchmark should be run on the machine where the methods will be used:
+The most useful benchmark compares SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mathrm{LDI}_2` along a regular trajectory over the same fixed number of iterations. The regular orbit avoids terminating the comparison through rapid chaotic alignment, and setting ``threshold=0.0`` disables early stopping so every formulation performs the complete workload. A short preliminary call excludes just-in-time compilation from the measurements. Absolute times depend on the processor and software environment, so the benchmark should be run on the machine where the methods will be used:
 
 .. code-block:: python
 
@@ -296,17 +311,17 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
     benchmark_labels = ["SALI"] + [f"GALI {method.replace('_', '-')}" for method in gali_methods] + ["LDI SVD"]
     benchmark_times = np.empty((len(benchmark_labels), benchmark_repeats))
 
-    system.SALI(u=benchmark_state, total_time=1, tol=0.0, seed=seed)
+    system.SALI(u=benchmark_state, total_time=1, threshold=0.0, seed=seed)
     for method in gali_methods:
-        system.GALI(u=benchmark_state, total_time=1, k=2, method=method, tol=0.0, seed=seed)
-    system.LDI(u=benchmark_state, total_time=1, k=2, tol=0.0, seed=seed)
+        system.GALI(u=benchmark_state, total_time=1, k=2, method=method, threshold=0.0, seed=seed)
+    system.LDI(u=benchmark_state, total_time=1, k=2, threshold=0.0, seed=seed)
 
     for repeat in range(benchmark_repeats):
         start = perf_counter()
         system.SALI(
             u=benchmark_state,
             total_time=benchmark_time,
-            tol=0.0,
+            threshold=0.0,
             seed=seed,
         )
         benchmark_times[0, repeat] = perf_counter() - start
@@ -318,7 +333,7 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
                 total_time=benchmark_time,
                 k=2,
                 method=method,
-                tol=0.0,
+                threshold=0.0,
                 seed=seed,
             )
             benchmark_times[i + 1, repeat] = perf_counter() - start
@@ -328,7 +343,7 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
             u=benchmark_state,
             total_time=benchmark_time,
             k=2,
-            tol=0.0,
+            threshold=0.0,
             seed=seed,
         )
         benchmark_times[-1, repeat] = perf_counter() - start
@@ -359,7 +374,7 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
 
     Wall times for SALI, the three formulations of :math:`\mathrm{GALI}_2`, and SVD-based :math:`\mathrm{LDI}_2` along a regular trajectory. Bars show the mean of five fixed-workload runs and error bars show one standard deviation.
 
-All three public methods return a scalar by default and a one-dimensional array with ``return_history=True``. The ``sample_times``, ``tol``, ``transient_time``, ``seed``, and ``return_last_state`` arguments follow the same pattern for SALI, GALI, and LDI.
+All three public methods return a scalar by default and a one-dimensional array with ``return_history=True``. The ``sample_times``, ``threshold``, ``transient_time``, ``seed``, and ``return_last_state`` arguments follow the same pattern for SALI, GALI, and LDI.
 
 Numerical options
 ^^^^^^^^^^^^^^^^^
@@ -370,8 +385,8 @@ Numerical options
 ``method``
     The formulation of ``GALI``: ``"QR"`` (default), ``"QR_HH"``, or ``"DET"``, as compared above.
 
-``tol``
-    The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. Set ``tol=0.0`` to iterate up to ``total_time`` regardless of the indicator.
+``threshold``
+    The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. With ``return_history=True``, the history ends at the stop. Set ``threshold=0.0`` to iterate up to ``total_time`` regardless of the indicator.
 
 ``transient_time`` and ``seed``
     The number of iterations discarded before the deviation vectors are evolved, which defaults to zero, and the seed of the random deviation vectors, which defaults to ``1312``.

@@ -24,13 +24,13 @@ For the unbounded standard map, :math:`x_{n+1}=x_n+y_{n+1}` with :math:`y_{n+1}=
 
 The :py:meth:`rotation_number <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.rotation_number>` method requires a frequency map. The ``unbounded standard map``, ``standard nontwist map``, ``extended standard nontwist map``, and ``leonel map`` models provide one, and any other map can be given one with :py:meth:`set_frequency_map <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.set_frequency_map>` or the ``frequency_map`` argument of the constructor. The bounded ``standard map`` does not provide one: there, :math:`y` is also an angle, so the advance of :math:`x` is defined only modulo one turn and no continuous frequency map exists. The rotation number is not reduced modulo one, so orbits whose angles advance by different integer numbers of turns, such as accelerator modes, have different rotation numbers.
 
-By default, the rotation number is computed with the :doc:`weighted Birkhoff average <dds_wba>`, as proposed by `Sander and Meiss (2020) <https://doi.org/10.1016/j.physd.2020.132569>`_. The frequency map is averaged over two consecutive windows of ``total_time`` iterations each, and the rotation number is the mean of the two averages, :math:`\omega=(\omega_0+\omega_1)/2`. On a regular orbit, both averages converge faster than any power of ``total_time``, so they agree in many digits, while on a chaotic orbit they converge as slowly as a plain time average. The number of digits in which they agree,
+By default, the rotation number is computed with the :doc:`weighted Birkhoff average <dds_wba>`, as proposed by `Sander and Meiss (2020) <https://doi.org/10.1016/j.physd.2020.132569>`_. The frequency map is averaged over two consecutive windows of ``window_size`` iterations each, and the rotation number is the mean of the two averages, :math:`\omega=(\omega_0+\omega_1)/2`. On a regular orbit, both averages converge faster than any power of ``window_size``, so they agree in many digits, while on a chaotic orbit they converge as slowly as a plain time average. The number of digits in which they agree,
 
 .. math::
 
     \mathrm{dig}_\omega=-\log_{10}\left|\omega_0-\omega_1\right|,
 
-therefore separates both cases. If :math:`\mathrm{dig}_\omega` is at least ``threshold``, which is 9 by default, the rotation number is returned. Otherwise, the orbit is considered chaotic and NaN is returned. With ``method="average"``, the plain time average over ``total_time`` iterations is returned instead. It always returns a value, but it converges only as :math:`1/N` on regular orbits and does not distinguish regular from chaotic orbits. The same averages also separate island chains from rotational invariant circles, as shown in the :doc:`weighted Birkhoff average <dds_wba>` guide.
+therefore separates both cases. If :math:`\mathrm{dig}_\omega` is at least ``threshold``, which is 9 by default, the rotation number is returned. Otherwise, the orbit is considered chaotic and NaN is returned. With ``method="average"``, the plain time average over ``window_size`` iterations is returned instead. It always returns a value, but it converges only as :math:`1/N` on regular orbits and does not distinguish regular from chaotic orbits. The same averages also separate island chains from rotational invariant circles, as shown in the :doc:`weighted Birkhoff average <dds_wba>` guide.
 
 The following example computes the rotation number of the unbounded standard map with :math:`k=0.9` along the line :math:`x_0=0.5`, which crosses the centers of the main island chains:
 
@@ -41,9 +41,9 @@ The following example computes the rotation number of the unbounded standard map
 
     x0 = 0.5
     actions = np.linspace(0.0, 2.0, 2000)
-    total_time = 10_000
+    window_size = 10_000
 
-    omega = np.array([system.rotation_number([x0, y0], total_time) for y0 in actions])
+    omega = np.array([system.rotation_number([x0, y0], window_size) for y0 in actions])
 
 Plot the rotation number as a function of the initial action. Chaotic orbits return NaN and are left out:
 
@@ -92,7 +92,7 @@ The same procedure is applied to the standard nontwist map with :math:`a=0.53` a
     x0 = 0.5
     actions = np.linspace(-0.5, 0.5, 5000)
 
-    omega = np.array([system.rotation_number([x0, y0], total_time) for y0 in actions])
+    omega = np.array([system.rotation_number([x0, y0], window_size) for y0 in actions])
 
 The maximum of the profile is small compared with the range of the plot, so an inset magnifies it:
 
@@ -146,10 +146,10 @@ The :py:meth:`mean_squared_displacement <pynamicalsys.core.discrete_dynamical_sy
 
     system = dds(model="unbounded standard map")
 
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(1)
     num_ic = 30 * 30
-    x0 = np.random.uniform(0, 1, num_ic)
-    y0 = np.random.uniform(0, 1, num_ic)
+    x0 = rng.uniform(0, 1, num_ic)
+    y0 = rng.uniform(0, 1, num_ic)
     initial_conditions = np.column_stack([x0, y0])
     total_time = int(1e6)
 
@@ -211,7 +211,7 @@ The measured coefficient at :math:`k=5.0` is close to this estimate:
 
 .. code-block:: text
 
-    measured D: 0.1575283354658878
+    measured D: 0.15903131909362953
     random-phase D: 0.15831434944115277
 
 A single diffusion coefficient is meaningful only when the mean squared displacement is asymptotically linear. For anomalous transport, :math:`\mathrm{MSD}(N)/(2N)` depends on the observation time and the spreading must instead be characterized by the exponent :math:`\gamma`.
@@ -236,7 +236,7 @@ The :py:meth:`ensemble_time_average <pynamicalsys.core.discrete_dynamical_system
 
 .. code-block:: text
 
-    (5000,) 0.0 10.292
+    (900,) 0.0 331.738
 
 Recurrence times and stickiness
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -254,7 +254,7 @@ The :py:meth:`recurrence_times <pynamicalsys.core.discrete_dynamical_systems.Dis
 
 .. code-block:: text
 
-    561463 7.0 475852.0 1781.0521405684792
+    561463 7 475852 1781.0521405684792
 
 The observed return times range from 7 iterations to more than 475,000 iterations. Their mean is much smaller than their maximum, indicating a broad distribution generated by long trapping episodes.
 
@@ -289,7 +289,7 @@ Numerical options
 ~~~~~~~~~~~~~~~~~
 
 ``method`` and ``threshold`` of ``rotation_number``
-    ``method="wba"``, the default, iterates the orbit ``2 * total_time`` times and returns NaN when the two windows agree in fewer than ``threshold`` digits, by default ``9``. Lowering ``threshold`` accepts rotation numbers of orbits that have not fully converged, such as those near the edge of an island, at the cost of misclassifying some chaotic orbits as regular. ``method="average"`` iterates ``total_time`` times and always returns a value. The ``mod`` argument is deprecated and is used only when no frequency map is set.
+    ``method="wba"``, the default, iterates the orbit ``2 * window_size`` times and returns NaN when the two windows agree in fewer than ``threshold`` digits, by default ``9``. Lowering ``threshold`` accepts rotation numbers of orbits that have not fully converged, such as those near the edge of an island, at the cost of misclassifying some chaotic orbits as regular. ``method="average"`` iterates ``window_size`` times and always returns a value. The ``mod`` argument is deprecated and is used only when no frequency map is set. ``transient_time`` iterations are discarded before the averaging starts and are not counted in ``window_size``. ``window_size`` was called ``total_time`` in earlier versions; that name still works but is deprecated, since elsewhere ``total_time`` counts every iteration from the initial condition, including the transient.
 
 ``axis``
     The index of the coordinate whose displacement or average is measured, by default ``1``, which is the action in the maps above.
@@ -297,8 +297,8 @@ Numerical options
 ``sample_times``
     The iterations at which ``mean_squared_displacement``, ``average_in_time``, ``cumulative_average``, and ``root_mean_squared`` record their values. By default every iteration from ``1`` to ``total_time`` is recorded, so the output has ``total_time`` entries. For long runs, a logarithmically spaced set of integers keeps the output small without losing the shape of a log-log plot. ``diffusion_coefficient`` and ``ensemble_time_average`` use only the final state and the full time average, respectively, and do not accept it.
 
-``eps`` and ``transient_time`` of ``recurrence_times``
-    ``eps``, by default ``1e-2``, is the full side length of the recurrence box, so each coordinate must return within ``eps / 2`` of the reference point. A smaller box gives longer and rarer recurrences and needs a larger ``total_time`` to collect enough of them. ``transient_time`` iterations are performed before the reference point is defined and are not counted in ``total_time``. The box is not wrapped around the boundaries of a periodic coordinate, so reference points closer than ``eps / 2`` to a boundary miss the returns on the other side.
+``eps``, ``transient_time``, and ``periods`` of ``recurrence_times``
+    ``eps``, by default ``1e-2``, is the full side length of the recurrence box, so each coordinate must return within ``eps / 2`` of the reference point. A smaller box gives longer and rarer recurrences and needs a larger ``total_time`` to collect enough of them. ``transient_time`` iterations are performed before the reference point is defined. They are counted in ``total_time``, which counts iterations from the initial condition, so recurrences are detected during the last ``total_time - transient_time`` iterations. The iterations after the last return are not included in the output, since the orbit has not yet returned and they do not form a complete recurrence time, so the recurrence times add up to the number of iterations from the reference point to the last return rather than to ``total_time - transient_time``. ``periods`` gives the wrapping period of each coordinate, with ``np.inf`` for coordinates that do not wrap, for example ``periods=[1.0, 1.0]`` for the standard map. The distance to the reference point is then measured modulo the period, so the box wraps around the boundaries of the periodic coordinates. Without ``periods``, no coordinate wraps, and reference points closer than ``eps / 2`` to a boundary miss the returns on the other side.
 
 References
 ~~~~~~~~~~

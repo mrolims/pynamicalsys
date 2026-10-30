@@ -80,8 +80,9 @@ def ldi_k(
           - a 1D array with shape `(1,)` containing the final LDI_k value
           - the final state of shape `(neq,)`
         - If `return_history=True`, returns:
-          - a 1D array with shape `(len(sample_times),)` containing LDI_k
-            evaluated at the requested sampling times
+          - a 1D array containing LDI_k evaluated at the requested sampling
+            times. If the computation stops early, it contains only the values
+            recorded up to the stop, so it may be shorter than `sample_times`
           - the final state of shape `(neq,)`
 
     Notes
@@ -137,6 +138,6 @@ def ldi_k(
             break
 
     if return_history:
-        return history, u
+        return history[:sample_idx], u
 
     return np.array([ldi_val]), u

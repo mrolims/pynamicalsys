@@ -318,8 +318,9 @@ def recurrence_times(
     total_time: int_t,
     mapping: map_t,
     eps: numeric_t,
+    periods: NDArray[np.float64],
     transient_time: int_t | None = None,
-) -> NDArray[np.float64]:
+) -> NDArray[np.int64]:
     """
     Compute recurrence times to an ``eps``-neighborhood of the reference point.
 
@@ -330,37 +331,60 @@ def recurrence_times(
     parameters : NDArray[np.float64]
         System parameters passed to ``mapping``.
     total_time : int_t
-        Total number of iterations used to detect recurrences.
+        Total number of iterations, counted from the initial condition, so it
+        includes ``transient_time``. Recurrences are detected during the last
+        ``total_time - transient_time`` iterations.
     mapping : map_t
         System mapping function.
     eps : numeric_t
         Side length of the recurrence neighborhood.
+    periods : NDArray[np.float64]
+        Wrapping period of each coordinate, of shape ``(system_dimension,)``,
+        with ``np.inf`` for coordinates that do not wrap. The distance to the
+        reference point is measured modulo the period, so the box wraps around
+        the boundaries of periodic coordinates.
     transient_time : Optional[int_t], optional
         Number of initial iterations discarded before defining the recurrence box.
 
     Returns
     -------
-    NDArray[np.float64]
+    NDArray[np.int64]
         Array containing the recurrence times between successive returns to the
-        ``eps``-neighborhood.
+        ``eps``-neighborhood. The iterations after the last return are not
+        included, since they do not form a complete recurrence time.
     """
     state = u.copy()
 
+    sample_size = total_time
     if transient_time is not None:
         state = iterate_mapping(state, parameters, transient_time, mapping)
+        sample_size = total_time - transient_time
 
-    lower_bound = state - eps / 2.0
-    upper_bound = state + eps / 2.0
+    reference = state.copy()
+    half_eps = eps / 2.0
+    neq = len(state)
 
     rt = 0
     rts = []
 
-    for _ in range(total_time):
+    for _ in range(sample_size):
         state = mapping(state, parameters)
         rt += 1
 
-        if np.all(state >= lower_bound) and np.all(state <= upper_bound):
+        # Distance to the reference point, measured modulo the period of each
+        # periodic coordinate so that the box wraps around its boundaries.
+        inside = True
+        for j in range(neq):
+            difference = state[j] - reference[j]
+            if np.isfinite(periods[j]):
+                half_period = 0.5 * periods[j]
+                difference = (difference + half_period) % periods[j] - half_period
+            if abs(difference) > half_eps:
+                inside = False
+                break
+
+        if inside:
             rts.append(rt)
             rt = 0
 
-    return np.asarray(rts, dtype=np.float64)
+    return np.asarray(rts, dtype=np.int64)

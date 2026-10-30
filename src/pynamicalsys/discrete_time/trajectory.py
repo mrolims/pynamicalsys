@@ -185,3 +185,87 @@ def ensemble_trajectories(
         trajectories[i * sample_size : (i + 1) * sample_size] = trajectory
 
     return trajectories
+
+
+@njit
+def sampled_trajectory(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    sample_times: NDArray[np.int64],
+    mapping: map_t,
+) -> NDArray[np.float64]:
+    """
+    Store the states of a trajectory only at the given iterations.
+
+    Parameters
+    ----------
+    u : NDArray[np.float64]
+        Initial condition of shape `(system_dimension,)`.
+    parameters : NDArray[np.float64]
+        System parameters passed to the mapping.
+    sample_times : NDArray[np.int64]
+        Iterations at which the state is stored, counted from the initial
+        condition. They must be positive, sorted, and without duplicates.
+    mapping : map_t
+        Mapping function with signature `u_next = mapping(u, parameters)`.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        States of shape `(len(sample_times), system_dimension)`. Row `k` is
+        the state after `sample_times[k]` iterations. The map is iterated up
+        to the last sample time only.
+
+    Notes
+    -----
+    This is a low-level routine and assumes inputs have already been
+    validated by the wrapper.
+    """
+    num_samples = sample_times.shape[0]
+    states = np.empty((num_samples, u.shape[0]), dtype=np.float64)
+    state = u.copy()
+    iteration = 0
+    for k in range(num_samples):
+        while iteration < sample_times[k]:
+            state = mapping(state, parameters)
+            iteration += 1
+        states[k] = state
+    return states
+
+
+@njit(parallel=True)
+def ensemble_sampled_trajectories(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    sample_times: NDArray[np.int64],
+    mapping: map_t,
+) -> NDArray[np.float64]:
+    """
+    Store the states of an ensemble of trajectories at the given iterations.
+
+    Parameters
+    ----------
+    u : NDArray[np.float64]
+        Initial conditions of shape `(num_initial_conditions, system_dimension)`.
+    parameters : NDArray[np.float64]
+        System parameters passed to the mapping.
+    sample_times : NDArray[np.int64]
+        Iterations at which the states are stored, counted from the initial
+        condition. They must be positive, sorted, and without duplicates.
+    mapping : map_t
+        Mapping function with signature `u_next = mapping(u, parameters)`.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        States of shape
+        `(num_initial_conditions, len(sample_times), system_dimension)`.
+    """
+    num_initial_conditions, system_dimension = u.shape
+    states = np.empty(
+        (num_initial_conditions, sample_times.shape[0], system_dimension),
+        dtype=np.float64,
+    )
+    for i in prange(num_initial_conditions):
+        states[i] = sampled_trajectory(u[i], parameters, sample_times, mapping)
+    return states

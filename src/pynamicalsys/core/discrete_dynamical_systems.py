@@ -48,6 +48,8 @@ from pynamicalsys.discrete_time.trajectory import (
     iterate_mapping,
     generate_trajectory,
     ensemble_trajectories,
+    sampled_trajectory,
+    ensemble_sampled_trajectories,
 )
 from pynamicalsys.discrete_time.bifurcation import bifurcation_diagram
 from pynamicalsys.discrete_time.periodic_orbits import (
@@ -69,6 +71,7 @@ from pynamicalsys.discrete_time.rotation import (
     classify_orbit,
     CHAOTIC,
     ISLAND,
+    UNDETERMINED,
 )
 from pynamicalsys.discrete_time.escape import (
     escape_basin_and_time_entering,
@@ -157,6 +160,43 @@ from pynamicalsys.common.validators import (
 )
 
 
+def _threshold_from_deprecated_tol(threshold, tol):
+    """Return the early-stopping threshold, honoring the deprecated `tol`."""
+    if tol is None:
+        return threshold
+    if threshold != 1e-16:
+        raise TypeError(
+            "tol is the deprecated name of threshold; pass only threshold."
+        )
+    warnings.warn(
+        "tol is deprecated and will stop working in a future version. "
+        "Use threshold instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return tol
+
+
+def _window_size_from_deprecated_total_time(window_size, total_time):
+    """Return the window length, honoring the deprecated `total_time`."""
+    if total_time is None:
+        if window_size is None:
+            raise TypeError("missing required argument: window_size")
+        return window_size
+    if window_size is not None:
+        raise TypeError(
+            "total_time is the deprecated name of window_size; pass only "
+            "window_size."
+        )
+    warnings.warn(
+        "total_time is deprecated and will stop working in a future version. "
+        "Use window_size, the length of each averaging window, instead.",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+    return total_time
+
+
 class DiscreteDynamicalSystem:
     """
     Class for defining, iterating, and analyzing discrete-time dynamical systems.
@@ -189,7 +229,7 @@ class DiscreteDynamicalSystem:
     backwards_mapping : callable or None, optional
         Inverse or backward mapping associated with the system.
     system_dimension : int or None, optional
-        Dimension of the state space for a custom mapping.
+        Dimension of the state space for a custom mapping. Must be positive.
     parameters : array_like or None, optional
         Parameter vector for the system.
     number_of_parameters : int or None, optional
@@ -450,7 +490,8 @@ class DiscreteDynamicalSystem:
         backwards_mapping : callable, optional
             Custom inverse mapping function with signature f_inv(u, parameters) -> array_like
         system_dimension : int, optional
-            Dimension of the system (number of variables in the mapping).
+            Dimension of the system (number of variables in the mapping). Must
+            be positive.
         parameters : sequence, optional
             The parameters of the system. If provided, automatically defines the number of parameters.
         number_of_parameters : int, optional
@@ -469,6 +510,9 @@ class DiscreteDynamicalSystem:
             - If neither model nor mapping is provided.
             - If both model or mapping are provided.
             - If provided model name is not implemented.
+            - If `system_dimension` is not positive.
+        TypeError
+            - If `system_dimension` is not an integer.
 
         Notes
         -----
@@ -543,7 +587,7 @@ class DiscreteDynamicalSystem:
             )
             self.__backwards_mapping = backwards_mapping
 
-            validate_non_negative(system_dimension, "system_dimension", Integral)
+            validate_positive(system_dimension, "system_dimension", Integral)
             if number_of_parameters is not None:
                 validate_non_negative(
                     number_of_parameters, "number_of_parameters", Integral
@@ -788,14 +832,16 @@ class DiscreteDynamicalSystem:
         total_time: int_t,
         parameters: numeric_like_t | None = None,
         transient_time: int_t | None = None,
+        sample_times: NDArray[np.integer] | Sequence[int_t] | None = None,
+        concatenate: bool | None = None,
     ) -> NDArray[np.float64]:
         """
         Generate a trajectory from a single initial condition or from an ensemble of
         initial conditions.
 
         If `u` is one-dimensional, the trajectory of a single initial condition is
-        returned. If `u` is two-dimensional, trajectories are computed for all
-        initial conditions in the ensemble and returned in concatenated form.
+        returned. If `u` is two-dimensional, a trajectory is computed for each
+        initial condition in the ensemble.
 
         Parameters
         ----------
@@ -806,29 +852,56 @@ class DiscreteDynamicalSystem:
             - Ensemble of initial conditions: shape
               `(num_initial_conditions, system_dimension)`
         total_time : int_t
-            Total number of iterations used to generate the trajectory.
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`. Must be positive.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If `None`, the stored
             system parameters are used.
         transient_time : int_t | None, optional
-            Number of initial iterations discarded before storing the trajectory.
-            If provided, it must satisfy `0 <= transient_time < total_time`.
+            Number of initial iterations whose states are not stored. If
+            provided, it must satisfy `0 <= transient_time < total_time`.
+        sample_times : Sequence[int_t] | NDArray[np.integer] | None, optional
+            Iterations in `(transient_time, total_time]` at which the state is
+            stored, counted from the initial condition, like `total_time`. They
+            are sorted with duplicates removed, and the map is iterated only up
+            to the last of them. If None (default), the state is stored at every
+            iteration after the transient.
+        concatenate : bool | None, optional
+            How the trajectories of an ensemble are returned. Single initial
+            conditions are not affected.
+
+            - `False`: as an array of shape
+              `(num_initial_conditions, sample_size, system_dimension)`, so
+              that `result[i]` is the trajectory of the `i`-th initial
+              condition. This will be the default in a future version.
+            - `True`: concatenated along the first axis, as an array of shape
+              `(num_initial_conditions * sample_size, system_dimension)`.
+            - `None` (default): `False` if `sample_times` is given. Otherwise,
+              the concatenated array is returned, as in previous versions, and
+              a `DeprecationWarning` is emitted.
 
         Returns
         -------
         NDArray[np.float64]
-            Trajectory array.
+            Trajectory array, where `sample_size` is `len(sample_times)` if
+            `sample_times` is given and `total_time - transient_time`
+            otherwise (with `transient_time = 0` if it is not given). Row `k`
+            of a trajectory is the state after iteration `transient_time + k + 1`,
+            or after iteration `sample_times[k]`. The initial condition is not
+            stored.
 
-            - Single initial condition:
-              shape `(sample_size, system_dimension)`
-            - Ensemble of initial conditions:
-              shape `(num_initial_conditions * sample_size, system_dimension)`
+            - Single initial condition: shape `(sample_size, system_dimension)`.
+            - Ensemble with `concatenate=False`: shape
+              `(num_initial_conditions, sample_size, system_dimension)`.
+            - Ensemble with `concatenate=True`: shape
+              `(num_initial_conditions * sample_size, system_dimension)`, with
+              the trajectories stacked in the order of the initial conditions.
 
-            where `sample_size = total_time - transient_time` if a transient is
-            used, and `sample_size = total_time` otherwise.
-
-            For one-dimensional systems with a single initial condition, the output
-            is returned as a one-dimensional array of shape `(sample_size,)`.
+            For one-dimensional maps, the last axis is dropped: a single initial
+            condition gives shape `(sample_size,)` and an ensemble with
+            `concatenate=False` gives shape
+            `(num_initial_conditions, sample_size)`. The concatenated form keeps
+            the shape `(num_initial_conditions * sample_size, 1)`.
 
         Raises
         ------
@@ -836,27 +909,47 @@ class DiscreteDynamicalSystem:
             - If `u` is incompatible with the system dimension.
             - If `parameters` does not match the expected number of parameters.
             - If `total_time` is not positive.
-            - If `transient_time` is invalid.
+            - If `transient_time` is negative, or greater than or equal to `total_time`.
+            - If `sample_times` is not a 1D array of integers, or contains values
+              outside `(transient_time, total_time]`.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
-            - If `total_time` is not an integer.
-            - If `transient_time` is not an integer.
+            - If `total_time` or `transient_time` is not an integer.
+            - If `sample_times` cannot be converted to a 1D array of integers.
+            - If `concatenate` is not a boolean or None.
 
-        Notes
+        Warns
         -----
-        For ensembles, trajectories are concatenated along the first axis. To recover
-        the individual trajectories, reshape the output as
-        `(num_initial_conditions, sample_size, system_dimension)`.
+        DeprecationWarning
+            If an ensemble is passed without `sample_times` and `concatenate` is
+            not given. The concatenated output will stop being the default in a
+            future version; pass `concatenate=False` for the new shape or
+            `concatenate=True` to keep the concatenated array.
 
         Examples
         --------
-        >>> u0 = np.array([0.1, 0.2])
-        >>> ts = system.trajectory(u0, 5000, parameters=[0.5, 1.0])
+        >>> import numpy as np
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+        >>> system.trajectory([0.2, 0.5], 5000).shape
+        (5000, 2)
 
-        >>> ics = np.random.rand(100, 2)
-        >>> ts = system.trajectory(ics, 10000, parameters=[1.0, 0.1], transient_time=1000)
-        >>> ts = ts.reshape(100, 9000, 2)
+        Store an ensemble, one trajectory per initial condition:
+
+        >>> initial_conditions = np.random.default_rng(0).uniform(size=(100, 2))
+        >>> trajectories = system.trajectory(
+        ...     initial_conditions, 10_000, transient_time=1_000, concatenate=False
+        ... )
+        >>> trajectories.shape
+        (100, 9000, 2)
+
+        Store a long trajectory only at logarithmically spaced iterations:
+
+        >>> sample_times = np.unique(np.logspace(0, 6, 200).astype(int))
+        >>> system.trajectory([0.2, 0.5], 1_000_000, sample_times=sample_times).shape
+        (174, 2)
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u,
@@ -874,25 +967,73 @@ class DiscreteDynamicalSystem:
         validate_positive(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, type_=Integral)
 
+        if concatenate is not None and not isinstance(concatenate, bool):
+            raise TypeError("concatenate must be a boolean or None")
+
+        sample_times_arr: NDArray[np.int64] | None = None
+        if sample_times is not None:
+            start = 0 if transient_time is None else int(transient_time)
+            sample_times_arr = (
+                self.__sample_times_after_transient(
+                    sample_times, transient_time, total_time
+                )
+                + start
+            ).astype(np.int64)
+
         if u_arr.ndim == 1:
-            trajectory = generate_trajectory(
+            if sample_times_arr is None:
+                trajectory = generate_trajectory(
+                    u=u_arr,
+                    parameters=parameters_arr,
+                    total_time=total_time,
+                    mapping=self.__mapping,
+                    transient_time=transient_time,
+                )
+            else:
+                trajectory = sampled_trajectory(
+                    u_arr, parameters_arr, sample_times_arr, self.__mapping
+                )
+            if self.__system_dimension == 1:
+                return trajectory[:, 0]
+            return trajectory
+
+        num_initial_conditions = u_arr.shape[0]
+        if sample_times_arr is None:
+            trajectories = ensemble_trajectories(
                 u=u_arr,
                 parameters=parameters_arr,
                 total_time=total_time,
                 mapping=self.__mapping,
                 transient_time=transient_time,
             )
-            if self.__system_dimension == 1:
-                return trajectory[:, 0]
-            return trajectory
+            if concatenate is None:
+                warnings.warn(
+                    "Returning the trajectories of an ensemble concatenated into "
+                    "one array of shape (num_initial_conditions * sample_size, "
+                    "system_dimension) is deprecated as the default and will "
+                    "change in a future version. Pass concatenate=False to get an "
+                    "array of shape (num_initial_conditions, sample_size, "
+                    "system_dimension), or concatenate=True to keep the "
+                    "concatenated array.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                return trajectories
+            if concatenate:
+                return trajectories
+            trajectories = trajectories.reshape(
+                num_initial_conditions, -1, self.__system_dimension
+            )
+        else:
+            trajectories = ensemble_sampled_trajectories(
+                u_arr, parameters_arr, sample_times_arr, self.__mapping
+            )
+            if concatenate:
+                return trajectories.reshape(-1, self.__system_dimension)
 
-        return ensemble_trajectories(
-            u=u_arr,
-            parameters=parameters_arr,
-            total_time=total_time,
-            mapping=self.__mapping,
-            transient_time=transient_time,
-        )
+        if self.__system_dimension == 1:
+            return trajectories[:, :, 0]
+        return trajectories
 
     def bifurcation_diagram(
         self,
@@ -1741,10 +1882,15 @@ class DiscreteDynamicalSystem:
         parameters : numeric_like_t | None, optional
             System parameters. If None, the stored system parameters are used.
         delta : numeric_t, optional
-            Initial displacement magnitude used to seed the manifold branches.
+            Distance from the periodic point of the closest seed on each
+            branch. Default is `1e-4`.
         n_points : int | tuple[int, int], optional
-            Number of seed points used on each manifold branch. If an integer is
-            given, the same value is used for both branches.
+            Number of seed points used on each manifold branch. The seeds span
+            one fundamental domain along the eigendirection, at distances
+            `delta * s**(i / n_points)` for `i = 0, ..., n_points - 1`, where
+            `s` is the stretching factor over one period (`|lambda_u|` for the
+            unstable manifold and `1 / |lambda_s|` for the stable one). If an
+            integer is given, the same value is used for both branches.
         iter_time : int_t | tuple[int_t, int_t], optional
             Number of iterations used to evolve each branch. If an integer is given,
             the same value is used for both branches.
@@ -1754,7 +1900,15 @@ class DiscreteDynamicalSystem:
         Returns
         -------
         tuple[NDArray[np.float64], NDArray[np.float64]]
-            Two arrays containing the `+` and `-` manifold branches.
+            The tuple `(branch_plus, branch_minus)`, computed from the seeds
+            placed along the eigenvector and along its negative. Each array
+            has shape `(n_points_branch * iter_time_branch, 2)`, with the
+            values of `n_points` and `iter_time` for that branch. The rows are
+            grouped by seed: rows `i * iter_time_branch` to
+            `(i + 1) * iter_time_branch - 1` hold iterates `1` to
+            `iter_time_branch` of the `i`-th seed, in order of increasing
+            distance from the periodic point. The seeds themselves are not
+            included.
 
         Raises
         ------
@@ -1775,6 +1929,11 @@ class DiscreteDynamicalSystem:
         -----
         This method is only implemented for 2D systems and requires the selected
         periodic orbit to be a saddle.
+
+        If the multipliers of the saddle are negative, each period of the map
+        carries points to the opposite side of the periodic point. Each
+        returned array then alternates between the two branches of the
+        manifold, and only the two arrays together trace both branches.
         """
         if self.__system_dimension != 2:
             raise ValueError("manifold is only implemented for 2D systems")
@@ -1847,11 +2006,13 @@ class DiscreteDynamicalSystem:
     def rotation_number(
         self,
         u: numeric_like_t,
-        total_time: int_t,
+        window_size: int_t | None = None,
         parameters: numeric_like_t | None = None,
         mod: numeric_t | None = None,
         method: Literal["wba", "average"] | None = None,
         threshold: numeric_t = 9.0,
+        transient_time: int_t | None = None,
+        total_time: int_t | None = None,
     ) -> float:
         """
         Compute the rotation number of a trajectory.
@@ -1863,24 +2024,26 @@ class DiscreteDynamicalSystem:
         those of accelerator modes, are kept apart. Two methods are available:
 
         - ``"wba"`` (default): the frequency map is averaged with the weighted
-          Birkhoff average over two consecutive windows of ``total_time``
+          Birkhoff average over two consecutive windows of ``window_size``
           iterations each (Sander and Meiss, 2020). If the two averages agree
           in at least ``threshold`` digits, the rotation number has converged
           and their mean is returned. Otherwise, the orbit is considered
           chaotic and NaN is returned.
         - ``"average"``: plain time average of the frequency map over
-          ``total_time`` iterations. It always returns a value, but it
-          converges only as ``1 / total_time`` on regular orbits and does not
+          ``window_size`` iterations. It always returns a value, but it
+          converges only as ``1 / window_size`` on regular orbits and does not
           distinguish chaotic from regular orbits.
 
         Parameters
         ----------
         u : numeric_like_t
             Initial condition of shape ``(system_dimension,)``.
-        total_time : int_t
-            Number of iterations used in the average. With ``method="wba"``,
-            this is the length of each window, so the trajectory is iterated
-            ``2 * total_time`` times.
+        window_size : int_t
+            Length of the averaging window. With ``method="wba"``, the
+            frequency map is averaged over two consecutive windows of this
+            length, so the trajectory is iterated ``2 * window_size`` times.
+            With ``method="average"``, it is the number of iterations of the
+            single average.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping and frequency map. If
             ``None``, the stored system parameters are used.
@@ -1893,32 +2056,49 @@ class DiscreteDynamicalSystem:
             Minimum number of digits in which the two weighted Birkhoff averages
             must agree for the rotation number to be considered converged.
             Used only with ``method="wba"``. The default is ``9.0``.
+        transient_time : int_t | None, optional
+            Number of iterations performed before the averaging starts. They
+            are not counted in ``window_size``. Default is None, which means
+            no transient.
 
+        total_time : int_t | None, optional
+            Deprecated name of `window_size`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `window_size` instead. It was renamed because
+            elsewhere in the package `total_time` counts every iteration from
+            the initial condition, including the transient, while here it is
+            the length of one window.
         Returns
         -------
         float
             Estimated rotation number, in turns per iteration. With
-            ``method="wba"``, NaN if it has not converged.
+            ``method="wba"``, NaN if it has not converged. If the two averages
+            agree exactly, as on a fixed point, the number of agreeing digits
+            is infinite and the rotation number is returned.
 
         Raises
         ------
         ValueError
-            - If the system dimension is less than 1.
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
-            - If ``total_time`` is not positive, or is less than 2 with
+            - If ``window_size`` is not positive, or is less than 2 with
               ``method="wba"``.
             - If ``method`` is not ``"wba"``, ``"average"``, or ``None``.
             - If ``method="wba"`` and no frequency map is set.
             - If ``threshold`` or ``mod`` is not positive.
+            - If ``transient_time`` is negative.
         TypeError
             - If ``u`` is not a scalar or array-like numeric object.
             - If ``parameters`` is not a scalar or array-like numeric object.
-            - If ``total_time`` is not an integer.
+            - If ``window_size`` or ``transient_time`` is not an integer.
+            - If ``window_size`` is not given, or if both ``window_size`` and the
+              deprecated ``total_time`` are given.
             - If ``threshold`` or ``mod`` is not a real number.
 
         Warns
         -----
+        DeprecationWarning
+            If `total_time` is passed. Use `window_size` instead.
         DeprecationWarning
             - If no frequency map is set. The rotation number is then computed,
               as in previous versions, as the plain time average of the
@@ -1929,7 +2109,7 @@ class DiscreteDynamicalSystem:
         Notes
         -----
         On a regular orbit, the weighted Birkhoff average converges faster than
-        any power of ``total_time``, while on a chaotic orbit it converges as
+        any power of ``window_size``, while on a chaotic orbit it converges as
         slowly as the plain average. The agreement between the two windows
         therefore separates both cases. On an island chain of period ``q``, the
         rotation number converges to a rational ``p / q``. Use
@@ -1938,18 +2118,26 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> system = DiscreteDynamicalSystem(model="unbounded standard map")
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="unbounded standard map")
         >>> system.set_parameters([0.7])
-        >>> omega = system.rotation_number([0.15, 0.30], 10000)
-        >>> omega_avg = system.rotation_number(
-        ...     [0.15, 0.30], 20000, method="average"
-        ... )
-        """
-        if self.__system_dimension < 1:
-            raise ValueError(
-                f"rotation_number requires system_dimension >= 1, got {self.__system_dimension}."
-            )
 
+        The orbit lies in an island chain of period 3. The weighted Birkhoff
+        average gives the rotation number 1/3 to about 15 digits:
+
+        >>> omega = system.rotation_number([0.15, 0.30], 10_000)
+        >>> round(omega, 12)
+        0.333333333333
+
+        The plain average over the same number of iterations is accurate to
+        only about 5 digits:
+
+        >>> omega_avg = system.rotation_number(
+        ...     [0.15, 0.30], 20_000, method="average"
+        ... )
+        >>> round(omega_avg, 5)
+        0.33333
+        """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
         )
@@ -1960,10 +2148,19 @@ class DiscreteDynamicalSystem:
             parameters, self.__number_of_parameters
         )
 
-        validate_positive(total_time, "total_time", Integral)
+        window_size = _window_size_from_deprecated_total_time(
+            window_size, total_time
+        )
+        validate_positive(window_size, "window_size", Integral)
 
         if method not in (None, "wba", "average"):
             raise ValueError(f"method must be 'wba' or 'average', got {method!r}.")
+
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Integral)
+            u_arr = iterate_mapping(
+                u_arr, parameters_arr, transient_time, self.__mapping
+            )
 
         if self.__frequency_map is None:
             if method == "wba":
@@ -1990,7 +2187,7 @@ class DiscreteDynamicalSystem:
             return rotation_number(
                 u=u_arr,
                 parameters=parameters_arr,
-                total_time=total_time,
+                total_time=window_size,
                 mapping=self.__mapping,
                 mod=mod,
             )
@@ -2009,18 +2206,18 @@ class DiscreteDynamicalSystem:
                 rotation_number_average(
                     u_arr,
                     parameters_arr,
-                    total_time,
+                    window_size,
                     self.__mapping,
                     self.__frequency_map,
                 )
             )
 
-        if total_time < 2:
-            raise ValueError("total_time must be at least 2 with method='wba'.")
+        if window_size < 2:
+            raise ValueError("window_size must be at least 2 with method='wba'.")
         validate_positive(threshold, "threshold", Real)
 
         omega, dig_omega = rotation_number_wba(
-            u_arr, parameters_arr, total_time, self.__mapping, self.__frequency_map
+            u_arr, parameters_arr, window_size, self.__mapping, self.__frequency_map
         )
 
         if not dig_omega >= threshold:
@@ -2031,10 +2228,11 @@ class DiscreteDynamicalSystem:
     def classify_orbit(
         self,
         u: numeric_like_t,
-        total_time: int_t,
+        window_size: int_t,
         parameters: numeric_like_t | None = None,
         func: state_observable_t | None = None,
-        period: numeric_t = 1.0,
+        transient_time: int_t | None = None,
+        period: numeric_t | None = None,
         omega_threshold: numeric_t = 9.0,
         dig_threshold: numeric_t = 5.5,
         tol: numeric_t = 8.0,
@@ -2042,11 +2240,11 @@ class DiscreteDynamicalSystem:
     ) -> dict[str, str | float]:
         """
         Classify an orbit as chaotic, in an island chain, or on a rotational
-        invariant circle.
+        invariant circle, or report that its type is undetermined.
 
-        The classification follows Sander and Meiss (2020). Two weighted
+        The classification is based on Sander and Meiss (2020). Two weighted
         Birkhoff averages are computed over two consecutive windows of
-        ``total_time`` iterations: one of the observable ``func``, whose
+        ``window_size`` iterations: one of the observable ``func``, whose
         convergence ``dig`` separates regular from chaotic orbits, and one of
         the frequency map (see :py:meth:`set_frequency_map`), which gives the
         rotation number ``omega`` and its convergence ``dig_omega``.
@@ -2060,22 +2258,31 @@ class DiscreteDynamicalSystem:
 
         The orbit is classified as follows:
 
-        - If ``dig >= dig_threshold``, the orbit is regular. It lies on a
+        - If ``dig >= dig_threshold``, the orbit is regular. If its rotation
+          number has converged, ``dig_omega >= omega_threshold``, it lies on a
           rotational circle if ``|log10(q_min) - tol / 2| < dev_threshold`` and
-          in an island chain otherwise.
+          in an island chain otherwise. If its rotation number has not
+          converged, the orbit is ``"undetermined"`` (see Notes).
         - If ``dig < dig_threshold``, the orbit lies in an island chain if
           ``dig_omega >= omega_threshold`` and
           ``log10(q_min) < tol / 2 - dev_threshold``, which covers island
           orbits on which the average of the observable converges slowly.
           Otherwise, the orbit is chaotic.
 
+        The first rule, with ``dig_threshold = 5.5``, ``tol = 8``, and
+        ``dev_threshold = 0.3375``, is the criterion of Sander and Meiss
+        (2020). The convergence requirement on the rotation number,
+        ``omega_threshold``, and the second rule are additions of this
+        package; the paper gives no convergence threshold for the rotation
+        number.
+
         Parameters
         ----------
         u : numeric_like_t
             Initial condition of shape ``(system_dimension,)``.
-        total_time : int_t
+        window_size : int_t
             Length of each of the two windows. The trajectory is iterated
-            ``2 * total_time`` times. Must be at least 2.
+            ``2 * window_size`` times. Must be at least 2.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping and frequency map. If
             ``None``, the stored system parameters are used.
@@ -2084,10 +2291,17 @@ class DiscreteDynamicalSystem:
             single state of shape ``(system_dimension,)`` and returns a real
             number. It should be smooth and nonconstant. If ``None``
             (default), the observable is ``cos(2 pi u[0] / period)``.
-        period : numeric_t, optional
+        transient_time : int_t | None, optional
+            Number of iterations performed before the first window. They are
+            not counted in ``window_size``. Default is None, which means no
+            transient.
+        period : numeric_t | None, optional
             Period of the angle ``u[0]`` used by the default observable, for
             example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
-            in radians. Ignored when ``func`` is given. The default is ``1.0``.
+            in radians. If None (default), the period is ``1.0``. It is used
+            only by the default observable: if ``func`` is given, ``period`` is
+            ignored and passing it emits a ``UserWarning``. It must be positive
+            whenever it is given.
         omega_threshold : numeric_t, optional
             Minimum ``dig_omega`` for the rotation number to be considered
             converged. The default is ``9.0``.
@@ -2107,22 +2321,29 @@ class DiscreteDynamicalSystem:
         dict[str, str | float]
             Dictionary with keys
 
-            - ``"classification"`` : ``"chaotic"``, ``"island"``, or ``"circle"``
+            - ``"classification"`` : ``"chaotic"``, ``"island"``, ``"circle"``,
+              or ``"undetermined"``
             - ``"rotation_number"`` : rotation number in turns per iteration,
-              or NaN if the orbit is chaotic
+              or NaN if the orbit is chaotic. For an undetermined orbit, it is
+              the estimate from the two windows, accurate to about
+              ``dig_omega`` digits.
             - ``"dig"`` : number of digits in which the two weighted Birkhoff
               averages of the observable agree
             - ``"dig_omega"`` : number of digits in which the two weighted
               Birkhoff averages of the rotation number agree
 
+            ``"dig"`` and ``"dig_omega"`` are ``inf`` when the two averages
+            agree exactly, for example on a fixed point or with a constant
+            observable. An infinite value counts as converged.
+
         Raises
         ------
         ValueError
-            - If the system dimension is less than 1.
             - If no frequency map is set.
             - If ``u`` is not compatible with the system dimension.
             - If ``parameters`` does not match the expected number of parameters.
-            - If ``total_time`` is less than 2.
+            - If ``window_size`` is less than 2.
+            - If ``transient_time`` is negative.
             - If ``func`` does not return a real number for a single state.
             - If ``omega_threshold``, ``dig_threshold``, ``dev_threshold``, or
               ``period`` is not positive.
@@ -2130,19 +2351,36 @@ class DiscreteDynamicalSystem:
         TypeError
             - If ``u`` is not a scalar or array-like numeric object.
             - If ``parameters`` is not a scalar or array-like numeric object.
-            - If ``total_time`` is not an integer.
+            - If ``window_size`` or ``transient_time`` is not an integer.
             - If ``func`` is not callable.
-            - If ``omega_threshold``, ``dig_threshold``, ``tol``, or
-              ``dev_threshold`` is not a real number.
+            - If ``omega_threshold``, ``dig_threshold``, ``tol``,
+              ``dev_threshold``, or ``period`` is not a real number.
+
+        Warns
+        -----
+        UserWarning
+            If ``period`` is given together with ``func``. It is ignored.
 
         Notes
         -----
+        An orbit is ``"undetermined"`` when it is regular, ``dig >=
+        dig_threshold``, but its rotation number has not converged,
+        ``dig_omega < omega_threshold``. The rationality test would then be
+        applied to digits that are not yet reliable, so island chains and
+        rotational circles cannot be told apart. On a regular orbit, the
+        weighted Birkhoff average converges faster than any power of
+        ``window_size``, so classifying the orbit again with a longer
+        ``window_size`` usually settles it. With longer windows, some of these
+        orbits turn out to be chaotic. Lowering ``omega_threshold`` also
+        classifies them, but ``tol`` must then stay below it, which makes the
+        rationality test coarser.
+
         Orbits in an island chain encircle a periodic orbit, so their rotation
         number averages to that of the periodic orbit, a rational number. The
-        default ``dev_threshold`` is conservative: about 19% of randomly chosen
-        irrationals are classified as rationals, so some rotational circles are
-        reported as islands, while island orbits are rarely reported as
-        circles. ``tol`` must be compatible with the accuracy of the rotation
+        default ``dev_threshold`` is conservative: Sander and Meiss report
+        that it keeps slightly above 81% of randomly chosen floating-point
+        values as irrational, so some rotational circles are reported as
+        islands, while island orbits are rarely reported as circles. ``tol`` must be compatible with the accuracy of the rotation
         number, which is set by ``omega_threshold``.
 
         The default observable assumes that the first coordinate, ``u[0]``,
@@ -2152,16 +2390,13 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> system = DiscreteDynamicalSystem(model="unbounded standard map")
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="unbounded standard map")
         >>> system.set_parameters([0.7])
-        >>> result = system.classify_orbit([0.15, 0.30], 10000)
-        >>> result["classification"], result["rotation_number"]
+        >>> result = system.classify_orbit([0.15, 0.30], 10_000)
+        >>> result["classification"], round(result["rotation_number"], 9)
+        ('island', 0.333333333)
         """
-        if self.__system_dimension < 1:
-            raise ValueError(
-                f"classify_orbit requires system_dimension >= 1, got {self.__system_dimension}."
-            )
-
         if self.__frequency_map is None:
             raise ValueError(
                 "classify_orbit requires a frequency map. Set one with "
@@ -2179,9 +2414,9 @@ class DiscreteDynamicalSystem:
             parameters, self.__number_of_parameters
         )
 
-        validate_positive(total_time, "total_time", Integral)
-        if total_time < 2:
-            raise ValueError("total_time must be at least 2.")
+        validate_positive(window_size, "window_size", Integral)
+        if window_size < 2:
+            raise ValueError("window_size must be at least 2.")
         validate_positive(omega_threshold, "omega_threshold", Real)
         validate_positive(dig_threshold, "dig_threshold", Real)
         validate_positive(tol, "tol", Real)
@@ -2189,16 +2424,30 @@ class DiscreteDynamicalSystem:
             raise ValueError(f"tol must be in (0, 15], got {tol}.")
         validate_positive(dev_threshold, "dev_threshold", Real)
 
-        if func is None:
+        if transient_time is not None:
+            validate_non_negative(transient_time, "transient_time", Integral)
+            u_arr = iterate_mapping(
+                u_arr, parameters_arr, transient_time, self.__mapping
+            )
+
+        if period is not None:
             validate_positive(period, "period", Real)
-            func = default_observable(float(period))
+        if func is None:
+            func = default_observable(1.0 if period is None else float(period))
+        elif period is not None:
+            warnings.warn(
+                "period is used only by the default observable and is ignored "
+                "when func is given.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         observable, form = resolve_observable(func, u_arr, allow_legacy=False)
 
         orbit_class, omega, dig_h, dig_omega = classify_orbit(
             u_arr,
             parameters_arr,
-            total_time,
+            window_size,
             self.__mapping,
             self.__frequency_map,
             observable,
@@ -2213,6 +2462,8 @@ class DiscreteDynamicalSystem:
             label = "chaotic"
         elif orbit_class == ISLAND:
             label = "island"
+        elif orbit_class == UNDETERMINED:
+            label = "undetermined"
         else:
             label = "circle"
 
@@ -2832,29 +3083,91 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         eps: numeric_t = 1e-2,
         transient_time: int_t | None = None,
-    ) -> NDArray[np.float64]:
+        periods: numeric_like_t | None = None,
+    ) -> NDArray[np.int64]:
         """
-        Compute recurrence times to an `eps`-neighborhood of the reference point.
+        Compute the recurrence times to a box around a reference point.
+
+        The reference point is the state reached after `transient_time`
+        iterations, or the initial condition if there is no transient. The
+        recurrence box is the hypercube of side `eps` centered on it, so a
+        return happens when every coordinate is within `eps / 2` of the
+        reference point. The recurrence times are the numbers of iterations
+        between successive returns.
 
         Parameters
         ----------
         u : numeric_like_t
             Initial condition of shape `(system_dimension,)`.
         total_time : int_t
-            Total number of iterations used to detect recurrences.
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`. Recurrences are detected during the
+            last `total_time - transient_time` iterations.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
             system parameters are used.
         eps : numeric_t, optional
-            Side length of the recurrence neighborhood.
+            Side length of the recurrence box. It must be positive. Default is
+            `1e-2`.
         transient_time : int_t | None, optional
-            Number of initial iterations discarded before defining the recurrence box.
+            Number of initial iterations performed before the reference point is
+            defined. Default is None, which means no transient.
+        periods : numeric_like_t | None, optional
+            Wrapping period of each coordinate, of shape `(system_dimension,)`,
+            using `np.inf` for coordinates that do not wrap. Supply this for maps
+            defined on a torus, such as the standard map (`[1.0, 1.0]`), so that
+            the recurrence box wraps around the boundaries of the periodic
+            coordinates and returns on the other side of a boundary are
+            detected. Default is None, which means no coordinate wraps.
 
         Returns
         -------
-        NDArray[np.float64]
+        NDArray[np.int64]
             Array containing the recurrence times between successive returns to the
-            `eps`-neighborhood.
+            `eps`-neighborhood. The first entry is the number of iterations from
+            the reference point to the first return. The iterations after the
+            last return are not included, since the orbit has not yet returned
+            and that interval is not a complete recurrence time. The entries
+            therefore add up to the number of iterations from the reference
+            point to the last return, which is at most
+            `total_time - transient_time`. If the orbit never returns, the
+            array is empty.
+
+        Raises
+        ------
+        ValueError
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not match the expected number of parameters.
+            - If `total_time` is negative.
+            - If `transient_time` is negative, or greater than or equal to `total_time`.
+            - If `eps` is not positive.
+            - If `periods` has the wrong shape or a non-positive entry.
+        TypeError
+            - If `u` is not a scalar or array-like numeric object.
+            - If `parameters` is not a scalar or array-like numeric object.
+            - If `total_time` or `transient_time` is not an integer.
+            - If `eps` is not a real number.
+
+        Examples
+        --------
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+
+        A quasi-periodic orbit around the elliptic fixed point returns to the
+        box at regular intervals:
+
+        >>> times = system.recurrence_times([0.5, 0.25], 10_000, eps=0.02)
+        >>> times[:5]
+        array([19, 19, 19, 19, 19])
+
+        The standard map is periodic in both coordinates, so for a reference
+        point near a boundary pass the periods to count the returns on the
+        other side of it:
+
+        >>> times = system.recurrence_times(
+        ...     [0.005, 0.3], 100_000, eps=0.02, periods=[1.0, 1.0]
+        ... )
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
@@ -2868,7 +3181,19 @@ class DiscreteDynamicalSystem:
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_transient_time(transient_time, total_time, Integral)
-        validate_non_negative(eps, "eps", Real)
+        validate_positive(eps, "eps", Real)
+
+        if periods is None:
+            periods_arr = np.full(self.__system_dimension, np.inf)
+        else:
+            periods_arr = np.atleast_1d(np.asarray(periods, dtype=np.float64))
+            if periods_arr.shape != (self.__system_dimension,):
+                raise ValueError(
+                    f"periods must have shape ({self.__system_dimension},), "
+                    f"got {periods_arr.shape}"
+                )
+            if np.any(periods_arr <= 0):
+                raise ValueError("every entry of periods must be positive")
 
         return recurrence_times(
             u=u_arr,
@@ -2876,24 +3201,26 @@ class DiscreteDynamicalSystem:
             total_time=total_time,
             mapping=self.__mapping,
             eps=eps,
+            periods=periods_arr,
             transient_time=transient_time,
         )
 
     def dig(
         self,
         u: numeric_like_t,
-        total_time: int_t,
+        window_size: int_t | None = None,
         parameters: numeric_like_t | None = None,
         func: state_observable_t | None = None,
         transient_time: int_t | None = None,
-        period: numeric_t = 1.0,
+        period: numeric_t | None = None,
+        total_time: int_t | None = None,
     ) -> float:
         """
         Compute the number of correct decimal digits in the convergence of a
         weighted Birkhoff average.
 
         This diagnostic compares weighted Birkhoff averages computed over two
-        consecutive windows of the trajectory, each of length ``total_time``. Larger values indicate better
+        consecutive windows of the trajectory, each of length ``window_size``. Larger values indicate better
         convergence of the observable average and are typically associated with
         more regular dynamics.
 
@@ -2901,9 +3228,9 @@ class DiscreteDynamicalSystem:
         ----------
         u : numeric_like_t
             Initial condition of shape `(system_dimension,)`.
-        total_time : int_t
+        window_size : int_t
             Length of each of the two consecutive windows. The trajectory is
-            iterated ``2 * total_time`` times after the transient. Must be at
+            iterated ``2 * window_size`` times after the transient. Must be at
             least 2.
         parameters : numeric_like_t | None, optional
             System parameters passed to the mapping function. If None, the stored
@@ -2915,41 +3242,60 @@ class DiscreteDynamicalSystem:
             observable is ``cos(2 pi u[0] / period)``.
         transient_time : int_t | None, optional
             Number of initial iterations discarded before the computation.
-        period : numeric_t, optional
+        period : numeric_t | None, optional
             Period of the angle ``u[0]`` used by the default observable, for
             example ``1.0`` for the standard map or ``2 * np.pi`` for an angle
-            in radians. Ignored when ``func`` is given. The default is ``1.0``.
+            in radians. If None (default), the period is ``1.0``. It is used
+            only by the default observable: if ``func`` is given, ``period`` is
+            ignored and passing it emits a ``UserWarning``. It must be positive
+            whenever it is given.
 
+        total_time : int_t | None, optional
+            Deprecated name of `window_size`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `window_size` instead. It was renamed because
+            elsewhere in the package `total_time` counts every iteration from
+            the initial condition, including the transient, while here it is
+            the length of one window.
         Returns
         -------
         float
             Weighted-Birkhoff convergence indicator defined as
             `-log10(|WB_0 - WB_1|)`, where `WB_0` and `WB_1` are the weighted
-            Birkhoff averages over the first and second windows.
+            Birkhoff averages over the first and second windows. It is `inf`
+            when the two averages agree exactly, for example on a fixed point
+            or with a constant observable.
 
         Raises
         ------
         ValueError
             - If `u` is not compatible with the system dimension.
             - If `parameters` does not match the expected number of parameters.
-            - If `total_time` is less than 2.
+            - If `window_size` is less than 2.
             - If `transient_time` is negative.
             - If `period` is not positive.
             - If `func` does not return a real number for a single state.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
-            - If `total_time` is not an integer.
+            - If `window_size` is not an integer.
+            - If `window_size` is not given, or if both `window_size` and the
+              deprecated `total_time` are given.
             - If `transient_time` is not an integer.
             - If `func` is not callable.
+            - If `period` is not a real number.
 
         Warns
         -----
+        DeprecationWarning
+            If `total_time` is passed. Use `window_size` instead.
         DeprecationWarning
             If ``func`` acts on an array of states of shape
             ``(n, system_dimension)`` and returns an array of shape ``(n,)``,
             the form accepted in previous versions. This will stop working in
             a future version; pass a function of a single state instead.
+        UserWarning
+            If ``period`` is given together with ``func``. It is ignored.
 
         Notes
         -----
@@ -2964,22 +3310,25 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> x_obs = lambda u: np.cos(2 * np.pi * u[0])
-        >>> value = system.dig(u0, 1000, parameters=params, func=x_obs)
+        >>> import numpy as np
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+
+        A regular orbit agrees in many more digits than a chaotic one:
+
+        >>> regular = system.dig([0.5, 0.25], 10_000)
+        >>> chaotic = system.dig([0.05, 0.05], 10_000)
+        >>> bool(regular > 5.5), bool(chaotic > 5.5)
+        (True, False)
+
+        With a custom observable and a transient:
 
         >>> value = system.dig(
-        ...     u0,
-        ...     1000,
-        ...     parameters=params,
+        ...     [0.5, 0.25],
+        ...     10_000,
         ...     func=lambda u: np.sin(2 * np.pi * (u[0] + u[1])),
-        ... )
-
-        >>> value = system.dig(
-        ...     u0,
-        ...     2000,
-        ...     parameters=params,
-        ...     func=x_obs,
-        ...     transient_time=500,
+        ...     transient_time=1_000,
         ... )
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
@@ -2992,22 +3341,33 @@ class DiscreteDynamicalSystem:
             parameters, self.__number_of_parameters
         )
 
-        validate_positive(total_time, "total_time", Integral)
-        if total_time < 2:
-            raise ValueError("total_time must be at least 2.")
+        window_size = _window_size_from_deprecated_total_time(
+            window_size, total_time
+        )
+        validate_positive(window_size, "window_size", Integral)
+        if window_size < 2:
+            raise ValueError("window_size must be at least 2.")
         if transient_time is not None:
             validate_non_negative(transient_time, "transient_time", Integral)
 
-        if func is None:
+        if period is not None:
             validate_positive(period, "period", Real)
-            func = default_observable(float(period))
+        if func is None:
+            func = default_observable(1.0 if period is None else float(period))
+        elif period is not None:
+            warnings.warn(
+                "period is used only by the default observable and is ignored "
+                "when func is given.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         observable, form = resolve_observable(func, u_arr, allow_legacy=True)
 
         return dig(
             u=u_arr,
             parameters=parameters_arr,
-            total_time=total_time,
+            total_time=window_size,
             mapping=self.__mapping,
             func=observable,
             form=form,
@@ -3303,80 +3663,114 @@ class DiscreteDynamicalSystem:
         log_base: float = np.e,
         return_points: bool = False,
     ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
-        """Compute finite-time Lyapunov exponents (FTLE) along trajectory.
+        """Compute finite-time Lyapunov exponents along a trajectory.
+
+        After the transient, the trajectory is divided into consecutive
+        non-overlapping windows of `finite_time` iterations, and the Lyapunov
+        exponents are computed independently in each window.
 
         Parameters
         ----------
-        u : Union[NDArray[np.float64], Sequence[float]]
-            Initial condition of shape (d,) where d is system dimension
+        u : Union[NDArray[np.float64], Sequence[float], float]
+            Initial condition of shape `(system_dimension,)`.
         total_time : int
-            Total simulation time steps (must be > finite_time, default 10000)
+            Total number of iterations, counted from the initial condition, so
+            it includes `transient_time`.
         finite_time : int
-            Averaging window size in time steps (default 100)
+            Length of each window, in iterations. It must be positive and not
+            larger than `total_time // 2` or `total_time - transient_time`.
         parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
-            System parameters of shape (p,) passed to mapping function
+            System parameters of shape `(p,)` passed to the mapping function.
+            If None, the parameters set on the system are used.
+        num_exponents : Optional[int], optional
+            Number of exponents computed in each window, from the largest.
+            Default is None, which computes the full spectrum.
         method : str, optional
-            Computation method:
-            - "ER": Eckmann-Ruelle (optimal for 2D systems)
-            - "QR": Gram-Schmidt QR decomposition
-            - "QR_HH": Householder QR (more stable)
+            Method used to reorthonormalize the deviation vectors in each
+            window:
+
+            - "QR": QR decomposition with the package's modified Gram-Schmidt
+              routine. Default.
+            - "QR_HH": QR decomposition with Householder reflections
+              (`numpy.linalg.qr`).
+            - "ER": the QR decomposition written in closed form for
+              two-dimensional maps, after Eckmann and Ruelle, where the
+              orthonormal frame is a rotation by a single angle. Only valid
+              for two-dimensional maps. Over long windows it gives the same
+              exponents as "QR"; over short windows the values differ
+              slightly, because the two methods start each window from
+              different deviation vectors.
         transient_time : Optional[int], optional
-            Initial burn-in period to discard (default None → finite_time)
+            Number of iterations discarded before the first window. Default is
+            None, which means no transient.
+        log_base : float, optional
+            Base of the logarithm used in the exponents. Default is `np.e`.
+        return_points : bool, optional
+            If True, also return the state at the beginning of each window.
+            Default is False.
 
         Returns
         -------
-        NDArray[np.float64]
-            FTLE matrix of shape (n_windows, d) where:
+        NDArray[np.float64] | Tuple[NDArray[np.float64], NDArray[np.float64]]
+            - If `return_points=False`, a 2D array of shape
+              `(num_windows, num_exponents)`. Row `i` holds the exponents of
+              the `i`-th window. Column `j` corresponds to the `j`-th
+              deviation vector, which tends to the `j`-th largest exponent as
+              `finite_time` grows; over short windows the values in a row need
+              not be in decreasing order.
+            - If `return_points=True`, the tuple `(exponents, points)`, where
+              `exponents` is the array above and `points`, of shape
+              `(num_windows, system_dimension)`, holds the state at the
+              beginning of each window.
 
-            - n_windows = (total_time - transient_time) // finite_time
-            - Each row contains exponents for one time window
-            - Columns are ordered by decreasing exponent magnitude
+            Here `num_windows = (total_time - transient_time) // finite_time`.
+            Iterations at the end that do not fill a window are discarded.
 
         Raises
         ------
         ValueError
-            - If `u` is not a scalar, or 1D array, or if its shape does not match the expected system dimension.
+            - If `u` is not a scalar or 1D array, or if its shape does not match the system dimension.
             - If `parameters` is not None and does not match the expected number of parameters.
             - If `parameters` is None but the system expects parameters.
             - If `parameters` is a scalar or array-like but not 1D.
             - If `total_time` is negative.
-            - If `finite_time` is negative or zero.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `method` is not "QR" or "QR_HH".
-            - If `log_base` is not positive
+            - If `finite_time` is not positive, or larger than `total_time // 2` or `total_time - transient_time`.
+            - If `transient_time` is negative, or greater than or equal to `total_time`.
+            - If `method` is not "ER", "QR", or "QR_HH", or if it is "ER" and the system is not two-dimensional.
+            - If `num_exponents` is larger than the system dimension.
+            - If `log_base` is not positive, or is equal to 1.
         TypeError
             - If `u` is not a scalar or array-like type.
             - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If `log_base` is not float.
+            - If `total_time`, `finite_time`, or `transient_time` is not an integer.
+            - If `log_base` is not a real number.
             - If `method` is not a string.
             - If `return_points` is not a boolean.
 
         Notes
         -----
-        - FTLE measure local stretching rates over finite intervals
-        - For chaotic systems, FTLE → true exponents as finite_time → ∞
-        - ER method is faster but limited to 2D systems
-        - Results are more reliable when:
-        - finite_time >> 1
-        - (total_time - transient_time) // finite_time >> 1
+        - Finite-time exponents measure the local stretching rates over a
+          finite interval. Their distribution reveals variations along the
+          trajectory, such as sticky episodes near stability islands, that a
+          single long-time average hides.
+        - As `finite_time` grows, the values in every window of a chaotic
+          orbit approach the asymptotic Lyapunov exponents.
 
         Examples
         --------
-        >>> # Basic usage with defaults
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> ftle = system.finite_time_lyapunov_exponents(u0, params)
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="standard map")
+        >>> system.set_parameters([1.5])
+        >>> exponents = system.finite_time_lyapunov([0.05, 0.05], 10000, 100)
+        >>> exponents.shape
+        (100, 2)
 
-        >>> # With custom parameters
-        >>> ftle = system.finite_time_lyapunov_exponents(
-        ...     u0, params,
-        ...     total_time=5000,
-        ...     finite_time=50,
-        ...     method="GS"
+        >>> # Largest exponent only, with the state at the start of each window
+        >>> exponents, points = system.finite_time_lyapunov(
+        ...     [0.05, 0.05], 10000, 100, num_exponents=1, return_points=True
         ... )
+        >>> exponents.shape, points.shape
+        ((100, 1), (100, 2))
         """
 
         u = validate_initial_conditions(
@@ -3397,17 +3791,15 @@ class DiscreteDynamicalSystem:
         if not isinstance(method, str):
             raise TypeError("method must be a string")
         method = method.upper()
-        if method not in ("QR", "QR_HH"):
-            raise ValueError("method must be 'QR' or 'QR_HH'")
+        if method not in ("ER", "QR", "QR_HH"):
+            raise ValueError("method must be 'ER', 'QR', or 'QR_HH'")
+        if method == "ER" and self.__system_dimension != 2:
+            raise ValueError("method ER is only valid for 2 dimensional systems.")
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
         elif num_exponents > self.__system_dimension:
             raise ValueError("num_exponents must be <= system_dimension")
-
-        # Validate method for system dimension
-        if method == "QR" and self.__system_dimension == 2:
-            method = "ER"  # Fallback to QR for higher dimensions
 
         validate_positive(log_base, "log_base", Real)
         if log_base == 1:
@@ -3897,10 +4289,11 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         return_history: bool = False,
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
-        tol: numeric_t = 1e-16,
+        threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
         seed: int_t = 1312,
         return_last_state: bool = False,
+        tol: numeric_t | None = None,
     ) -> (
         float
         | NDArray[np.float64]
@@ -3933,9 +4326,9 @@ class DiscreteDynamicalSystem:
             initial condition, like `total_time`, and are sorted with duplicates
             removed. If None and `return_history=True`, SALI is recorded at
             every iteration after the transient.
-        tol : numeric_t, optional
-            Early stopping threshold. If `SALI < tol`, the computation is
-            interrupted. Default is `1e-16`.
+        threshold : numeric_t, optional
+            Early stopping threshold. If `SALI < threshold`, the computation
+            is interrupted. Default is `1e-16`.
         transient_time : int_t | None, optional
             Number of initial iterations to discard before starting the SALI
             computation. If None, no transient is discarded.
@@ -3943,6 +4336,10 @@ class DiscreteDynamicalSystem:
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
             If True, also return the final state of the trajectory.
+        tol : numeric_t | None, optional
+            Deprecated name of `threshold`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `threshold` instead.
 
         Returns
         -------
@@ -3957,8 +4354,9 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If SALI falls below
-              `tol`, the computation stops, and the entries after that point
-              are zero.
+              `threshold`, the computation stops, and the array ends with the
+              last value recorded up to the stop, so it is shorter than
+              described above.
             - If `return_history=True` and `return_last_state=True`, returns
               `(sali_history, final_state)`.
 
@@ -3971,17 +4369,20 @@ class DiscreteDynamicalSystem:
             - If `transient_time` is invalid.
             - If `sample_times` is not a 1D array of integers, or contains values
               outside `(transient_time, total_time]`.
-            - If `tol` is negative.
+            - If `threshold` is negative.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `total_time` is not an integer.
             - If `transient_time` is not an integer.
-            - If `tol` is not numeric.
+            - If `threshold` is not numeric.
+            - If both `threshold` and the deprecated `tol` are passed.
             - If `seed` is not an integer.
 
         Warns
         -----
+        DeprecationWarning
+            If `tol` is passed. Use `threshold` instead.
         UserWarning
             If `sample_times` is passed without `return_history=True`. It is
             ignored.
@@ -4045,7 +4446,8 @@ class DiscreteDynamicalSystem:
                 )
                 sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
-        validate_non_negative(tol, "tol", Real)
+        threshold = _threshold_from_deprecated_tol(threshold, tol)
+        validate_non_negative(threshold, "threshold", Real)
 
         if not isinstance(seed, Integral):
             raise TypeError("seed must be an integer")
@@ -4059,7 +4461,7 @@ class DiscreteDynamicalSystem:
             sample_times_arr,
             return_history=return_history,
             transient_time=transient_time,
-            tol=tol,
+            tol=threshold,
             seed=seed,
         )
 
@@ -4082,10 +4484,11 @@ class DiscreteDynamicalSystem:
         parameters: numeric_like_t | None = None,
         return_history: bool = False,
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
-        tol: numeric_t = 1e-16,
+        threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
         seed: int = 1312,
         return_last_state: bool = False,
+        tol: numeric_t | None = None,
     ) -> (
         float
         | NDArray[np.float64]
@@ -4119,9 +4522,9 @@ class DiscreteDynamicalSystem:
             initial condition, like `total_time`, and are sorted with duplicates
             removed. If None and `return_history=True`, LDI_k is recorded at
             every iteration after the transient.
-        tol : numeric_t, optional
-            Early stopping threshold. If `LDI_k < tol`, the computation is
-            interrupted. Default is `1e-16`.
+        threshold : numeric_t, optional
+            Early stopping threshold. If `LDI_k < threshold`, the computation
+            is interrupted. Default is `1e-16`.
         transient_time : int_t | None, optional
             Number of initial iterations to discard before starting the LDI_k
             computation. If None, no transient is discarded.
@@ -4129,6 +4532,10 @@ class DiscreteDynamicalSystem:
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
             If True, also return the final state of the trajectory.
+        tol : numeric_t | None, optional
+            Deprecated name of `threshold`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `threshold` instead.
 
         Returns
         -------
@@ -4143,8 +4550,9 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If LDI_k falls below
-              `tol`, the computation stops, and the entries after that point
-              are zero.
+              `threshold`, the computation stops, and the array ends with the
+              last value recorded up to the stop, so it is shorter than
+              described above.
             - If `return_history=True` and `return_last_state=True`, returns
               `(ldi_history, final_state)`.
 
@@ -4158,18 +4566,21 @@ class DiscreteDynamicalSystem:
             - If `sample_times` is not a 1D array of integers, or contains values
               outside `(transient_time, total_time]`.
             - If `k` is not in the interval `[2, system_dimension]`.
-            - If `tol` is negative.
+            - If `threshold` is negative.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `total_time` is not an integer.
             - If `transient_time` is not an integer.
-            - If `tol` is not numeric.
+            - If `threshold` is not numeric.
+            - If both `threshold` and the deprecated `tol` are passed.
             - If `seed` is not an integer.
             - If `k` is not an integer.
 
         Warns
         -----
+        DeprecationWarning
+            If `tol` is passed. Use `threshold` instead.
         UserWarning
             If `sample_times` is passed without `return_history=True`. It is
             ignored.
@@ -4180,7 +4591,7 @@ class DiscreteDynamicalSystem:
         Jacobian and renormalized at each step. LDI_k is computed as the product
         of the singular values of the deviation-vector matrix.
 
-        - The computation is terminated early if `LDI_k < tol`.
+        - The computation is terminated early if `LDI_k < threshold`.
 
         Examples
         --------
@@ -4239,7 +4650,8 @@ class DiscreteDynamicalSystem:
                 )
                 sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
-        validate_non_negative(tol, "tol", Real)
+        threshold = _threshold_from_deprecated_tol(threshold, tol)
+        validate_non_negative(threshold, "threshold", Real)
 
         if not isinstance(seed, Integral):
             raise TypeError("seed must be an integer")
@@ -4255,7 +4667,7 @@ class DiscreteDynamicalSystem:
             sample_times_arr,
             return_history=return_history,
             transient_time=transient_time,
-            tol=tol,
+            tol=threshold,
             seed=seed,
         )
 
@@ -4279,10 +4691,11 @@ class DiscreteDynamicalSystem:
         return_history: bool = False,
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
         method: str = "QR",
-        tol: numeric_t = 1e-16,
+        threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
         seed: int = 1312,
         return_last_state: bool = False,
+        tol: numeric_t | None = None,
     ) -> (
         float
         | NDArray[np.float64]
@@ -4336,9 +4749,9 @@ class DiscreteDynamicalSystem:
               `GALI_k = prod_i |R_ii|`.
 
             Default is `"QR"`.
-        tol : numeric_t, optional
-            Early stopping threshold. If `GALI_k < tol`, the computation is
-            interrupted. Default is `1e-16`.
+        threshold : numeric_t, optional
+            Early stopping threshold. If `GALI_k < threshold`, the computation
+            is interrupted. Default is `1e-16`.
         transient_time : int_t | None, optional
             Number of initial iterations to discard before starting the GALI_k
             computation. If None, no transient is discarded.
@@ -4346,6 +4759,10 @@ class DiscreteDynamicalSystem:
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
             If True, also return the final state of the trajectory.
+        tol : numeric_t | None, optional
+            Deprecated name of `threshold`. Passing it emits a
+            `DeprecationWarning`, and it will stop working in a future
+            version. Use `threshold` instead.
 
         Returns
         -------
@@ -4360,8 +4777,9 @@ class DiscreteDynamicalSystem:
               entry `i` corresponds to iteration `transient_time + i + 1`. With
               `sample_times`, entry `i` corresponds to the `i`-th sample time
               after sorting and removing duplicates. If GALI_k falls below
-              `tol`, the computation stops, and the entries after that point
-              are zero.
+              `threshold`, the computation stops, and the array ends with the
+              last value recorded up to the stop, so it is shorter than
+              described above.
             - If `return_history=True` and `return_last_state=True`, returns
               `(gali_history, final_state)`.
 
@@ -4376,19 +4794,22 @@ class DiscreteDynamicalSystem:
               outside `(transient_time, total_time]`.
             - If `k` is not in the interval `[2, system_dimension]`.
             - If `method` is not `"DET"`, `"QR"`, or `"QR_HH"`.
-            - If `tol` is negative.
+            - If `threshold` is negative.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `total_time` is not an integer.
             - If `transient_time` is not an integer.
-            - If `tol` is not numeric.
+            - If `threshold` is not numeric.
+            - If both `threshold` and the deprecated `tol` are passed.
             - If `seed` is not an integer.
             - If `k` is not an integer.
             - If `method` is not a string.
 
         Warns
         -----
+        DeprecationWarning
+            If `tol` is passed. Use `threshold` instead.
         UserWarning
             If `sample_times` is passed without `return_history=True`. It is
             ignored.
@@ -4410,7 +4831,7 @@ class DiscreteDynamicalSystem:
         the decay is slower or GALI_k may remain bounded away from zero, depending
         on `k` and on the dimension of the invariant set.
 
-        The computation is terminated early if `GALI_k < tol`.
+        The computation is terminated early if `GALI_k < threshold`.
 
         Examples
         --------
@@ -4475,7 +4896,8 @@ class DiscreteDynamicalSystem:
                 )
                 sample_times_arr = np.arange(1, sample_size + 1, dtype=np.int64)
 
-        validate_non_negative(tol, "tol", Real)
+        threshold = _threshold_from_deprecated_tol(threshold, tol)
+        validate_non_negative(threshold, "threshold", Real)
 
         if not isinstance(seed, Integral):
             raise TypeError("seed must be an integer")
@@ -4492,7 +4914,7 @@ class DiscreteDynamicalSystem:
             method=method,
             return_history=return_history,
             transient_time=transient_time,
-            tol=tol,
+            tol=threshold,
             seed=seed,
         )
 
