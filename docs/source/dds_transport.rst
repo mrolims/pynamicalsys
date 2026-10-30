@@ -146,10 +146,10 @@ The :py:meth:`mean_squared_displacement <pynamicalsys.core.discrete_dynamical_sy
 
     system = dds(model="unbounded standard map")
 
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(1)
     num_ic = 30 * 30
-    x0 = np.random.uniform(0, 1, num_ic)
-    y0 = np.random.uniform(0, 1, num_ic)
+    x0 = rng.uniform(0, 1, num_ic)
+    y0 = rng.uniform(0, 1, num_ic)
     initial_conditions = np.column_stack([x0, y0])
     total_time = int(1e6)
 
@@ -211,7 +211,7 @@ The measured coefficient at :math:`k=5.0` is close to this estimate:
 
 .. code-block:: text
 
-    measured D: 0.1575283354658878
+    measured D: 0.15903131909362953
     random-phase D: 0.15831434944115277
 
 A single diffusion coefficient is meaningful only when the mean squared displacement is asymptotically linear. For anomalous transport, :math:`\mathrm{MSD}(N)/(2N)` depends on the observation time and the spreading must instead be characterized by the exponent :math:`\gamma`.
@@ -236,7 +236,7 @@ The :py:meth:`ensemble_time_average <pynamicalsys.core.discrete_dynamical_system
 
 .. code-block:: text
 
-    (5000,) 0.0 10.292
+    (900,) 0.0 331.738
 
 Recurrence times and stickiness
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
