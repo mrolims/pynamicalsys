@@ -1346,13 +1346,13 @@ class HamiltonianSystem:
                 raise TypeError("crossing must be an integer")
             if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
-
-        if not isinstance(periodic_section_coordinate, bool):
-            raise TypeError("periodic_section_coordinate must be a boolean")
         else:
             section_index = 0
             section_value = np.float64(0.0)
             crossing = 1
+
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
 
         if self.__integrator in ["vv2", "svy4"]:
             return compute_clvs_sep(
@@ -1569,13 +1569,13 @@ class HamiltonianSystem:
                 raise TypeError("crossing must be an integer")
             if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
-
-        if not isinstance(periodic_section_coordinate, bool):
-            raise TypeError("periodic_section_coordinate must be a boolean")
         else:
             section_index = 0
             section_value = np.float64(0.0)
             crossing = 1
+
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
 
         if self.__integrator in ["vv2", "svy4"]:
             return clv_angles_sep(
