@@ -23,6 +23,7 @@ from pynamicalsys.common.types import flow_t, flow_jacobian_t
 from pynamicalsys.common.linalg import qr
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 from pynamicalsys.continuous_time.step import evolve_system, step_to
+from pynamicalsys.continuous_time.buffers import ensure_row, new_buffer
 
 
 @njit
@@ -142,7 +143,8 @@ def ldi_k(
     v, _ = qr(v)
     uv[neq:] = v.reshape(neq * ndv)
 
-    history = []
+    history = new_buffer(2)
+    count = 0
     ldi = np.float64(0.0)
 
     num_samples = len(sample_times) if sample_times is not None else 0
@@ -180,7 +182,10 @@ def ldi_k(
         ldi = np.exp(np.sum(np.log(singular_values)))
 
         if return_history and (sample_times is None or at_sample):
-            history.append([time, ldi])
+            history = ensure_row(history, count)
+            history[count, 0] = time
+            history[count, 1] = ldi
+            count += 1
 
         if ldi <= threshold:
             break
@@ -188,7 +193,7 @@ def ldi_k(
         uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
+        return history[:count].copy(), uv[:neq].copy()
 
     result = np.empty((1, 2), dtype=np.float64)
     result[0, 0] = time

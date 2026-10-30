@@ -85,7 +85,6 @@ def variational_equations(
     provided, the function assumes the standard square tangent evolution used
     when computing the full Lyapunov spectrum.
     """
-    state = state.copy()
     nt = len(state)
 
     if number_of_deviation_vectors is not None:
@@ -96,14 +95,21 @@ def variational_equations(
         ndv = neq
 
     u = state[:neq].copy()
-    v = state[neq:].reshape(neq, ndv).copy()
 
     J = jacobian(time, u, parameters)
     dudt = equations_of_motion(time, u, parameters)
-    dvdt = J @ v
 
     dstatedt = np.empty(nt, dtype=np.float64)
     dstatedt[:neq] = dudt
-    dstatedt[neq:] = dvdt.reshape(neq * ndv)
+
+    # J @ v, with the deviation vectors read in place from the flattened
+    # state. An explicit loop avoids the BLAS call and the temporary arrays,
+    # which dominate the cost for the small matrices of a flow.
+    for row in range(neq):
+        for col in range(ndv):
+            s = 0.0
+            for m in range(neq):
+                s += J[row, m] * state[neq + m * ndv + col]
+            dstatedt[neq + row * ndv + col] = s
 
     return dstatedt

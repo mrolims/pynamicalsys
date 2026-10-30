@@ -20,9 +20,10 @@ import numpy as np
 from numba import njit
 
 from pynamicalsys.common.types import flow_t, flow_jacobian_t
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, vector_norm
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 from pynamicalsys.continuous_time.step import evolve_system, step_to
+from pynamicalsys.continuous_time.buffers import ensure_row, new_buffer
 
 
 @njit
@@ -134,7 +135,8 @@ def sali(
     v, _ = qr(v)
     uv[neq:] = v.reshape(neq * ndv)
 
-    history = []
+    history = new_buffer(2)
+    count = 0
     sali = np.float64(0.0)
 
     num_samples = len(sample_times) if sample_times is not None else 0
@@ -164,15 +166,22 @@ def sali(
             sample_index += 1
 
         v = uv[neq:].reshape(neq, ndv)
-        v[:, 0] /= np.linalg.norm(v[:, 0])
-        v[:, 1] /= np.linalg.norm(v[:, 1])
+        v[:, 0] /= vector_norm(v[:, 0])
+        v[:, 1] /= vector_norm(v[:, 1])
 
-        pai = np.linalg.norm(v[:, 0] + v[:, 1])
-        aai = np.linalg.norm(v[:, 0] - v[:, 1])
-        sali = min(pai, aai)
+        # Norms of v_1 + v_2 and v_1 - v_2, without temporary arrays
+        pai_sq = 0.0
+        aai_sq = 0.0
+        for row in range(neq):
+            pai_sq += (v[row, 0] + v[row, 1]) ** 2
+            aai_sq += (v[row, 0] - v[row, 1]) ** 2
+        sali = min(np.sqrt(pai_sq), np.sqrt(aai_sq))
 
         if return_history and (sample_times is None or at_sample):
-            history.append([time, sali])
+            history = ensure_row(history, count)
+            history[count, 0] = time
+            history[count, 1] = sali
+            count += 1
 
         if sali <= threshold:
             break
@@ -180,7 +189,7 @@ def sali(
         uv[neq:] = v.reshape(neq * ndv)
 
     if return_history:
-        return np.asarray(history, dtype=np.float64), uv[:neq].copy()
+        return history[:count].copy(), uv[:neq].copy()
 
     result = np.empty((1, 2), dtype=np.float64)
     result[0, 0] = time
