@@ -130,7 +130,7 @@ def generate_poincare_section(
                 u_new[section_index] - u_prev[section_index]
             )
 
-            t_cross = time_new - time_step_prev + lam * time_step_prev
+            t_cross = time_prev + lam * (time_new - time_prev)
             u_cross = (1.0 - lam) * u_prev + lam * u_new
             velocity = equations_of_motion(t_cross, u_cross, parameters)[section_index]
 

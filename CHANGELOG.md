@@ -54,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `ContinuousDynamicalSystem.poincare_section` with `rk45` computed the crossing time from the requested step size instead of the accepted one, so crossings that followed a rejected step had wrong times, off by up to about one step size. The states on the section were correct. With `rk4`, the crossing times change only at the level of round-off.
 - `PlotStyler(tick_direction_in=False)` had no effect, and ticks always pointed inward. Ticks now point outward when it is `False`.
 - The **recurrence time entropy** left out white vertical lines that end at a recurrence point in the last column of the recurrence matrix. These lines do not touch the border and are now counted, so `recurrence_time_entropy` and the white vertical line distribution it returns with `return_p=True` may differ from those of v1.4.6 to v1.7.1, in which this error was present.
 - `TimeSeriesMetrics.recurrence_time_entropy` and `TimeSeriesMetrics.recurrence_matrix` with `compute_white_vert_distr=True` left out lines of length exactly `lmin`, so they started the distribution at `lmin + 1`. They now start it at `lmin` and give the same result as the `recurrence_time_entropy` method of `DiscreteDynamicalSystem`, `ContinuousDynamicalSystem`, and `HamiltonianSystem` for the same time series.
