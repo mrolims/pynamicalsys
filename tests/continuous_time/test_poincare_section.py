@@ -1,13 +1,17 @@
 """
-ContinuousDynamicalSystem.poincare_section: crossing times with rk45, and
-points exactly on the section.
+ContinuousDynamicalSystem.poincare_section: crossing times with rk45, accuracy
+of the interpolation, and points exactly on the section.
 
 The section is checked against the trajectory computed with the same
 integrator, which takes the same accepted steps. Each crossing must be the
-linear interpolation, in time and state, between the two trajectory points
-that bracket it. With rk45, some steps are rejected and retried with a
+cubic Hermite interpolation, in time and state, between the two trajectory
+points that bracket it. With rk45, some steps are rejected and retried with a
 shorter step, so the crossing time must use the accepted step and not the
 requested one.
+
+The Hermite interpolation uses the vector field at both ends of the step, so
+its error is far below that of a linear interpolation: with rk4 and a step of
+0.01 on the Lorenz system, about 1e-4 instead of 5e-2.
 
 A point exactly on the section is counted once, when the trajectory arrives
 on it, and the initial point is counted when it lies on the section.
@@ -18,6 +22,10 @@ import pytest
 from numba import njit
 
 from pynamicalsys import ContinuousDynamicalSystem as CDS
+from pynamicalsys.common.poincare import hermite_crossing, hermite_point
+from pynamicalsys.continuous_time.models import lorenz_system
+
+LORENZ_PARAMETERS = np.array([10.0, 28.0, 8.0 / 3.0])
 
 SECTION_INDEX = 2
 SECTION_VALUE = 27.0
@@ -43,16 +51,41 @@ def test_rk45_crossings_interpolate_the_accepted_steps():
     z = trajectory[:, SECTION_INDEX + 1]
     sign_change = (z[:-1] - SECTION_VALUE) * (z[1:] - SECTION_VALUE) < 0.0
     i = np.nonzero(sign_change)[0][:NUM_INTERSECTIONS]
-    lam = (SECTION_VALUE - z[i]) / (z[i + 1] - z[i])
 
-    expected_states = (1.0 - lam)[:, None] * trajectory[i, 1:] + lam[
-        :, None
-    ] * trajectory[i + 1, 1:]
-    np.testing.assert_allclose(section[:, 1:], expected_states, rtol=1e-14)
+    expected = np.empty_like(section)
+    for row, k in enumerate(i):
+        h = time[k + 1] - time[k]
+        u_old, u_new = trajectory[k, 1:], trajectory[k + 1, 1:]
+        du_old = lorenz_system(time[k], u_old, LORENZ_PARAMETERS)
+        du_new = lorenz_system(time[k + 1], u_new, LORENZ_PARAMETERS)
+        s = hermite_crossing(
+            u_old[SECTION_INDEX] - SECTION_VALUE,
+            u_new[SECTION_INDEX] - SECTION_VALUE,
+            du_old[SECTION_INDEX],
+            du_new[SECTION_INDEX],
+            h,
+        )
+        expected[row, 0] = time[k] + s * h
+        expected[row, 1:] = hermite_point(u_old, u_new, du_old, du_new, h, s)
 
-    expected_times = time[i] + lam * (time[i + 1] - time[i])
-    np.testing.assert_allclose(section[:, 0], expected_times, rtol=1e-14)
+    np.testing.assert_allclose(section, expected, rtol=1e-14)
     assert np.all((section[:, 0] >= time[i]) & (section[:, 0] <= time[i + 1]))
+
+
+def test_crossings_have_the_accuracy_of_the_integrator():
+    ds = CDS(model="lorenz system")
+    ds.set_parameters(LORENZ_PARAMETERS)
+    u = [1.0, 1.0, 1.0]
+    options = dict(
+        section_index=SECTION_INDEX, section_value=SECTION_VALUE, crossing=0
+    )
+
+    ds.integrator("rk45", atol=1e-13, rtol=1e-13)
+    reference = ds.poincare_section(u, 10, **options)
+    ds.integrator("rk4", time_step=0.01)
+    section = ds.poincare_section(u, 10, **options)
+
+    np.testing.assert_allclose(section, reference, rtol=0, atol=1e-3)
 
 
 @njit

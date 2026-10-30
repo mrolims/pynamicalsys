@@ -29,7 +29,7 @@ Use :py:meth:`poincare_section <pynamicalsys.core.continuous_dynamical_systems.C
         crossing=1,
     )
 
-State-coordinate indices start at zero, so ``section_index=2`` selects :math:`z`. Set ``crossing=1`` for positive crossings, ``crossing=-1`` for negative crossings, or ``crossing=0`` for both directions. The method locates a crossing between integration steps and linearly interpolates its time and state.
+State-coordinate indices start at zero, so ``section_index=2`` selects :math:`z`. Set ``crossing=1`` for positive crossings, ``crossing=-1`` for negative crossings, or ``crossing=0`` for both directions. The method locates a crossing between integration steps and interpolates its time and state with a cubic Hermite polynomial, which uses the vector field at both ends of the step.
 
 The result has shape ``(num_intersections, system_dimension + 1)``. Its first column contains crossing times and the remaining columns contain the interpolated state. Since :math:`z=25` is fixed on this section, plot the :math:`(x,y)` coordinates:
 
@@ -163,7 +163,7 @@ Numerical options
     Direction of the Poincaré-section crossings to record. The default ``1`` keeps crossings in which the selected coordinate increases, ``-1`` keeps those in which it decreases, and ``0`` keeps both. The direction is determined from the sign of the corresponding component of the vector field at the interpolated crossing.
 
 ``time_step``, ``atol``, and ``rtol``
-    Set with ``integrator``. The points of Poincaré sections and maxima maps are interpolated between integration steps: linearly for Poincaré sections, and, for maxima maps, quadratically in time and then linearly in the state. The interpolation error therefore depends on the step size and not only on the order of the integrator. Stroboscopic maps are not interpolated, since the integration lands exactly on each sampling time. A smaller ``time_step`` with ``rk4``, or tighter tolerances with ``rk45``, which shortens the steps, improves the accuracy of the recorded points.
+    Set with ``integrator``. The points of Poincaré sections and maxima maps are interpolated between integration steps. Poincaré sections use a cubic Hermite polynomial, whose error decreases as the fourth power of the step size, like that of ``rk4``. Maxima maps are interpolated quadratically in time and then linearly in the state, so their interpolation error depends on the step size and not only on the order of the integrator. Stroboscopic maps are not interpolated, since the integration lands exactly on each sampling time. A smaller ``time_step`` with ``rk4``, or tighter tolerances with ``rk45``, which shortens the steps, improves the accuracy of the recorded points.
 
 References
 ~~~~~~~~~~
