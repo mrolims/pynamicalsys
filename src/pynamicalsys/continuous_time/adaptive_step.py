@@ -48,6 +48,58 @@ _RK45_B4 = np.array(
 
 
 @njit
+def _stage_state(
+    u: NDArray[np.float64],
+    k: NDArray[np.float64],
+    stage: int,
+    time_step: np.float64,
+) -> NDArray[np.float64]:
+    """
+    Return the state at which stage `stage` is evaluated.
+
+    This is `u + sum_j h A[stage, j] k[j]`, accumulated over `j` in order as
+    in the array expression, without temporary arrays.
+    """
+    ui = np.empty(u.shape[0], dtype=np.float64)
+    for e in range(u.shape[0]):
+        value = u[e]
+        for j in range(stage):
+            value += time_step * _RK45_A[stage, j] * k[j, e]
+        ui[e] = value
+    return ui
+
+
+@njit
+def _solution_and_error(
+    u: NDArray[np.float64],
+    k: NDArray[np.float64],
+    time_step: np.float64,
+    atol: np.float64,
+    rtol: np.float64,
+) -> tuple[NDArray[np.float64], np.float64]:
+    """
+    Return the fifth-order solution and the scaled error of the step.
+
+    The error is the largest `|u5 - u4| / (atol + rtol max(|u|, |u5|))`. The
+    operations are those of the array expressions, in the same order, and
+    NaN propagates to the error as with `np.max`.
+    """
+    n = u.shape[0]
+    u5 = np.empty(n, dtype=np.float64)
+    error_ratio = np.empty(n, dtype=np.float64)
+    for e in range(n):
+        value5 = u[e]
+        value4 = u[e]
+        for i in range(7):
+            value5 += time_step * _RK45_B5[i] * k[i, e]
+            value4 += time_step * _RK45_B4[i] * k[i, e]
+        u5[e] = value5
+        scale = atol + rtol * np.maximum(np.abs(u[e]), np.abs(value5))
+        error_ratio[e] = np.abs(value5 - value4) / scale
+    return u5, np.max(error_ratio)
+
+
+@njit
 def rk45_step(
     t: np.float64,
     u: NDArray[np.float64],
@@ -91,21 +143,9 @@ def rk45_step(
 
     for i in range(7):
         ti = t + _RK45_C[i] * time_step
-        ui = u.copy()
-        for j in range(i):
-            ui += time_step * _RK45_A[i, j] * k[j]
-        k[i] = equations_of_motion(ti, ui, parameters)
+        k[i] = equations_of_motion(ti, _stage_state(u, k, i, time_step), parameters)
 
-    u5 = u.copy()
-    u4 = u.copy()
-    for i in range(7):
-        u5 += time_step * _RK45_B5[i] * k[i]
-        u4 += time_step * _RK45_B4[i] * k[i]
-
-    error = np.abs(u5 - u4)
-    scale = atol + rtol * np.maximum(np.abs(u), np.abs(u5))
-    error_ratio = error / scale
-    err = np.max(error_ratio)
+    u5, err = _solution_and_error(u, k, time_step, atol, rtol)
 
     if err == 0.0:
         factor = 2.0
@@ -175,28 +215,16 @@ def variational_rk45_step(
 
     for i in range(7):
         ti = t + _RK45_C[i] * time_step
-        ui = u.copy()
-        for j in range(i):
-            ui += time_step * _RK45_A[i, j] * k[j]
         k[i] = variational_equations(
             ti,
-            ui,
+            _stage_state(u, k, i, time_step),
             parameters,
             equations_of_motion,
             jacobian,
             number_of_deviation_vectors=number_of_deviation_vectors,
         )
 
-    u5 = u.copy()
-    u4 = u.copy()
-    for i in range(7):
-        u5 += time_step * _RK45_B5[i] * k[i]
-        u4 += time_step * _RK45_B4[i] * k[i]
-
-    error = np.abs(u5 - u4)
-    scale = atol + rtol * np.maximum(np.abs(u), np.abs(u5))
-    error_ratio = error / scale
-    err = np.max(error_ratio)
+    u5, err = _solution_and_error(u, k, time_step, atol, rtol)
 
     if err == 0.0:
         factor = 2.0
