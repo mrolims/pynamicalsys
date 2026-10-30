@@ -30,13 +30,23 @@ def wrap_period(x: np.float64, period: np.float64) -> np.float64:
 
 
 @njit
-def detect_crossing(g_old: np.float64, g_new: np.float64, crossing: int) -> bool:
+def detect_crossing(
+    g_old: np.float64, g_new: np.float64, crossing: int, first_step: bool
+) -> bool:
+    # A point exactly on the section is counted once, at the step that arrives
+    # on it, and not again at the step that leaves it. The initial point is
+    # counted when it lies on the section and the trajectory leaves it in the
+    # requested direction.
+    if g_old == 0.0:
+        if not first_step:
+            return False
+        if crossing == 0:
+            return bool(g_new != 0.0)
+        if crossing == 1:
+            return bool(g_new > 0.0)
+        return bool(g_new < 0.0)
     if crossing == 0:
-        return bool(
-            (g_old < 0.0 and g_new >= 0.0)
-            or (g_old > 0.0 and g_new <= 0.0)
-            or (g_old == 0.0 and g_new != 0.0)
-        )
+        return bool((g_old < 0.0 and g_new >= 0.0) or (g_old > 0.0 and g_new <= 0.0))
     if crossing == 1:
-        return bool((g_old < 0.0 and g_new >= 0.0) or (g_old == 0.0 and g_new > 0.0))
-    return bool((g_old > 0.0 and g_new <= 0.0) or (g_old == 0.0 and g_new < 0.0))
+        return bool(g_old < 0.0 and g_new >= 0.0)
+    return bool(g_old > 0.0 and g_new <= 0.0)

@@ -139,7 +139,7 @@ def generate_poincare_section(
         else:
             g_new = q_new[section_index] - section_value
 
-        if detect_crossing(g_old, g_new, crossing):
+        if detect_crossing(g_old, g_new, crossing, step == 0):
             lam = g_old / (g_old - g_new)
             q_cross = (np.float64(1.0) - lam) * q_prev + lam * q_new
             p_cross = (np.float64(1.0) - lam) * p_prev + lam * p_new
@@ -335,7 +335,7 @@ def generate_poincare_section_from_traj(
         else:
             g_new = q[i, section_index] - section_value
 
-        if detect_crossing(g_old, g_new, crossing):
+        if detect_crossing(g_old, g_new, crossing, i == 1):
             n_hits += 1
 
         g_old = wrap_period(g_new, period) if periodic_section_coordinate else g_new
@@ -357,7 +357,7 @@ def generate_poincare_section_from_traj(
         else:
             g_new = q[i, section_index] - section_value
 
-        if detect_crossing(g_old, g_new, crossing):
+        if detect_crossing(g_old, g_new, crossing, i == 1):
             lam = g_old / (g_old - g_new)
             q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
             p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
