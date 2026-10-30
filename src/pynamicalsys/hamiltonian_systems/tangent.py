@@ -25,7 +25,33 @@ from pynamicalsys.common.types import (
     system_func_t,
 )
 from pynamicalsys.hamiltonian_systems.coefficients import ALPHA, BETA
-from pynamicalsys.hamiltonian_systems.fixed_step import _symplectic_J_inv_matmul
+from pynamicalsys.hamiltonian_systems.fixed_step import (
+    _midpoint_newton_matrix,
+    _midpoint_residual,
+    _symplectic_J_inv_matmul,
+)
+
+
+@njit
+def _add_hessian_product(
+    dv: NDArray[np.float64],
+    target: int,
+    source: int,
+    H: NDArray[np.float64],
+    factor: np.float64,
+    dof: int,
+) -> None:
+    """
+    Add `factor * (H @ dv[source:source + dof])` to `dv[target:target + dof]`.
+
+    The two blocks of rows do not overlap, so the update is done in place.
+    """
+    for row in range(dof):
+        for col in range(dv.shape[1]):
+            s = 0.0
+            for m in range(dof):
+                s += H[row, m] * dv[source + m, col]
+            dv[target + row, col] += factor * s
 
 
 @njit
@@ -79,28 +105,32 @@ def velocity_verlet_2nd_step_traj_tan(
     p_new = p.copy()
     dv_new = dv.copy()
     dof = len(q)
+    half_step = np.float64(0.5) * time_step
 
+    # Element loops perform the updates without temporary arrays. The
+    # products with the Hessians are explicit loops rather than BLAS calls,
+    # which dominate the cost for small systems; with two degrees of freedom
+    # they give the same bits as BLAS.
     gradV = grad_V(q_new, parameters)
-    p_new -= np.float64(0.5) * time_step * gradV
+    for i in range(dof):
+        p_new[i] -= half_step * gradV[i]
 
     HV = hess_V(q_new, parameters)
-    dv_new[dof:, :] -= (
-        np.float64(0.5) * time_step * (HV @ np.ascontiguousarray(dv_new[:dof, :]))
-    )
+    _add_hessian_product(dv_new, dof, 0, HV, -half_step, dof)
 
     gradT = grad_T(p_new, parameters)
-    q_new += time_step * gradT
+    for i in range(dof):
+        q_new[i] += time_step * gradT[i]
 
     HT = hess_T(p_new, parameters)
-    dv_new[:dof, :] += time_step * (HT @ np.ascontiguousarray(dv_new[dof:, :]))
+    _add_hessian_product(dv_new, 0, dof, HT, time_step, dof)
 
     gradV = grad_V(q_new, parameters)
-    p_new -= np.float64(0.5) * time_step * gradV
+    for i in range(dof):
+        p_new[i] -= half_step * gradV[i]
 
     HV = hess_V(q_new, parameters)
-    dv_new[dof:, :] -= (
-        np.float64(0.5) * time_step * (HV @ np.ascontiguousarray(dv_new[:dof, :]))
-    )
+    _add_hessian_product(dv_new, dof, 0, HV, -half_step, dof)
 
     return q_new, p_new, dv_new
 
@@ -259,39 +289,41 @@ def implicit_midpoint_step_traj_tan(
     n = q.shape[0]
     h = time_step
 
-    z_n = np.concatenate((q, p))
+    half_step = np.float64(0.5) * h
 
-    q_bar = q.copy()
-    p_bar = p.copy()
-
-    identity = np.eye(2 * n)
+    # Buffers reused by every Newton iteration, as in `implicit_midpoint_step`
+    z_n = np.empty(2 * n, dtype=np.float64)
+    z_n[:n] = q
+    z_n[n:] = p
+    z_bar = z_n.copy()
+    F = np.empty(2 * n, dtype=np.float64)
+    DF = np.empty((2 * n, 2 * n), dtype=np.float64)
+    H_mid = np.zeros((2 * n, 2 * n))
 
     converged = False
     residual_norm = np.float64(0.0)
-    Jinv_Hmid = np.zeros((2 * n, 2 * n))
-    DF = identity.copy()
 
     for _ in range(max_iter):
+        q_bar = z_bar[:n]
+        p_bar = z_bar[n:]
         qdot, pdot = eom(q_bar, p_bar, parameters)
-        f_mid = np.concatenate((qdot, pdot))
-
-        z_bar = np.concatenate((q_bar, p_bar))
-        F = z_bar - z_n - np.float64(0.5) * h * f_mid
+        _midpoint_residual(z_bar, z_n, half_step, qdot, pdot, F)
 
         residual_norm = np.sqrt(np.sum(F * F))
 
         H_mid = hess_H(q_bar, p_bar, parameters)
-        Jinv_Hmid = _symplectic_J_inv_matmul(n, H_mid)
-        DF = identity - np.float64(0.5) * h * Jinv_Hmid
+        _midpoint_newton_matrix(n, half_step, H_mid, DF)
 
         if residual_norm < tol:
             converged = True
             break
 
         delta = np.linalg.solve(DF, -F)
-        z_bar = z_bar + delta
-        q_bar = z_bar[:n]
-        p_bar = z_bar[n:]
+        for i in range(2 * n):
+            z_bar[i] = z_bar[i] + delta[i]
+
+    q_bar = z_bar[:n]
+    p_bar = z_bar[n:]
 
     if not converged:
         print(
@@ -306,6 +338,8 @@ def implicit_midpoint_step_traj_tan(
         )
         raise RuntimeError("implicit_midpoint_step_traj_tan failed to converge")
 
+    identity = np.eye(2 * n)
+    Jinv_Hmid = _symplectic_J_inv_matmul(n, H_mid)
     rhs = (identity + np.float64(0.5) * h * Jinv_Hmid) @ dv
     # np.linalg.solve returns a Fortran-ordered array; return a C-contiguous
     # one, so that the matrix products of the next step stay on contiguous arrays.

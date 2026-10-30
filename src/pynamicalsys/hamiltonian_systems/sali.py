@@ -19,7 +19,7 @@
 import numpy as np
 from numba import njit
 from numpy.typing import NDArray
-from pynamicalsys.common.linalg import qr
+from pynamicalsys.common.linalg import qr, vector_norm
 from pynamicalsys.common.types import system_func_t, symplectic_tangent_step_t
 
 """
@@ -142,12 +142,16 @@ def sali_sep(
         )
 
         for j in range(2):
-            norm = np.linalg.norm(dv[:, j])
+            norm = vector_norm(dv[:, j])
             dv[:, j] /= norm
 
-        pai = np.linalg.norm(dv[:, 0] + dv[:, 1])
-        aai = np.linalg.norm(dv[:, 0] - dv[:, 1])
-        sali_val = min(pai, aai)
+        # Norms of v_1 + v_2 and v_1 - v_2, without temporary arrays
+        pai_sq = 0.0
+        aai_sq = 0.0
+        for row in range(neq):
+            pai_sq += (dv[row, 0] + dv[row, 1]) ** 2
+            aai_sq += (dv[row, 0] - dv[row, 1]) ** 2
+        sali_val = min(np.sqrt(pai_sq), np.sqrt(aai_sq))
 
         if return_history and (sample_steps is None or at_sample):
             history[count, 0] = time
@@ -268,12 +272,16 @@ def sali_imp(
         )
 
         for j in range(2):
-            norm = np.linalg.norm(dv[:, j])
+            norm = vector_norm(dv[:, j])
             dv[:, j] /= norm
 
-        pai = np.linalg.norm(dv[:, 0] + dv[:, 1])
-        aai = np.linalg.norm(dv[:, 0] - dv[:, 1])
-        sali_val = min(pai, aai)
+        # Norms of v_1 + v_2 and v_1 - v_2, without temporary arrays
+        pai_sq = 0.0
+        aai_sq = 0.0
+        for row in range(neq):
+            pai_sq += (dv[row, 0] + dv[row, 1]) ** 2
+            aai_sq += (dv[row, 0] - dv[row, 1]) ** 2
+        sali_val = min(np.sqrt(pai_sq), np.sqrt(aai_sq))
 
         if return_history and (sample_steps is None or at_sample):
             history[count, 0] = time

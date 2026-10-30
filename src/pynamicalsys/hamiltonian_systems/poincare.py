@@ -21,10 +21,12 @@ from numba import njit
 from numpy.typing import NDArray
 from pynamicalsys.common.types import system_func_t, symplectic_step_t
 from pynamicalsys.common.poincare import detect_crossing, wrap_period
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 
 
-@njit
+# The GIL is released so that `ensemble_poincare_section` can run the
+# sections in threads.
+@njit(nogil=True)
 def generate_poincare_section(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
@@ -229,29 +231,34 @@ def ensemble_poincare_section(
     """
     num_ic = q.shape[0]
 
-    with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(
-                generate_poincare_section,
-                q[i],
-                p[i],
-                num_intersections,
-                parameters,
-                system_func_1,
-                system_func_2,
-                time_step,
-                integrator,
-                section_index,
-                section_value,
-                crossing,
-                periodic_section_coordinate,
-                period,
-                tol,
-                max_iter,
-            )
-            for i in range(num_ic)
-        ]
-        results = [future.result() for future in futures]
+    def run_one(i: int) -> NDArray[np.float64]:
+        return generate_poincare_section(
+            q[i],
+            p[i],
+            num_intersections,
+            parameters,
+            system_func_1,
+            system_func_2,
+            time_step,
+            integrator,
+            section_index,
+            section_value,
+            crossing,
+            periodic_section_coordinate,
+            period,
+            tol,
+            max_iter,
+        )
+
+    # The first section runs here, which compiles `generate_poincare_section`
+    # if needed. The others then run in threads: the compiled function
+    # releases the GIL, so they run in parallel without starting processes,
+    # which would compile it again in each process and would require the
+    # caller's script to be guarded by `if __name__ == "__main__"`.
+    results = [run_one(0)]
+    if num_ic > 1:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results.extend(executor.map(run_one, range(1, num_ic)))
 
     return np.stack(results)
 

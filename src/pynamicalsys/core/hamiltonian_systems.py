@@ -792,10 +792,10 @@ class HamiltonianSystem:
             `periodic_section_coordinate=True`.
             Typically 2π for action-angle systems.
         max_workers : int_t, optional
-            The maximum number of processes that can be used to execute the
-            given calls. If -1 or not given then as many worker processes
-            will be created as the machine has processors. Only used when passing
-            an ensemble of initial conditions.
+            The maximum number of threads that compute the sections of an
+            ensemble in parallel. If -1 or not given, as many threads are
+            used as the machine has processors. Only used when passing an
+            ensemble of initial conditions.
 
         Returns
         -------
