@@ -30,6 +30,7 @@ from pynamicalsys.discrete_time.birkhoff import (
 CHAOTIC = 0
 ISLAND = 1
 CIRCLE = 2
+UNDETERMINED = 3
 
 
 @njit
@@ -417,8 +418,11 @@ def classify_orbit(
     Returns
     -------
     tuple[int, float, float, float]
-        Orbit class (`CHAOTIC`, `ISLAND`, or `CIRCLE`), rotation number (NaN if
-        chaotic), `dig_h`, and `dig_omega`.
+        Orbit class (`CHAOTIC`, `ISLAND`, `CIRCLE`, or `UNDETERMINED`),
+        rotation number (NaN if chaotic), `dig_h`, and `dig_omega`. A regular
+        orbit (`dig_h >= dig_threshold`) is `UNDETERMINED` when its rotation
+        number has not converged (`dig_omega < omega_threshold`), since the
+        rationality test would then be applied to unconverged digits.
 
     Notes
     -----
@@ -440,6 +444,14 @@ def classify_orbit(
     if not np.isfinite(omega):
         return CHAOTIC, np.nan, dig_h, dig_omega
 
+    # The rationality test is meaningful only if the rotation number has
+    # converged; otherwise it would be applied to digits that are not yet
+    # reliable.
+    if dig_omega < omega_threshold:
+        if dig_h >= dig_threshold:
+            return UNDETERMINED, omega, dig_h, dig_omega
+        return CHAOTIC, np.nan, dig_h, dig_omega
+
     log_q_min = np.log10(smallest_denominator(omega, 10.0 ** (-tol)))
 
     if dig_h >= dig_threshold:
@@ -447,7 +459,7 @@ def classify_orbit(
             return CIRCLE, omega, dig_h, dig_omega
         return ISLAND, omega, dig_h, dig_omega
 
-    if dig_omega >= omega_threshold and log_q_min < 0.5 * tol - dev_threshold:
+    if log_q_min < 0.5 * tol - dev_threshold:
         return ISLAND, omega, dig_h, dig_omega
 
     return CHAOTIC, np.nan, dig_h, dig_omega

@@ -169,3 +169,21 @@ def test_default_observable_period():
     default = system.classify_orbit(u, TOTAL_TIME, period=2 * np.pi)
     assert default["dig"] == explicit["dig"]
     assert default["classification"] == "circle"
+
+
+def test_classify_orbit_undetermined_until_omega_converges():
+    # A regular orbit whose rotation number has converged to only about 8
+    # digits with windows of 10000 iterations, below omega_threshold = 9. The
+    # rationality test is not applied to it, and longer windows classify it.
+    system = unbounded_standard_map(0.9)
+    u = [0.6896, 0.5004]
+
+    short = system.classify_orbit(u, 10_000)
+    assert short["classification"] == "undetermined"
+    assert short["dig"] >= 5.5
+    assert short["dig_omega"] < 9.0
+    assert np.isfinite(short["rotation_number"])
+
+    long = system.classify_orbit(u, 40_000)
+    assert long["classification"] == "circle"
+    assert long["dig_omega"] >= 9.0

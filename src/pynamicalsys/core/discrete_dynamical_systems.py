@@ -69,6 +69,7 @@ from pynamicalsys.discrete_time.rotation import (
     classify_orbit,
     CHAOTIC,
     ISLAND,
+    UNDETERMINED,
 )
 from pynamicalsys.discrete_time.escape import (
     escape_basin_and_time_entering,
@@ -2077,7 +2078,7 @@ class DiscreteDynamicalSystem:
     ) -> dict[str, str | float]:
         """
         Classify an orbit as chaotic, in an island chain, or on a rotational
-        invariant circle.
+        invariant circle, or report that its type is undetermined.
 
         The classification follows Sander and Meiss (2020). Two weighted
         Birkhoff averages are computed over two consecutive windows of
@@ -2095,9 +2096,11 @@ class DiscreteDynamicalSystem:
 
         The orbit is classified as follows:
 
-        - If ``dig >= dig_threshold``, the orbit is regular. It lies on a
+        - If ``dig >= dig_threshold``, the orbit is regular. If its rotation
+          number has converged, ``dig_omega >= omega_threshold``, it lies on a
           rotational circle if ``|log10(q_min) - tol / 2| < dev_threshold`` and
-          in an island chain otherwise.
+          in an island chain otherwise. If its rotation number has not
+          converged, the orbit is ``"undetermined"`` (see Notes).
         - If ``dig < dig_threshold``, the orbit lies in an island chain if
           ``dig_omega >= omega_threshold`` and
           ``log10(q_min) < tol / 2 - dev_threshold``, which covers island
@@ -2142,9 +2145,12 @@ class DiscreteDynamicalSystem:
         dict[str, str | float]
             Dictionary with keys
 
-            - ``"classification"`` : ``"chaotic"``, ``"island"``, or ``"circle"``
+            - ``"classification"`` : ``"chaotic"``, ``"island"``, ``"circle"``,
+              or ``"undetermined"``
             - ``"rotation_number"`` : rotation number in turns per iteration,
-              or NaN if the orbit is chaotic
+              or NaN if the orbit is chaotic. For an undetermined orbit, it is
+              the estimate from the two windows, accurate to about
+              ``dig_omega`` digits.
             - ``"dig"`` : number of digits in which the two weighted Birkhoff
               averages of the observable agree
             - ``"dig_omega"`` : number of digits in which the two weighted
@@ -2172,6 +2178,18 @@ class DiscreteDynamicalSystem:
 
         Notes
         -----
+        An orbit is ``"undetermined"`` when it is regular, ``dig >=
+        dig_threshold``, but its rotation number has not converged,
+        ``dig_omega < omega_threshold``. The rationality test would then be
+        applied to digits that are not yet reliable, so island chains and
+        rotational circles cannot be told apart. On a regular orbit, the
+        weighted Birkhoff average converges faster than any power of
+        ``total_time``, so classifying the orbit again with a longer
+        ``total_time`` usually settles it. With longer windows, some of these
+        orbits turn out to be chaotic. Lowering ``omega_threshold`` also
+        classifies them, but ``tol`` must then stay below it, which makes the
+        rationality test coarser.
+
         Orbits in an island chain encircle a periodic orbit, so their rotation
         number averages to that of the periodic orbit, a rational number. The
         default ``dev_threshold`` is conservative: about 19% of randomly chosen
@@ -2248,6 +2266,8 @@ class DiscreteDynamicalSystem:
             label = "chaotic"
         elif orbit_class == ISLAND:
             label = "island"
+        elif orbit_class == UNDETERMINED:
+            label = "undetermined"
         else:
             label = "circle"
 
