@@ -1,5 +1,6 @@
 """
-HamiltonianSystem.poincare_section: points exactly on the section.
+HamiltonianSystem.poincare_section: points exactly on the section, and the
+accuracy of the interpolated crossings.
 
 The first degree of freedom is a free particle with unit momentum, so with the
 step 0.125 its coordinate is a multiple of 0.125 without round-off and lands
@@ -7,6 +8,12 @@ exactly on the section q = 0.5 (taken as periodic with period 1) once every
 eight steps. The second degree of freedom is a harmonic oscillator. A point on
 the section is counted once, when the trajectory arrives on it, and the initial
 point is counted when it lies on the section.
+
+The crossings are interpolated with cubic Hermite polynomials that use the
+vector field at both ends of the step, so on the Hénon-Heiles system the
+energy of the section points stays at the level of the energy error of the
+symplectic integrator, instead of the much larger error of a linear
+interpolation.
 """
 
 import numpy as np
@@ -80,3 +87,17 @@ def test_initial_point_on_the_section_is_counted(system, crossing):
     np.testing.assert_array_equal(
         section_times(system, 0.5, crossing), [0.0, 1.0, 2.0]
     )
+
+
+def test_section_points_keep_the_energy():
+    energy = 1.0 / 8.0
+    y, py = -0.2, 0.0
+    px = np.sqrt(2.0 * (energy - (y**2 / 2.0 - y**3 / 3.0)) - py**2)
+
+    hs = HS(model="henon heiles")
+    hs.integrator("svy4", time_step=0.05)
+    section = hs.poincare_section([0.0, y], [px, py], 2000)
+
+    x, y, px, py = section[:, 1], section[:, 2], section[:, 3], section[:, 4]
+    hamiltonian = (px**2 + py**2) / 2.0 + (x**2 + y**2) / 2.0 + x**2 * y - y**3 / 3.0
+    np.testing.assert_allclose(hamiltonian, energy, rtol=0, atol=1e-6)

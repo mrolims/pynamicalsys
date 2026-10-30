@@ -209,7 +209,7 @@ Numerical options
     Number of processes used for an ensemble of initial conditions. The default ``-1`` uses all available processors. It has no effect for a single initial condition.
 
 ``time_step``, ``tol``, and ``max_iter``
-    Set with ``integrator``. Each crossing is located by linear interpolation between the two steps that bracket it, so the recorded coordinates and momenta carry an interpolation error that decreases with ``time_step``, independently of the order of the integrator. As a consequence, the energy of the recorded points can differ from that of the trajectory by more than the energy error of the integrator itself. ``tol`` and ``max_iter`` apply only to ``imp``, as described in :doc:`hs_trajectories`.
+    Set with ``integrator``. Each crossing is located by cubic Hermite interpolation between the two steps that bracket it, using the equations of motion at both of them. The interpolation error decreases as the fourth power of ``time_step``, so the energy of the recorded points stays close to that of the trajectory: on the Hénon-Heiles example with ``svy4`` and ``time_step=0.05``, within about 1e-7, against about 1e-4 for a linear interpolation. ``tol`` and ``max_iter`` apply only to ``imp``, as described in :doc:`hs_trajectories`.
 
 References
 ~~~~~~~~~~

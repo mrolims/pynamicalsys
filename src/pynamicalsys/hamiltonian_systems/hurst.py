@@ -32,6 +32,7 @@ def hurst_exponent_wrapped(
     system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
+    vector_field,
     section_index: int,
     section_value: np.float64,
     crossing: int,
@@ -62,6 +63,9 @@ def hurst_exponent_wrapped(
         Integration time step.
     integrator : symplectic_step_t
         Symplectic integration step.
+    vector_field : callable
+        Function `(q, p, system_func_1, system_func_2, parameters) -> (qdot, pdot)`
+        matching the integrator, used to interpolate the crossings.
     section_index : int
         Index of the coordinate used to define the Poincaré section.
     section_value : np.float64
@@ -104,6 +108,7 @@ def hurst_exponent_wrapped(
         system_func_2=system_func_2,
         time_step=time_step,
         integrator=integrator,
+        vector_field=vector_field,
         section_index=section_index,
         section_value=section_value,
         crossing=crossing,
