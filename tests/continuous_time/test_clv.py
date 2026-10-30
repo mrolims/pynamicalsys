@@ -9,6 +9,10 @@ as the blocks of the stored stage, which restore it.
 The stored samples cover `[transient_time + warmup_time, total_time]`, so with
 a warmup they are the samples of a run without warmup from the end of the
 warmup on.
+
+Durations are rounded down to whole QR intervals, but a ratio within round-off
+of an integer counts as that integer: 0.3 / 0.1 = 2.9999999999999996 is three
+blocks.
 """
 
 import numpy as np
@@ -61,3 +65,20 @@ def test_warmup_must_end_before_total_time(lorenz):
         lorenz.CLV_angles(
             [1.0, 1.0, 1.0], 1.0, pairs=(0, 2), transient_time=0.5, warmup_time=0.5
         )
+
+
+def test_block_counts_ignore_round_off(lorenz):
+    lorenz.integrator("rk4", time_step=0.01)
+    u = [1.0, 1.0, 1.0]
+
+    _, stored = lorenz.CLV(u, 0.3, qr_time_step=0.1)
+    np.testing.assert_allclose(stored[:, 0], [0.0, 0.1, 0.2, 0.3])
+
+    _, warmed = lorenz.CLV(u, 1.0, qr_time_step=0.1, warmup_time=0.3)
+    np.testing.assert_allclose(warmed[0, 0], 0.3)
+
+    # 0.30000000000000004 / 0.1 is just above 3, so it gives three tail
+    # blocks with or without the tolerance.
+    clvs, _ = lorenz.CLV(u, 1.0, qr_time_step=0.1, tail_time=0.3)
+    clvs_ref, _ = lorenz.CLV(u, 1.0, qr_time_step=0.1, tail_time=0.1 + 0.2)
+    np.testing.assert_array_equal(clvs, clvs_ref)

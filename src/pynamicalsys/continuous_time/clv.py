@@ -33,6 +33,18 @@ from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
 from pynamicalsys.continuous_time.step import evolve_system, step, step_to
 
 
+@njit
+def whole_blocks(duration: np.float64, block_time: np.float64) -> int:
+    """
+    Number of whole blocks of `block_time` in `duration`, rounded down.
+
+    A ratio within round-off of an integer counts as that integer, so that, for
+    example, 0.3 / 0.1 = 2.9999999999999996 gives three blocks.
+    """
+    ratio = duration / block_time
+    return int(np.floor(ratio + 1e-9 * max(1.0, ratio)))
+
+
 @njit(error_model="numpy")
 def compute_clvs(
     u: NDArray[np.float64],
@@ -161,13 +173,13 @@ def compute_clvs(
 
     warm_blocks = 0
     if warmup_time > 0.0:
-        warm_blocks = int(np.floor(warmup_time / qr_time_step))
+        warm_blocks = whole_blocks(warmup_time, qr_time_step)
         if warm_blocks < 0:
             warm_blocks = 0
 
     tail_blocks = 0
     if tail_time > 0.0:
-        tail_blocks = int(np.floor(tail_time / qr_time_step))
+        tail_blocks = whole_blocks(tail_time, qr_time_step)
         if tail_blocks < 0:
             tail_blocks = 0
 
@@ -202,7 +214,7 @@ def compute_clvs(
 
     # The stored stage starts where the warmup ends and ends at t_end.
     t_start = time
-    total_blocks = int(np.floor((t_end - t_start) / qr_time_step))
+    total_blocks = whole_blocks(t_end - t_start, qr_time_step)
     if total_blocks < 1:
         total_blocks = 1
 
