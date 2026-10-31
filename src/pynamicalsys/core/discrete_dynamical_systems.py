@@ -2648,12 +2648,21 @@ class DiscreteDynamicalSystem:
         """
         Compute the survival probability from an array of escape times.
 
+        The survival probability `P(t)` is the fraction of trajectories whose
+        escape time is strictly greater than `t`. An escape time equal to
+        `max_time` counts as a trajectory that has not escaped, as
+        `escape_analysis` returns `(-1, max_time)` for it, so `P(max_time)` is
+        the fraction of trajectories that did not escape. A trajectory that
+        escapes exactly at iteration `max_time` has the same escape time and
+        is counted the same way.
+
         Parameters
         ----------
         escape_times : NDArray[np.integer] | Sequence[int]
             Escape times for an ensemble of trajectories.
         max_time : int_t
-            Maximum evaluation time.
+            Maximum evaluation time, normally the `max_time` passed to
+            `escape_analysis`.
         min_time : int_t, optional
             Minimum evaluation time. Default is `1`.
         time_step : int_t, optional

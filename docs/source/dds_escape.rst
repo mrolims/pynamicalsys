@@ -165,7 +165,7 @@ If :math:`T` is the escape time, the survival probability is
 
     P(n)=\Pr(T>n)=\frac{N(n)}{N_0},
 
-where :math:`N_0` is the initial ensemble size and :math:`N(n)` is the number of trajectories whose escape time is strictly greater than :math:`n`. The :py:meth:`survival_probability <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.survival_probability>` method evaluates this empirical probability from a one-dimensional array of escape times. ``min_time`` and ``time_step`` control the sampled iteration values.
+where :math:`N_0` is the initial ensemble size and :math:`N(n)` is the number of trajectories whose escape time is strictly greater than :math:`n`. The :py:meth:`survival_probability <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.survival_probability>` method evaluates this empirical probability from a one-dimensional array of escape times. An escape time equal to ``max_time`` counts as a trajectory that has not escaped, so :math:`P` at ``max_time`` is the fraction of trajectories that remain in the region. ``min_time`` and ``time_step`` control the sampled iteration values.
 
 .. code-block:: python
 
@@ -440,7 +440,7 @@ Numerical options
 ~~~~~~~~~~~~~~~~~
 
 ``max_time``
-    The largest number of iterations of ``escape_analysis``. Trajectories that do not escape return ``(-1, max_time)``, so passing their escape times to ``survival_probability`` counts them as escaping at ``max_time``. The survival probability is therefore reliable only for :math:`n<` ``max_time``, and ``max_time`` should exceed the time range of interest by a wide margin when a large fraction of trajectories remains trapped.
+    The largest number of iterations of ``escape_analysis``. Trajectories that do not escape return ``(-1, max_time)``, and ``survival_probability`` counts an escape time equal to ``max_time`` as a trajectory that has not escaped, so its value at ``max_time`` is the fraction of trapped trajectories. A trajectory that escapes exactly at iteration ``max_time`` has the same escape time and is counted the same way. Since the escape times of trapped trajectories are unknown, ``max_time`` should exceed the time range of interest by a wide margin when a large fraction of trajectories remains trapped.
 
 ``escape`` and ``hole_size``
     ``escape="entering"`` records the first entry into one of the holes, which are hyperrectangles of side ``hole_size`` centered on the points of ``exits``. ``escape="exiting"`` records the first exit from the region given by ``exits``, one ``[lower, upper]`` pair per coordinate. In both modes the boundaries belong to the hole or to the region. A smaller hole gives longer escape times, so the number of iterations and of initial conditions needed for a well-sampled distribution grows as ``hole_size`` decreases.

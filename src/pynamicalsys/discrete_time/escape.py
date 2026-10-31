@@ -177,7 +177,10 @@ def survival_probability_core(
     Compute the survival probability from a set of escape times.
 
     The survival probability `S(t)` is the fraction of trajectories whose
-    escape time is strictly greater than `t`.
+    escape time is strictly greater than `t`. An escape time equal to
+    `max_time` counts as a trajectory that has not escaped, as
+    `escape_analysis` returns for it, so `S(max_time)` is the fraction of
+    trajectories that did not escape.
 
     Parameters
     ----------
@@ -211,7 +214,9 @@ def survival_probability_core(
 
     `S(t) = P(T_escape > t)`
 
-    using sorted escape times and `np.searchsorted`.
+    using sorted escape times and `np.searchsorted`. A trajectory that escapes
+    exactly at iteration `max_time` also has escape time `max_time`, and is
+    counted as not escaped too.
     """
     if max_time <= min_time:
         raise ValueError("max_time must be greater than min_time")
@@ -223,7 +228,9 @@ def survival_probability_core(
         raise ValueError("all escape_times must be >= 1")
 
     t_values = np.arange(min_time, max_time + 1, time_step, dtype=np.int64)
-    sorted_times = np.sort(escape_times)
+    # A trajectory that did not escape within max_time has escape time
+    # max_time, so it is counted as escaping after max_time.
+    sorted_times = np.sort(np.where(escape_times == max_time, max_time + 1, escape_times))
     n_samples = sorted_times.size
 
     if n_samples == 0:
