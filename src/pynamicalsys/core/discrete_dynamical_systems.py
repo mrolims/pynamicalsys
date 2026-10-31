@@ -5052,12 +5052,12 @@ class DiscreteDynamicalSystem:
         Raises
         ------
         ValueError
-            - If `u` is not an 1D array, or if its shape does not match the expected system dimension.
+            - If `u` is not a 1D array, or if its shape does not match the expected system dimension.
             - If `parameters` is not None and does not match the expected number of parameters.
             - If `parameters` is None but the system expects parameters.
             - If `parameters` is a scalar or array-like but not 1D.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
+            - If `transient_time` is negative.
             - If `transient_time` is greater than or equal to total_time.
             - If `lmin` is not a positive integer or is less than 1.
             - If `metric` or `std_metric` is not a valid string.
