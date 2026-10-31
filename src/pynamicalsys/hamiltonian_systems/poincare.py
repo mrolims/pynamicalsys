@@ -312,6 +312,8 @@ def ensemble_poincare_section(
 def generate_poincare_section_from_traj(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
+    qdot: NDArray[np.float64],
+    pdot: NDArray[np.float64],
     times: NDArray[np.float64],
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
@@ -322,12 +324,13 @@ def generate_poincare_section_from_traj(
     """
     Extract Poincaré-section crossings from precomputed trajectory samples.
 
-    Only the samples are used, so this works for separable and non-separable
-    Hamiltonian systems alike. A crossing is detected when
-    `q[:, section_index] - section_value` changes sign between two successive
-    samples, and its direction is the direction of that change. The crossing
-    time, coordinates, and momenta are linearly interpolated between the two
-    samples. A sample exactly on the section is counted once, as the end of
+    Only the samples and the vector field at them are used, so this works for
+    separable and non-separable Hamiltonian systems alike. A crossing is
+    detected when `q[:, section_index] - section_value` changes sign between
+    two successive samples, and its direction is the direction of that change.
+    The crossing time, coordinates, and momenta are interpolated between the
+    two samples with cubic Hermite polynomials, which use the vector field at
+    both of them. A sample exactly on the section is counted once, as the end of
     the interval that arrives on it, and the first sample is counted when it
     lies on the section.
 
@@ -337,6 +340,12 @@ def generate_poincare_section_from_traj(
         Sampled generalized coordinates of shape `(num_points, dof)`.
     p : NDArray[np.float64]
         Sampled generalized momenta of shape `(num_points, dof)`.
+    qdot : NDArray[np.float64]
+        Time derivatives of the coordinates at the samples, of shape
+        `(num_points, dof)`.
+    pdot : NDArray[np.float64]
+        Time derivatives of the momenta at the samples, of shape
+        `(num_points, dof)`.
     times : NDArray[np.float64]
         Times of the samples, of shape `(num_points,)`.
     section_index : int, optional
@@ -406,10 +415,17 @@ def generate_poincare_section_from_traj(
             g_new = q[i, section_index] - section_value
 
         if detect_crossing(g_old, g_new, crossing, i == 1):
-            lam = g_old / (g_old - g_new)
-            q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
-            p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
-            t_cross = times[i - 1] + lam * (times[i] - times[i - 1])
+            h = times[i] - times[i - 1]
+            s = hermite_crossing(
+                g_old,
+                g_new,
+                qdot[i - 1, section_index],
+                qdot[i, section_index],
+                h,
+            )
+            q_cross = hermite_point(q[i - 1], q[i], qdot[i - 1], qdot[i], h, s)
+            p_cross = hermite_point(p[i - 1], p[i], pdot[i - 1], pdot[i], h, s)
+            t_cross = times[i - 1] + s * h
             section_points[hit, 0] = t_cross
             for j in range(dof):
                 section_points[hit, 1 + j] = q_cross[j]

@@ -29,6 +29,8 @@ from pynamicalsys.common.clv import (
 )
 from pynamicalsys.hamiltonian_systems.poincare import (
     generate_poincare_section_from_traj,
+    implicit_vector_field,
+    separable_vector_field,
 )
 from pynamicalsys.hamiltonian_systems.tangent import (
     advance_block_imp,
@@ -305,9 +307,17 @@ def compute_clvs_sep(
     traj_size = total_blocks + 1
 
     if poincare_section:
+        qdot_history = np.empty_like(q_history)
+        pdot_history = np.empty_like(p_history)
+        for k in range(traj_size):
+            qdot_history[k], pdot_history[k] = separable_vector_field(
+                q_history[k], p_history[k], grad_T, grad_V, parameters
+            )
         section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
+            qdot_history,
+            pdot_history,
             times,
             section_index,
             section_value,
@@ -765,9 +775,17 @@ def compute_clvs_imp(
     traj_size = total_blocks + 1
 
     if poincare_section:
+        qdot_history = np.empty_like(q_history)
+        pdot_history = np.empty_like(p_history)
+        for k in range(traj_size):
+            qdot_history[k], pdot_history[k] = implicit_vector_field(
+                q_history[k], p_history[k], eom, hess_H, parameters
+            )
         section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
+            qdot_history,
+            pdot_history,
             times,
             section_index,
             section_value,

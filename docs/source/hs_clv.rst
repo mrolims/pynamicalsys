@@ -140,7 +140,7 @@ Numerical options
     The QR decomposition used in the forward pass: ``"QR"`` (default), the package's modified Gram-Schmidt implementation, or ``"QR_HH"``, ``numpy.linalg.qr`` with Householder reflections.
 
 ``poincare_section``
-    With ``poincare_section=True``, together with ``section_index``, ``section_value``, ``crossing``, ``periodic_section_coordinate``, and ``period`` as in :doc:`hs_poincare`, the results are restricted to the crossings of a Poincaré section. The state at each crossing is interpolated between the two bracketing samples, while the vectors are those of the sample just before the crossing, so a small ``qr_time_step`` keeps the two consistent.
+    With ``poincare_section=True``, together with ``section_index``, ``section_value``, ``crossing``, ``periodic_section_coordinate``, and ``period`` as in :doc:`hs_poincare`, the results are restricted to the crossings of a Poincaré section. The state at each crossing is interpolated between the two bracketing samples with cubic Hermite polynomials, as in :doc:`hs_poincare`, while the vectors are those of the sample just before the crossing, so a small ``qr_time_step`` keeps the two consistent.
 
 ``time_step``, ``tol``, and ``max_iter``
     Set with ``integrator``. ``tol`` and ``max_iter`` apply only to ``imp``, as described in :doc:`hs_trajectories`.

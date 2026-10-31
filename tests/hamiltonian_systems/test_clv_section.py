@@ -6,15 +6,19 @@ so every returned point must lie on the requested section and cross it in the
 requested direction.
 
 The crossings are interpolated between the stored samples, which are the same
-with and without the section, so each crossing time must lie between the
-times of the two samples that bracket it, including after a warmup and when
-`qr_time_step` is not a multiple of the integration step.
+with and without the section, with cubic Hermite polynomials that use the
+vector field at the samples. Each crossing time must lie between the times of
+the two samples that bracket it, including after a warmup and when
+`qr_time_step` is not a multiple of the integration step, and the energy of
+the section points must stay close to that of the trajectory even when the
+samples are far apart.
 """
 
 import numpy as np
 import pytest
 
 from pynamicalsys import HamiltonianSystem as HS
+from pynamicalsys.common.poincare import hermite_crossing
 
 Q0 = [0.0, 0.1]
 P0 = [0.3, 0.0]
@@ -70,8 +74,40 @@ def test_clv_section_times_interpolate_the_stored_times(system, options):
     i = np.nonzero((x[:-1] < 0.0) & (x[1:] >= 0.0))[0]
     if x[0] == 0.0 and px[0] > 0.0:
         i = np.concatenate(([0], i))
-    lam = -x[i] / (x[i + 1] - x[i])
-    expected = time[i] + lam * (time[i + 1] - time[i])
+    # For Hénon-Heiles, dx/dt = px.
+    expected = np.array(
+        [
+            time[k]
+            + hermite_crossing(x[k], x[k + 1], px[k], px[k + 1], time[k + 1] - time[k])
+            * (time[k + 1] - time[k])
+            for k in i
+        ]
+    )
 
     assert section.shape[0] == i.size > 0
     np.testing.assert_allclose(section[:, 0], expected, rtol=1e-14)
+    assert np.all((section[:, 0] >= time[i]) & (section[:, 0] <= time[i + 1]))
+
+
+@pytest.mark.parametrize("integrator", ["svy4", "imp"])
+def test_clv_section_points_keep_the_energy(integrator):
+    energy = 1.0 / 8.0
+    y, py = -0.2, 0.0
+    px = np.sqrt(2.0 * (energy - (y**2 / 2.0 - y**3 / 3.0)) - py**2)
+
+    hs = HS(model="henon heiles")
+    hs.integrator(integrator, time_step=0.01)
+    _, section = hs.CLV(
+        [0.0, y],
+        [px, py],
+        500.0,
+        qr_time_step=0.1,
+        poincare_section=True,
+        section_index=0,
+        section_value=0.0,
+        crossing=1,
+    )
+
+    x, y, px, py = section[:, 1], section[:, 2], section[:, 3], section[:, 4]
+    hamiltonian = (px**2 + py**2) / 2.0 + (x**2 + y**2) / 2.0 + x**2 * y - y**3 / 3.0
+    np.testing.assert_allclose(hamiltonian, energy, rtol=0, atol=2e-6)
