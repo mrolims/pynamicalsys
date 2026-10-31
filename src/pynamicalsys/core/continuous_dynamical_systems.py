@@ -2539,6 +2539,7 @@ class ContinuousDynamicalSystem:
             - If required arguments for the selected map type are missing.
             - If `section_index` or `maxima_index` is outside the valid coordinate range.
             - If `crossing` is not one of `-1`, `0`, or `1`.
+            - If `sampling_time` is not positive.
         TypeError
             - If `map_type` is not a string.
             - If `section_value`, `sampling_time`, or `transient_time` is not a valid real number.
