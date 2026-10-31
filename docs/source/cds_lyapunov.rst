@@ -226,7 +226,7 @@ Logarithmically spaced sample times are convenient for following the convergence
     ax.plot([], [], "o", color="gray", markersize=4, label="Sampled")
 
     ax.set_xscale("log")
-    ax.set_xlabel("Accumulation time $t - t_{\mathrm{transient}}$")
+    ax.set_xlabel(r"Accumulation time $t - t_{\mathrm{transient}}$")
     ax.set_ylabel("Lyapunov exponents")
     ax.set_xlim(1.0, total_time - transient_time)
     ax.set_ylim(-1.1, 0.45)
