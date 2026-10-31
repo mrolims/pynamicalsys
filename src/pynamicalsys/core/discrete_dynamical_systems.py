@@ -1994,15 +1994,11 @@ class DiscreteDynamicalSystem:
         if iter_time_tuple[0] < 1 or iter_time_tuple[1] < 1:
             raise ValueError("all iter_time values must be positive")
 
-        backward_mapping = self.__backwards_mapping
-        if backward_mapping is None:
-            backward_mapping = self.__mapping
-
         return calculate_manifolds(
             u=u_arr,
             parameters=parameters_arr,
             forward_mapping=self.__mapping,
-            backward_mapping=backward_mapping,
+            backward_mapping=self.__backwards_mapping,
             jacobian=self.__jacobian,
             period=period,
             delta=delta,

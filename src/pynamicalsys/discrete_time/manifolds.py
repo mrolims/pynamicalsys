@@ -29,7 +29,7 @@ def calculate_manifolds(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
     forward_mapping: map_t,
-    backward_mapping: map_t,
+    backward_mapping: map_t | None,
     jacobian: jacobian_t,
     period: int,
     delta: numeric_t = 1e-4,
@@ -49,8 +49,9 @@ def calculate_manifolds(
         System parameters.
     forward_mapping : map_t
         Forward map.
-    backward_mapping : map_t
-        Backward map.
+    backward_mapping : map_t | None
+        Backward map. It is used only for the stable manifold, and may be None
+        for the unstable one.
     jacobian : jacobian_t
         Jacobian of the forward map.
     period : int_t
@@ -84,6 +85,7 @@ def calculate_manifolds(
         - If `n_points` or `iter_time` are invalid.
         - If `delta` is not positive.
         - If `stability` is invalid.
+        - If `stability="stable"` and `backward_mapping` is None.
 
     Notes
     -----
@@ -129,6 +131,8 @@ def calculate_manifolds(
 
     if stability not in ("stable", "unstable"):
         raise ValueError("stability must be either 'stable' or 'unstable'")
+    if stability == "stable" and backward_mapping is None:
+        raise ValueError("the stable manifold requires the backward map")
 
     stability_info = classify_stability(
         u=u,

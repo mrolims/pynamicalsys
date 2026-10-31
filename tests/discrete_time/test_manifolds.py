@@ -57,3 +57,22 @@ def test_the_saddle_itself_is_not_a_seed(system):
     for branch in system.manifold(SADDLE, 1, n_points=50, iter_time=5):
         distances = distance_to_saddle(branch)
         assert distances.min() > 1e-4
+
+
+def test_kernel_requires_a_backward_map_for_the_stable_manifold():
+    # The kernel needs the backward map only for the stable manifold, and must
+    # say so when it is missing instead of failing inside the compiled code.
+    from pynamicalsys.discrete_time.manifolds import calculate_manifolds
+    from pynamicalsys.discrete_time.models import henon_map, henon_map_jacobian
+
+    saddle = np.array([0.6313544770895048, 0.18940634312685142])
+    parameters = np.array([1.4, 0.3])
+    with pytest.raises(ValueError, match="backward"):
+        calculate_manifolds(
+            saddle, parameters, henon_map, None, henon_map_jacobian, 1, stability="stable"
+        )
+    # The unstable manifold does not use it.
+    branches = calculate_manifolds(
+        saddle, parameters, henon_map, None, henon_map_jacobian, 1, stability="unstable"
+    )
+    assert len(branches) == 2
