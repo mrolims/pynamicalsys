@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DiscreteDynamicalSystem.find_periodic_orbit` kept Numba's on-disk cache of its phase-space scan, which takes the map as an argument, so every new Python session added cache files that were never removed, and after many sessions loading a stale entry failed with `ReferenceError: underlying object has vanished`. The scan, and the core of `BasinMetrics.uncertainty_fraction`, are no longer cached on disk; they are compiled once per session.
 - `DiscreteDynamicalSystem.finite_time_lyapunov` did not check `num_exponents`: zero returned an empty array, and negative, fractional, or non-numeric values failed with unrelated errors. It now raises a `TypeError` unless `num_exponents` is an integer and a `ValueError` unless it is positive.
 - Arguments that must be positive numbers, such as `total_time`, `time_step`, `finite_time`, `k`, or `num_clvs`, accepted `True`, which counted as 1. They now raise a `TypeError` for booleans, as the arguments that must be non-negative already did.
 - `ContinuousDynamicalSystem.poincare_section` with `rk45` computed the crossing time from the requested step size instead of the accepted one, so crossings that followed a rejected step had wrong times, off by up to about one step size. The states on the section were correct. With `rk4`, the crossing times change only at the level of round-off.

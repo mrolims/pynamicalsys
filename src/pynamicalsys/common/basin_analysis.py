@@ -41,7 +41,7 @@ def uncertainty_fraction(x, y, basin, epsilon_max, n_eps=100, epsilon_min=0):
     return epsilons, _uncertainty_fraction_core(basin, dx, dy, epsilons)
 
 
-@njit(cache=True, parallel=True)
+@njit(parallel=True)
 def _uncertainty_fraction_core(basin, dx, dy, epsilons):
     """
     Numba-compatible core function for computing uncertainty fractions.
