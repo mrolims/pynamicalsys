@@ -3429,7 +3429,7 @@ class DiscreteDynamicalSystem:
         method : str, optional
             Computation method:
             - "ER": Analytical QR decomposition, after Eckmann and Ruelle [1]. Only for 2d systems
-            - "QR": QR decomposition (modifed Gram-Schmidt)
+            - "QR": QR decomposition (modified Gram-Schmidt)
             - "QR_HH": Householder QR (more stable, uses np.linalg.qr)
         return_history : bool, optional
             If True, return the exponents after each sampled iteration instead
@@ -3482,20 +3482,22 @@ class DiscreteDynamicalSystem:
             - If `parameters` is None but the system expects parameters.
             - If `parameters` is a scalar or array-like but not 1D.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `method` is not "QR" or "QR_HH".
+            - If `transient_time` is negative.
+            - If `transient_time` is greater than or equal to `total_time`.
+            - If `method` is not "ER", "QR", or "QR_HH", or if it is "ER" and
+              the system has more than two dimensions.
             - If `sample_times` is not a 1D array of integers, or contains values
               outside `(transient_time, total_time]`.
-            - If `log_base` is not positive.
-            - If `num_exponents` is larger then the system's dimension.
+            - If `log_base` is not positive, or is equal to 1.
+            - If `num_exponents` is not positive or is larger than the system
+              dimension.
         TypeError
             - If `u` is not a scalar or array-like type.
             - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If `log_base` is not float.
-            - If `num_exponents` is not an positive integer.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `log_base` is not a real number.
+            - If `num_exponents` is not an integer.
             - If `seed` is not an integer.
             - If sample_times cannot be converted to a 1D array of integers.
             - If `method` is not a string.
@@ -3517,22 +3519,22 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> # Basic 2D system with ER method
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params)
-
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="henon map")
+        >>> system.set_parameters([1.4, 0.3])
+        >>> u0 = [0.1, 0.1]
+        >>> # Full spectrum with the default method, "QR"
+        >>> exponents = system.lyapunov(u0, 10000)
+        >>> # With the Eckmann-Ruelle method, for two-dimensional maps
+        >>> exponents = system.lyapunov(u0, 10000, method="ER")
         >>> # With convergence history
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params, return_history=True)
-        >>> # Using Householder QR for better stability
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params, method="QR_HH", return_history=True)
+        >>> history = system.lyapunov(u0, 10000, return_history=True)
+        >>> # Using Householder QR
+        >>> history = system.lyapunov(u0, 10000, method="QR_HH", return_history=True)
         >>> # With transient time and logarithm base 10
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params, transient_time=1000,
-        ...         log_base=10.0, return_history=True)
+        >>> history = system.lyapunov(
+        ...     u0, 10000, transient_time=1000, log_base=10.0, return_history=True
+        ... )
         """
 
         u = validate_initial_conditions(
