@@ -4343,7 +4343,9 @@ class DiscreteDynamicalSystem:
         seed : int_t, optional
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
-            If True, also return the final state of the trajectory.
+            If True, also return the state of the system at the iteration where
+            the computation stopped: `total_time`, or the iteration at which
+            SALI fell below `threshold`.
         tol : numeric_t | None, optional
             Deprecated name of `threshold`. Passing it emits a
             `DeprecationWarning`, and it will stop working in a future
@@ -4539,7 +4541,9 @@ class DiscreteDynamicalSystem:
         seed : int, optional
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
-            If True, also return the final state of the trajectory.
+            If True, also return the state of the system at the iteration where
+            the computation stopped: `total_time`, or the iteration at which
+            LDI_k fell below `threshold`.
         tol : numeric_t | None, optional
             Deprecated name of `threshold`. Passing it emits a
             `DeprecationWarning`, and it will stop working in a future
@@ -4766,7 +4770,9 @@ class DiscreteDynamicalSystem:
         seed : int, optional
             Seed used to initialize the deviation vectors. Default is 1312.
         return_last_state : bool, optional
-            If True, also return the final state of the trajectory.
+            If True, also return the state of the system at the iteration where
+            the computation stopped: `total_time`, or the iteration at which
+            GALI_k fell below `threshold`.
         tol : numeric_t | None, optional
             Deprecated name of `threshold`. Passing it emits a
             `DeprecationWarning`, and it will stop working in a future
