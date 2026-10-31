@@ -30,7 +30,6 @@ The parameters :math:`a=0.25`, :math:`b=3`, :math:`c=0.5`, and :math:`d=0.05` pr
     transient_time = 1_000.0
     total_time = 2_000.0
     threshold = 1e-16
-    seed = 1312
 
 Smaller Alignment Index
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -59,7 +58,6 @@ Compute the history with :py:meth:`SALI <pynamicalsys.core.continuous_dynamical_
         transient_time=transient_time,
         return_history=True,
         threshold=threshold,
-        seed=seed,
     )
 
 With ``return_history=True``, the first column contains time and the second contains SALI. The calculation stops when the indicator falls below ``threshold``.
@@ -129,7 +127,6 @@ Compare the three methods for :math:`k=2` using the same initial deviation vecto
                 return_history=True,
                 method=method,
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -178,7 +175,6 @@ Compute :math:`\mathrm{GALI}_2`, :math:`\mathrm{GALI}_3`, and :math:`\mathrm{GAL
                 return_history=True,
                 method="QR_HH",
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -235,7 +231,6 @@ Compute :math:`\mathrm{LDI}_2`, :math:`\mathrm{LDI}_3`, and :math:`\mathrm{LDI}_
                 transient_time=transient_time,
                 return_history=True,
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -298,10 +293,10 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
     benchmark_labels = ["SALI"] + [f"GALI {method.replace('_', '-')}" for method in gali_methods] + ["LDI SVD"]
     benchmark_times = np.empty((len(benchmark_labels), benchmark_repeats))
 
-    benchmark_system.SALI(benchmark_state, 0.01, threshold=0.0, seed=seed)
+    benchmark_system.SALI(benchmark_state, 0.01, threshold=0.0)
     for method in gali_methods:
-        benchmark_system.GALI(benchmark_state, 0.01, k=2, method=method, threshold=0.0, seed=seed)
-    benchmark_system.LDI(benchmark_state, 0.01, k=2, threshold=0.0, seed=seed)
+        benchmark_system.GALI(benchmark_state, 0.01, k=2, method=method, threshold=0.0)
+    benchmark_system.LDI(benchmark_state, 0.01, k=2, threshold=0.0)
 
     for repeat in range(benchmark_repeats):
         start = perf_counter()
@@ -310,7 +305,6 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
             benchmark_time,
             transient_time=benchmark_transient_time,
             threshold=0.0,
-            seed=seed,
         )
         benchmark_times[0, repeat] = perf_counter() - start
 
@@ -323,7 +317,6 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
                 transient_time=benchmark_transient_time,
                 method=method,
                 threshold=0.0,
-                seed=seed,
             )
             benchmark_times[index + 1, repeat] = perf_counter() - start
 
@@ -334,7 +327,6 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
             k=2,
             transient_time=benchmark_transient_time,
             threshold=0.0,
-            seed=seed,
         )
         benchmark_times[-1, repeat] = perf_counter() - start
 
