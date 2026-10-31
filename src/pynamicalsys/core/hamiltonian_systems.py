@@ -64,6 +64,8 @@ from pynamicalsys.hamiltonian_systems.trajectory import (
 from pynamicalsys.hamiltonian_systems.poincare import (
     ensemble_poincare_section,
     generate_poincare_section,
+    implicit_vector_field,
+    separable_vector_field,
 )
 
 
@@ -209,16 +211,19 @@ class HamiltonianSystem:
             "description": "4th order Yoshida method",
             "integrator": yoshida_4th_step,
             "tangent integrator": yoshida_4th_step_traj_tan,
+            "vector field": separable_vector_field,
         },
         "vv2": {
             "description": "2nd order velocity Verlet method",
             "integrator": velocity_verlet_2nd_step,
             "tangent integrator": velocity_verlet_2nd_step_traj_tan,
+            "vector field": separable_vector_field,
         },
         "imp": {
             "description": "Implicit midpoint method",
             "integrator": implicit_midpoint_step,
             "tangent integrator": implicit_midpoint_step_traj_tan,
+            "vector field": implicit_vector_field,
         },
     }
 
@@ -289,6 +294,7 @@ class HamiltonianSystem:
             self.__integrator = "svy4"
             self.__integrator_func = yoshida_4th_step
             self.__traj_tan_integrator_func = yoshida_4th_step_traj_tan
+            self.__vector_field_func = separable_vector_field
             self.__degrees_of_freedom = int(model_info["degrees of freedom"])
             self.__parameters = None
             self.__number_of_parameters = int(model_info["number of parameters"])
@@ -376,12 +382,14 @@ class HamiltonianSystem:
             self.__integrator = "svy4"
             self.__integrator_func = yoshida_4th_step
             self.__traj_tan_integrator_func = yoshida_4th_step_traj_tan
+            self.__vector_field_func = separable_vector_field
         elif eom is not None and hess_H is not None:
             self.__system_func_1 = eom
             self.__system_func_2 = hess_H
             self.__integrator = "imp"
             self.__integrator_func = implicit_midpoint_step
             self.__traj_tan_integrator_func = implicit_midpoint_step_traj_tan
+            self.__vector_field_func = implicit_vector_field
         self.__time_step = np.float64(1e-2)
         self.__tol = np.float64(1e-12)
         self.__max_iter = 50
@@ -545,6 +553,7 @@ class HamiltonianSystem:
         self.__integrator = integrator
         self.__integrator_func = integrator_info["integrator"]
         self.__traj_tan_integrator_func = integrator_info["tangent integrator"]
+        self.__vector_field_func = integrator_info["vector field"]
         self.__time_step = np.float64(time_step)
         self.__tol = np.float64(tol)
         self.__max_iter = max_iter
@@ -869,6 +878,7 @@ class HamiltonianSystem:
                 system_func_2=self.__system_func_2,
                 time_step=self.__time_step,
                 integrator=self.__integrator_func,
+                vector_field=self.__vector_field_func,
                 section_index=int(section_index),
                 section_value=section_value,
                 crossing=int(crossing),
@@ -887,6 +897,7 @@ class HamiltonianSystem:
             system_func_2=self.__system_func_2,
             time_step=self.__time_step,
             integrator=self.__integrator_func,
+            vector_field=self.__vector_field_func,
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
@@ -1213,13 +1224,17 @@ class HamiltonianSystem:
             `2 * degrees_of_freedom`.
         warmup_time : numeric_t, optional
             Forward warmup time used to drive the orthonormal tangent basis
-            toward the backward Lyapunov vectors.
+            toward the backward Lyapunov vectors. It is rounded to a whole
+            number of QR intervals.
         tail_time : numeric_t, optional
             Additional forward integration time after the storage window, used
-            to initialize the backward recursion.
+            to initialize the backward recursion. It is rounded to a whole
+            number of QR intervals.
         qr_time_step : numeric_t | None, optional
-            Time interval between successive QR factorizations. If `None`,
-            defaults to the integrator time step.
+            Time interval between successive QR factorizations, which is also
+            the spacing of the stored samples. It is rounded to the nearest
+            whole number of integration steps. If `None`, defaults to the
+            integrator time step.
         seed : int_t, optional
             Random seed used in the tangent-basis initialization and backward
             recursion.
@@ -1346,13 +1361,13 @@ class HamiltonianSystem:
                 raise TypeError("crossing must be an integer")
             if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
-
-        if not isinstance(periodic_section_coordinate, bool):
-            raise TypeError("periodic_section_coordinate must be a boolean")
         else:
             section_index = 0
             section_value = np.float64(0.0)
             crossing = 1
+
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
 
         if self.__integrator in ["vv2", "svy4"]:
             return compute_clvs_sep(
@@ -1448,12 +1463,16 @@ class HamiltonianSystem:
             Requested pairwise CLV angles. Each entry `(i, j)` returns the angle
             between CLV `i` and CLV `j`.
         warmup_time : numeric_t, optional
-            Forward QR warmup duration passed to the CLV computation.
+            Forward QR warmup duration passed to the CLV computation. It is
+            rounded to a whole number of QR intervals.
         tail_time : numeric_t, optional
-            Backward-recursion convergence duration passed to the CLV computation.
+            Backward-recursion convergence duration passed to the CLV
+            computation. It is rounded to a whole number of QR intervals.
         qr_time_step : numeric_t | None, optional
-            Time spacing between successive QR factorizations. If `None`,
-            defaults to the integrator time step.
+            Time spacing between successive QR factorizations, which is also
+            the spacing of the stored samples. It is rounded to the nearest
+            whole number of integration steps. If `None`, defaults to the
+            integrator time step.
         seed : int_t, optional
             Seed used in the CLV computation.
         poincare_section : bool, optional
@@ -1569,13 +1588,13 @@ class HamiltonianSystem:
                 raise TypeError("crossing must be an integer")
             if crossing not in (-1, 0, 1):
                 raise ValueError("crossing must be -1, 0, or 1")
-
-        if not isinstance(periodic_section_coordinate, bool):
-            raise TypeError("periodic_section_coordinate must be a boolean")
         else:
             section_index = 0
             section_value = np.float64(0.0)
             crossing = 1
+
+        if not isinstance(periodic_section_coordinate, bool):
+            raise TypeError("periodic_section_coordinate must be a boolean")
 
         if self.__integrator in ["vv2", "svy4"]:
             return clv_angles_sep(
@@ -2303,6 +2322,7 @@ class HamiltonianSystem:
             system_func_2=self.__system_func_2,
             time_step=self.__time_step,
             integrator=self.__integrator_func,
+            vector_field=self.__vector_field_func,
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),
@@ -2432,6 +2452,7 @@ class HamiltonianSystem:
             system_func_2=self.__system_func_2,
             time_step=self.__time_step,
             integrator=self.__integrator_func,
+            vector_field=self.__vector_field_func,
             section_index=int(section_index),
             section_value=section_value,
             crossing=int(crossing),

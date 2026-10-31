@@ -20,8 +20,32 @@ import numpy as np
 from numba import njit
 from numpy.typing import NDArray
 from pynamicalsys.common.types import system_func_t, symplectic_step_t
-from pynamicalsys.common.poincare import detect_crossing, wrap_period
+from pynamicalsys.common.poincare import (
+    detect_crossing,
+    hermite_crossing,
+    hermite_point,
+    wrap_period,
+)
 from concurrent.futures import ThreadPoolExecutor
+
+
+@njit
+def separable_vector_field(q, p, system_func_1, system_func_2, parameters):
+    """
+    Vector field `(dq/dt, dp/dt) = (grad_T(p), -grad_V(q))` of a separable
+    Hamiltonian, with `system_func_1 = grad_T` and `system_func_2 = grad_V`.
+    """
+    return system_func_1(p, parameters), -system_func_2(q, parameters)
+
+
+@njit
+def implicit_vector_field(q, p, system_func_1, system_func_2, parameters):
+    """
+    Vector field `(dq/dt, dp/dt)` of a general Hamiltonian, with
+    `system_func_1` the equations of motion used by the implicit midpoint
+    integrator.
+    """
+    return system_func_1(q, p, parameters)
 
 
 # The GIL is released so that `ensemble_poincare_section` can run the
@@ -36,6 +60,7 @@ def generate_poincare_section(
     system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
+    vector_field,
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
     crossing: int = 1,
@@ -76,6 +101,9 @@ def generate_poincare_section(
         Integration time step.
     integrator : symplectic_step_t
         Symplectic integration step.
+    vector_field : callable
+        Function `(q, p, system_func_1, system_func_2, parameters) -> (qdot, pdot)`
+        matching the integrator, used to interpolate the crossings.
     section_index : int, optional
         Index of the coordinate used to define the section.
     section_value : np.float64, optional
@@ -139,11 +167,23 @@ def generate_poincare_section(
         else:
             g_new = q_new[section_index] - section_value
 
-        if detect_crossing(g_old, g_new, crossing):
-            lam = g_old / (g_old - g_new)
-            q_cross = (np.float64(1.0) - lam) * q_prev + lam * q_new
-            p_cross = (np.float64(1.0) - lam) * p_prev + lam * p_new
-            t_cross = np.float64(step) * time_step + lam * time_step
+        if detect_crossing(g_old, g_new, crossing, step == 0):
+            qdot_prev, pdot_prev = vector_field(
+                q_prev, p_prev, system_func_1, system_func_2, parameters
+            )
+            qdot_new, pdot_new = vector_field(
+                q_new, p_new, system_func_1, system_func_2, parameters
+            )
+            s = hermite_crossing(
+                g_old,
+                g_new,
+                qdot_prev[section_index],
+                qdot_new[section_index],
+                time_step,
+            )
+            q_cross = hermite_point(q_prev, q_new, qdot_prev, qdot_new, time_step, s)
+            p_cross = hermite_point(p_prev, p_new, pdot_prev, pdot_new, time_step, s)
+            t_cross = np.float64(step) * time_step + s * time_step
             section_points[num_crossings_found, 0] = t_cross
             section_points[num_crossings_found, 1 : dof + 1] = q_cross
             section_points[num_crossings_found, dof + 1 :] = p_cross
@@ -170,6 +210,7 @@ def ensemble_poincare_section(
     system_func_2: system_func_t,
     time_step: np.float64,
     integrator: symplectic_step_t,
+    vector_field,
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
     crossing: int = 1,
@@ -200,6 +241,9 @@ def ensemble_poincare_section(
         Integration time step.
     integrator : symplectic_step_t
         Symplectic integration step.
+    vector_field : callable
+        Function `(q, p, system_func_1, system_func_2, parameters) -> (qdot, pdot)`
+        matching the integrator, used to interpolate the crossings.
     section_index : int, optional
         Index of the coordinate used to define the section.
     section_value : np.float64, optional
@@ -241,6 +285,7 @@ def ensemble_poincare_section(
             system_func_2,
             time_step,
             integrator,
+            vector_field,
             section_index,
             section_value,
             crossing,
@@ -267,7 +312,9 @@ def ensemble_poincare_section(
 def generate_poincare_section_from_traj(
     q: NDArray[np.float64],
     p: NDArray[np.float64],
-    time_step: np.float64,
+    qdot: NDArray[np.float64],
+    pdot: NDArray[np.float64],
+    times: NDArray[np.float64],
     section_index: int = 0,
     section_value: np.float64 = np.float64(0.0),
     crossing: int = 1,
@@ -277,11 +324,15 @@ def generate_poincare_section_from_traj(
     """
     Extract Poincaré-section crossings from precomputed trajectory samples.
 
-    Works for both separable and non-separable Hamiltonian systems:
-    `system_func_1` must be the full equations-of-motion function
-    `(qdot, pdot) = system_func_1(q, p, parameters)`. For a separable
-    system, `qdot` may depend only on `p` internally; this function does
-    not assume otherwise.
+    Only the samples and the vector field at them are used, so this works for
+    separable and non-separable Hamiltonian systems alike. A crossing is
+    detected when `q[:, section_index] - section_value` changes sign between
+    two successive samples, and its direction is the direction of that change.
+    The crossing time, coordinates, and momenta are interpolated between the
+    two samples with cubic Hermite polynomials, which use the vector field at
+    both of them. A sample exactly on the section is counted once, as the end of
+    the interval that arrives on it, and the first sample is counted when it
+    lies on the section.
 
     Parameters
     ----------
@@ -289,8 +340,14 @@ def generate_poincare_section_from_traj(
         Sampled generalized coordinates of shape `(num_points, dof)`.
     p : NDArray[np.float64]
         Sampled generalized momenta of shape `(num_points, dof)`.
-    time_step : np.float64
-        Time interval between successive stored trajectory samples.
+    qdot : NDArray[np.float64]
+        Time derivatives of the coordinates at the samples, of shape
+        `(num_points, dof)`.
+    pdot : NDArray[np.float64]
+        Time derivatives of the momenta at the samples, of shape
+        `(num_points, dof)`.
+    times : NDArray[np.float64]
+        Times of the samples, of shape `(num_points,)`.
     section_index : int, optional
         Index of the coordinate used to define the section.
     section_value : np.float64, optional
@@ -335,7 +392,7 @@ def generate_poincare_section_from_traj(
         else:
             g_new = q[i, section_index] - section_value
 
-        if detect_crossing(g_old, g_new, crossing):
+        if detect_crossing(g_old, g_new, crossing, i == 1):
             n_hits += 1
 
         g_old = wrap_period(g_new, period) if periodic_section_coordinate else g_new
@@ -357,11 +414,18 @@ def generate_poincare_section_from_traj(
         else:
             g_new = q[i, section_index] - section_value
 
-        if detect_crossing(g_old, g_new, crossing):
-            lam = g_old / (g_old - g_new)
-            q_cross = (np.float64(1.0) - lam) * q[i - 1, :] + lam * q[i, :]
-            p_cross = (np.float64(1.0) - lam) * p[i - 1, :] + lam * p[i, :]
-            t_cross = np.float64(i - 1) * time_step + lam * time_step
+        if detect_crossing(g_old, g_new, crossing, i == 1):
+            h = times[i] - times[i - 1]
+            s = hermite_crossing(
+                g_old,
+                g_new,
+                qdot[i - 1, section_index],
+                qdot[i, section_index],
+                h,
+            )
+            q_cross = hermite_point(q[i - 1], q[i], qdot[i - 1], qdot[i], h, s)
+            p_cross = hermite_point(p[i - 1], p[i], pdot[i - 1], pdot[i], h, s)
+            t_cross = times[i - 1] + s * h
             section_points[hit, 0] = t_cross
             for j in range(dof):
                 section_points[hit, 1 + j] = q_cross[j]

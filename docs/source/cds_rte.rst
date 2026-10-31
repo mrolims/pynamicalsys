@@ -181,7 +181,7 @@ Numerical options
     The shortest white vertical line counted in the distribution of recurrence times. It defaults to ``1``.
 
 ``time_step``, ``atol``, and ``rtol``
-    Set with ``integrator``. The reduced-map points are interpolated between integration steps, as described in :doc:`cds_reduced_maps`, so their accuracy depends on the step size.
+    Set with ``integrator``. Poincaré-section and maxima-map points are interpolated between integration steps, and stroboscopic-map points are computed exactly at the sampling times, as described in :doc:`cds_reduced_maps`. In all cases their accuracy depends on the step size.
 
 References
 ~~~~~~~~~~

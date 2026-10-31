@@ -1032,7 +1032,7 @@ class ContinuousDynamicalSystem:
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
             - If `num_samples` is negative.
-            - If `sampling_time` is negative.
+            - If `sampling_time` is not positive.
             - If `transient_time` is negative.
         TypeError
             - If `num_samples` is not an integer.
@@ -1074,7 +1074,7 @@ class ContinuousDynamicalSystem:
 
         validate_non_negative(num_samples, "num_samples", Integral)
         num_samples = int(num_samples)
-        validate_non_negative(sampling_time, "sampling_time", Real)
+        validate_positive(sampling_time, "sampling_time", Real)
         sampling_time = np.float64(sampling_time)
 
         transient_time, _ = validate_times(transient_time, 1.0e300)
@@ -1300,6 +1300,7 @@ class ContinuousDynamicalSystem:
             - If `map_type` is not `"SM"` or `"PS"`.
             - If `section_index` is outside the valid coordinate range.
             - If `crossing` is not one of `-1`, `0`, or `1`.
+            - If `sampling_time` is not positive.
         TypeError
             - If `map_type` is not a string.
             - If `section_value`, `sampling_time`, or `transient_time` is not a valid real number.
@@ -1346,7 +1347,7 @@ class ContinuousDynamicalSystem:
                 )
 
         if sampling_time is not None:
-            validate_non_negative(sampling_time, "sampling_time", Real)
+            validate_positive(sampling_time, "sampling_time", Real)
 
         validate_non_negative(eps, "eps", Real)
         validate_non_negative(min_samples, "min_samples", Integral)
@@ -1660,7 +1661,9 @@ class ContinuousDynamicalSystem:
             Initial condition. It must define a 1D state vector whose length matches
             the system dimension.
         total_time : numeric_t
-            Total integration time over which the CLVs are returned.
+            End time of the computation, measured from the initial condition.
+            The CLVs are returned from `transient_time + warmup_time` to
+            `total_time`.
         parameters : numeric_like_t | None, optional
             System parameters. If `None`, the parameters stored in the instance are used.
         num_clvs : int_t | None, optional
@@ -1670,7 +1673,8 @@ class ContinuousDynamicalSystem:
             Initial integration time discarded before starting the CLV computation.
         warmup_time : numeric_t, optional
             Forward warmup time used to drive the tangent basis toward the backward
-            Lyapunov vectors.
+            Lyapunov vectors. It follows the transient and is part of
+            `total_time`, so the stored samples start after it.
         tail_time : numeric_t, optional
             Additional forward integration time after the main storage window, used
             to initialize the backward recursion.
@@ -1694,6 +1698,7 @@ class ContinuousDynamicalSystem:
             - If `u` does not match the system dimension.
             - If the number of parameters does not match the expected number.
             - If `total_time`, `transient_time`, `warmup_time`, or `tail_time` is negative.
+            - If `transient_time + warmup_time` is not smaller than `total_time`.
             - If `num_clvs` is not in `[1, system_dimension]`.
             - If `qr_time_step` is not positive when provided.
         TypeError
@@ -1719,6 +1724,10 @@ class ContinuousDynamicalSystem:
 
         warmup_time = np.float64(warmup_time)
         tail_time = np.float64(tail_time)
+        if transient_time + warmup_time >= total_time:
+            raise ValueError(
+                "transient_time + warmup_time must be less than total_time"
+            )
 
         time_step = self.__get_initial_time_step(u, parameters)
 
@@ -1778,7 +1787,9 @@ class ContinuousDynamicalSystem:
             Initial condition. It must define a 1D state vector whose length matches
             the system dimension.
         total_time : numeric_t
-            Total integration time used for the angle diagnostics.
+            End time of the computation, measured from the initial condition.
+            The angles are returned from `transient_time + warmup_time` to
+            `total_time`.
         parameters : numeric_like_t | None, optional
             System parameters. If `None`, the parameters stored in the instance are used.
         subspaces : tuple[tuple[tuple[int, ...], tuple[int, ...]], ...] | None, optional
@@ -1790,7 +1801,9 @@ class ContinuousDynamicalSystem:
         transient_time : numeric_t, optional
             Initial integration time discarded before starting the diagnostic.
         warmup_time : numeric_t, optional
-            Forward QR warm-up duration passed to the CLV computation.
+            Forward QR warm-up duration passed to the CLV computation. It
+            follows the transient and is part of `total_time`, so the stored
+            samples start after it.
         tail_time : numeric_t, optional
             Backward-recursion convergence duration passed to the CLV computation.
         qr_time_step : numeric_t | None, optional
@@ -1812,6 +1825,7 @@ class ContinuousDynamicalSystem:
             - If `total_time` is negative.
             - If `transient_time` is negative or not smaller than `total_time`.
             - If `warmup_time` or `tail_time` is negative.
+            - If `transient_time + warmup_time` is not smaller than `total_time`.
             - If both `subspaces` and `pairs` are missing or empty.
             - If any CLV subspace or pair specification is invalid.
             - If `qr_time_step` is not positive when provided.
@@ -1841,6 +1855,10 @@ class ContinuousDynamicalSystem:
 
         warmup_time = np.float64(warmup_time)
         tail_time = np.float64(tail_time)
+        if transient_time + warmup_time >= total_time:
+            raise ValueError(
+                "transient_time + warmup_time must be less than total_time"
+            )
 
         time_step = self.__get_initial_time_step(u, parameters)
 
@@ -2521,6 +2539,7 @@ class ContinuousDynamicalSystem:
             - If required arguments for the selected map type are missing.
             - If `section_index` or `maxima_index` is outside the valid coordinate range.
             - If `crossing` is not one of `-1`, `0`, or `1`.
+            - If `sampling_time` is not positive.
         TypeError
             - If `map_type` is not a string.
             - If `section_value`, `sampling_time`, or `transient_time` is not a valid real number.

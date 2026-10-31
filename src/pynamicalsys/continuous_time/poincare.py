@@ -19,6 +19,11 @@ from numpy.typing import NDArray
 import numpy as np
 from numba import njit, prange
 
+from pynamicalsys.common.poincare import (
+    detect_crossing,
+    hermite_crossing,
+    hermite_point,
+)
 from pynamicalsys.common.types import flow_t
 from pynamicalsys.continuous_time.step import evolve_system, step
 
@@ -84,8 +89,10 @@ def generate_poincare_section(
     -----
     Crossings are detected when the selected coordinate changes sign relative to
     `section_value` between two successive integration steps. The crossing time
-    and state are estimated by linear interpolation between the two bracketing
-    states.
+    and state are estimated by cubic Hermite interpolation between the two
+    bracketing states, which uses the vector field at both of them. A state
+    exactly on the section is counted once, at the step that arrives on it, and
+    the initial state is counted when it lies on the section.
     """
     neq = len(u)
     section_points = np.zeros((num_intersections, neq + 1), dtype=np.float64)
@@ -110,6 +117,7 @@ def generate_poincare_section(
     time_step_prev = time_step
     time_prev = time
     u_prev = u.copy()
+    first_step = True
 
     while count < num_intersections:
         u_new, time_new, time_step_new = step(
@@ -123,15 +131,19 @@ def generate_poincare_section(
             integrator=integrator,
         )
 
-        if (u_prev[section_index] - section_value) * (
-            u_new[section_index] - section_value
-        ) < 0.0:
-            lam = (section_value - u_prev[section_index]) / (
-                u_new[section_index] - u_prev[section_index]
+        g_old = u_prev[section_index] - section_value
+        g_new = u_new[section_index] - section_value
+
+        if detect_crossing(g_old, g_new, 0, first_step):
+            h = time_new - time_prev
+            du_prev = equations_of_motion(time_prev, u_prev, parameters)
+            du_new = equations_of_motion(time_new, u_new, parameters)
+            s = hermite_crossing(
+                g_old, g_new, du_prev[section_index], du_new[section_index], h
             )
 
-            t_cross = time_new - time_step_prev + lam * time_step_prev
-            u_cross = (1.0 - lam) * u_prev + lam * u_new
+            t_cross = time_prev + s * h
+            u_cross = hermite_point(u_prev, u_new, du_prev, du_new, h, s)
             velocity = equations_of_motion(t_cross, u_cross, parameters)[section_index]
 
             if crossing == 0 or np.sign(velocity) == crossing:
@@ -142,6 +154,7 @@ def generate_poincare_section(
         time_prev = time_new
         time_step_prev = time_step_new
         u_prev = u_new
+        first_step = False
 
     return section_points
 

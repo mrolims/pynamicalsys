@@ -29,6 +29,8 @@ from pynamicalsys.common.clv import (
 )
 from pynamicalsys.hamiltonian_systems.poincare import (
     generate_poincare_section_from_traj,
+    implicit_vector_field,
+    separable_vector_field,
 )
 from pynamicalsys.hamiltonian_systems.tangent import (
     advance_block_imp,
@@ -105,11 +107,14 @@ def compute_clvs_sep(
     num_clvs : int
         Number of CLVs to compute.
     warmup_time : np.float64
-        Forward warmup time used before storing QR factors.
+        Forward warmup time used before storing QR factors, rounded to a whole
+        number of QR blocks.
     tail_time : np.float64
-        Extra forward time used to initialize the backward recursion.
+        Extra forward time used to initialize the backward recursion, rounded
+        to a whole number of QR blocks.
     qr_time_step : np.float64
-        Time interval between successive QR factorizations.
+        Time interval between successive QR factorizations, rounded to a
+        whole number of integration steps.
     seed : int
         Random seed used to initialize the tangent basis and the backward matrix.
     method : str
@@ -163,14 +168,17 @@ def compute_clvs_sep(
     num_steps = round(total_time / time_step)
     qr_steps = round(qr_time_step / time_step)
     total_blocks = num_steps // qr_steps
+    # Blocks are a whole number of steps long, which may differ from
+    # qr_time_step, so the warmup and tail are counted in actual blocks.
+    block_time = np.float64(qr_steps) * time_step
 
     warm_blocks = 0
     if warmup_time > np.float64(0.0):
-        warm_blocks = round(warmup_time / qr_time_step)
+        warm_blocks = round(warmup_time / block_time)
 
     tail_blocks = 0
     if tail_time > np.float64(0.0):
-        tail_blocks = round(tail_time / qr_time_step)
+        tail_blocks = round(tail_time / block_time)
 
     np.random.seed(seed)
     Q = -np.float64(1.0) + np.float64(2.0) * np.random.rand(neq, num_clvs)
@@ -299,10 +307,18 @@ def compute_clvs_sep(
     traj_size = total_blocks + 1
 
     if poincare_section:
+        qdot_history = np.empty_like(q_history)
+        pdot_history = np.empty_like(p_history)
+        for k in range(traj_size):
+            qdot_history[k], pdot_history[k] = separable_vector_field(
+                q_history[k], p_history[k], grad_T, grad_V, parameters
+            )
         section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
-            qr_time_step,
+            qdot_history,
+            pdot_history,
+            times,
             section_index,
             section_value,
             crossing,
@@ -380,11 +396,14 @@ def clv_angles_sep(
     hess_V : system_func_t
         Hessian of the potential energy with respect to the coordinates.
     warmup_time : np.float64
-        Forward warmup time used before storing QR factors.
+        Forward warmup time used before storing QR factors, rounded to a whole
+        number of QR blocks.
     tail_time : np.float64
-        Extra forward time used to initialize the backward recursion.
+        Extra forward time used to initialize the backward recursion, rounded
+        to a whole number of QR blocks.
     qr_time_step : np.float64
-        Time interval between successive QR factorizations.
+        Time interval between successive QR factorizations, rounded to a
+        whole number of integration steps.
     seed : int
         Random seed used to initialize the tangent basis and the backward matrix.
     method : str
@@ -553,11 +572,14 @@ def compute_clvs_imp(
     num_clvs : int
         Number of CLVs to compute.
     warmup_time : np.float64
-        Forward warmup time used before storing QR factors.
+        Forward warmup time used before storing QR factors, rounded to a whole
+        number of QR blocks.
     tail_time : np.float64
-        Extra forward time used to initialize the backward recursion.
+        Extra forward time used to initialize the backward recursion, rounded
+        to a whole number of QR blocks.
     qr_time_step : np.float64
-        Time interval between successive QR factorizations.
+        Time interval between successive QR factorizations, rounded to a
+        whole number of integration steps.
     seed : int
         Random seed used to initialize the tangent basis and the backward matrix.
     method : str
@@ -614,14 +636,17 @@ def compute_clvs_imp(
     num_steps = round(total_time / time_step)
     qr_steps = round(qr_time_step / time_step)
     total_blocks = num_steps // qr_steps
+    # Blocks are a whole number of steps long, which may differ from
+    # qr_time_step, so the warmup and tail are counted in actual blocks.
+    block_time = np.float64(qr_steps) * time_step
 
     warm_blocks = 0
     if warmup_time > np.float64(0.0):
-        warm_blocks = round(warmup_time / qr_time_step)
+        warm_blocks = round(warmup_time / block_time)
 
     tail_blocks = 0
     if tail_time > np.float64(0.0):
-        tail_blocks = round(tail_time / qr_time_step)
+        tail_blocks = round(tail_time / block_time)
 
     np.random.seed(seed)
     Q = -np.float64(1.0) + np.float64(2.0) * np.random.rand(neq, num_clvs)
@@ -750,10 +775,18 @@ def compute_clvs_imp(
     traj_size = total_blocks + 1
 
     if poincare_section:
+        qdot_history = np.empty_like(q_history)
+        pdot_history = np.empty_like(p_history)
+        for k in range(traj_size):
+            qdot_history[k], pdot_history[k] = implicit_vector_field(
+                q_history[k], p_history[k], eom, hess_H, parameters
+            )
         section_points, section_k = generate_poincare_section_from_traj(
             q_history,
             p_history,
-            qr_time_step,
+            qdot_history,
+            pdot_history,
+            times,
             section_index,
             section_value,
             crossing,
@@ -827,11 +860,14 @@ def clv_angles_imp(
     hess_H : system_func_t
         Hessian of the Hamiltonian w.r.t. z = (q, p).
     warmup_time : np.float64
-        Forward warmup time used before storing QR factors.
+        Forward warmup time used before storing QR factors, rounded to a whole
+        number of QR blocks.
     tail_time : np.float64
-        Extra forward time used to initialize the backward recursion.
+        Extra forward time used to initialize the backward recursion, rounded
+        to a whole number of QR blocks.
     qr_time_step : np.float64
-        Time interval between successive QR factorizations.
+        Time interval between successive QR factorizations, rounded to a
+        whole number of integration steps.
     seed : int
         Random seed used to initialize the tangent basis and the backward matrix.
     method : str

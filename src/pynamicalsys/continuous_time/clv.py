@@ -30,7 +30,19 @@ from pynamicalsys.common.clv import (
     clv_solve_upper_inplace,
 )
 from pynamicalsys.continuous_time.step_methods import rk4_step_wrapped
-from pynamicalsys.continuous_time.step import evolve_system, step
+from pynamicalsys.continuous_time.step import evolve_system, step, step_to
+
+
+@njit
+def whole_blocks(duration: np.float64, block_time: np.float64) -> int:
+    """
+    Number of whole blocks of `block_time` in `duration`, rounded down.
+
+    A ratio within round-off of an integer counts as that integer, so that, for
+    example, 0.3 / 0.1 = 2.9999999999999996 gives three blocks.
+    """
+    ratio = duration / block_time
+    return int(np.floor(ratio + 1e-9 * max(1.0, ratio)))
 
 
 @njit(error_model="numpy")
@@ -161,17 +173,13 @@ def compute_clvs(
 
     warm_blocks = 0
     if warmup_time > 0.0:
-        warm_blocks = int(np.floor(warmup_time / qr_time_step))
+        warm_blocks = whole_blocks(warmup_time, qr_time_step)
         if warm_blocks < 0:
             warm_blocks = 0
 
-    total_blocks = int(np.floor((t_end - t0) / qr_time_step))
-    if total_blocks < 1:
-        total_blocks = 1
-
     tail_blocks = 0
     if tail_time > 0.0:
-        tail_blocks = int(np.floor(tail_time / qr_time_step))
+        tail_blocks = whole_blocks(tail_time, qr_time_step)
         if tail_blocks < 0:
             tail_blocks = 0
 
@@ -180,13 +188,12 @@ def compute_clvs(
         if t_target > t_end:
             t_target = t_end
 
-        while time < t_target:
-            if time + dt > t_target:
-                dt = t_target - time
-
-            uv, time, dt = step(
+        reached = False
+        while not reached:
+            uv, time, dt, reached = step_to(
                 time=time,
                 u=uv,
+                target_time=t_target,
                 parameters=parameters,
                 equations_of_motion=equations_of_motion,
                 jacobian=jacobian,
@@ -205,6 +212,12 @@ def compute_clvs(
         if time >= t_end:
             break
 
+    # The stored stage starts where the warmup ends and ends at t_end.
+    t_start = time
+    total_blocks = whole_blocks(t_end - t_start, qr_time_step)
+    if total_blocks < 1:
+        total_blocks = 1
+
     Q_store = np.zeros((total_blocks + 1, neq, p), dtype=np.float64)
     R_store = np.zeros((total_blocks, p, p), dtype=np.float64)
     traj = np.zeros((total_blocks + 1, neq + 1), dtype=np.float64)
@@ -217,7 +230,7 @@ def compute_clvs(
     dt_min = np.float64(100.0) * np.finfo(np.float64).eps
 
     for k in range(total_blocks):
-        t_target = t0 + (k + 1) * qr_time_step
+        t_target = t_start + (k + 1) * qr_time_step
         if t_target > t_end:
             t_target = t_end
 
@@ -267,13 +280,12 @@ def compute_clvs(
     for k in range(tail_blocks):
         t_target = time + qr_time_step
 
-        while time < t_target:
-            if time + dt > t_target:
-                dt = t_target - time
-
-            uv, time, dt = step(
+        reached = False
+        while not reached:
+            uv, time, dt, reached = step_to(
                 time=time,
                 u=uv,
+                target_time=t_target,
                 parameters=parameters,
                 equations_of_motion=equations_of_motion,
                 jacobian=jacobian,
