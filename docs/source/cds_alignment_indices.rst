@@ -379,7 +379,7 @@ Numerical options
     The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. Set ``threshold=0.0`` to integrate up to ``total_time`` regardless of the indicator.
 
 ``seed``
-    Initializes the random deviation vectors. It defaults to ``13``.
+    Initializes the random deviation vectors. It defaults to ``13121989``.
 
 ``sample_times`` and ``return_last_state``
     With ``return_history=True``, ``sample_times`` stores the history only at the requested times, and ``return_last_state`` returns the state at the time the integration stopped. Both behave as in ``lyapunov``, described on the :doc:`Lyapunov exponents <cds_lyapunov>` page.

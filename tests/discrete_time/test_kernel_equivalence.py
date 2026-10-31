@@ -41,11 +41,13 @@ SYMPLECTIC_4D = (
 )
 U_2D = [np.array([0.05, 0.05]), np.array([0.5, 0.25])]
 U_4D = np.array([0.5, 0.1, 0.3, 0.2])
+# The default seed of the kernels, used by the references.
+SEED = 13121989
 
 
 @njit
 def reference_lyapunov_qr(u, parameters, total_time, mapping, jacobian, k):
-    np.random.seed(1312)
+    np.random.seed(SEED)
     v = np.ascontiguousarray(np.random.rand(len(u), k))
     v, _ = qr(v)
     exponents = np.zeros(k)
@@ -61,7 +63,7 @@ def reference_lyapunov_qr(u, parameters, total_time, mapping, jacobian, k):
 
 @njit
 def reference_sali(u, parameters, total_time, mapping, jacobian):
-    np.random.seed(1312)
+    np.random.seed(SEED)
     v = np.ascontiguousarray(np.random.rand(len(u), 2))
     v, _ = qr(v)
     history = np.empty(total_time)
@@ -79,7 +81,7 @@ def reference_sali(u, parameters, total_time, mapping, jacobian):
 
 @njit
 def reference_gali_qr(u, parameters, total_time, mapping, jacobian, k):
-    np.random.seed(1312)
+    np.random.seed(SEED)
     v = np.random.rand(len(u), k)
     v, _ = np.linalg.qr(v)
     history = np.empty(total_time)
@@ -145,7 +147,7 @@ def test_gali_qr_is_bit_identical_in_2d(u):
     sample_times = np.arange(1, 5_001, dtype=np.int64)
     result, _ = gali_k(
         u.copy(), parameters, 5_000, mapping, jacobian, 2, sample_times,
-        method="QR", return_history=True, tol=0.0, seed=1312,
+        method="QR", return_history=True, tol=0.0, seed=SEED,
     )
     expected = reference_gali_qr(u.copy(), parameters, 5_000, mapping, jacobian, 2)
     np.testing.assert_array_equal(result, expected)
@@ -168,7 +170,7 @@ def test_tangent_kernels_agree_to_round_off_in_4d():
 
     result, _ = gali_k(
         U_4D.copy(), parameters, 2_000, mapping, jacobian, 3, sample_times,
-        method="QR", return_history=True, tol=0.0, seed=1312,
+        method="QR", return_history=True, tol=0.0, seed=SEED,
     )
     expected = reference_gali_qr(U_4D.copy(), parameters, 2_000, mapping, jacobian, 3)
     np.testing.assert_allclose(result, expected, rtol=1e-8)

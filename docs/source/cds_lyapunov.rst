@@ -108,7 +108,7 @@ The final row of ``lyapunov_history`` provides the spectrum at the end of the ca
 
 .. code-block:: text
 
-    array([ 8.99138319e-02,  2.32841650e-04, -9.80046012e+00])
+    array([ 8.81624702e-02,  1.24379573e-04, -9.79973791e+00])
 
 When only the largest exponent is needed, set ``num_exponents=1`` and leave ``return_history=False``. This uses the dedicated single-vector calculation and returns a scalar:
 
@@ -124,7 +124,7 @@ When only the largest exponent is needed, set ``num_exponents=1`` and leave ``re
 
 .. code-block:: text
 
-    np.float64(0.0881962890597236)
+    np.float64(0.0884644776190304)
 
 Set ``num_exponents`` between one and the dimension of the system. If it is omitted, the complete spectrum is calculated. Without a stored history, a request for more than one exponent returns a one-dimensional array.
 
@@ -202,7 +202,7 @@ Logarithmically spaced sample times are convenient for following the convergence
 
 .. code-block:: text
 
-    ((3659479, 4), (75, 4))
+    ((3657755, 4), (75, 4))
 
 .. code-block:: python
 

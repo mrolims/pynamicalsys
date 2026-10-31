@@ -389,7 +389,7 @@ Numerical options
     The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. With ``return_history=True``, the history ends at the stop. Set ``threshold=0.0`` to iterate up to ``total_time`` regardless of the indicator.
 
 ``transient_time`` and ``seed``
-    The number of iterations discarded before the deviation vectors are evolved, which defaults to zero, and the seed of the random deviation vectors, which defaults to ``1312``.
+    The number of iterations discarded before the deviation vectors are evolved, which defaults to zero, and the seed of the random deviation vectors, which defaults to ``13121989``.
 
 ``sample_times`` and ``return_last_state``
     With ``return_history=True``, ``sample_times`` stores the history only at the requested iterations, as in the examples above, and ``return_last_state=True`` also returns the state at the iteration where the calculation stopped. Both behave as in ``lyapunov``, described on the :doc:`Lyapunov exponents <dds_lyapunov>` page.

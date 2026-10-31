@@ -359,7 +359,7 @@ def lyapunov_qr(
     return_history: bool = False,
     transient_time: Optional[int_t] = None,
     log_base: numeric_t = np.e,
-    seed: int_t = 1312,
+    seed: int_t = 13121989,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute Lyapunov exponents of a discrete dynamical system using QR
@@ -401,7 +401,7 @@ def lyapunov_qr(
     log_base : numeric_t, optional
         Base of the logarithm used in the exponent calculation. Default is `np.e`.
     seed : int_t, optional
-        Seed used to initialize the random perturbation vectors. Default is 1312.
+        Seed used to initialize the random perturbation vectors. Default is 13121989.
 
     Returns
     -------

@@ -134,7 +134,7 @@ Numerical options
     The durations of the forward warmup and of the forward continuation that initializes the backward recursion, as described above. Both default to zero and are rounded to whole multiples of ``qr_time_step``.
 
 ``seed``
-    Initializes the random forward basis and the random upper-triangular matrix that starts the backward recursion. It defaults to ``1312``. For sufficiently long ``warmup_time`` and ``tail_time``, the vectors in the stored interval do not depend on it.
+    Initializes the random forward basis and the random upper-triangular matrix that starts the backward recursion. It defaults to ``13121989``. For sufficiently long ``warmup_time`` and ``tail_time``, the vectors in the stored interval do not depend on it.
 
 ``method``
     The QR decomposition used in the forward pass: ``"QR"`` (default), the package's modified Gram-Schmidt implementation, or ``"QR_HH"``, ``numpy.linalg.qr`` with Householder reflections.

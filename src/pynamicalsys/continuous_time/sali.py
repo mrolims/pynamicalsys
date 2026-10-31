@@ -40,7 +40,7 @@ def sali(
     integrator=rk4_step_wrapped,
     return_history: bool = False,
     sample_times: NDArray[np.float64] | None = None,
-    seed: int = 13,
+    seed: int = 13121989,
     threshold: np.float64 = np.float64(1e-16),
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """

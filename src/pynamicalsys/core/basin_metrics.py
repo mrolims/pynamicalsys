@@ -218,7 +218,7 @@ class BasinMetrics:
             threshold=0.1,
             n_eps = 100,
             max_time=1000,
-            seed=13,
+            seed=13121989,
             n_jobs=-1):
         """
         Estimate the uncertainty fraction of a dynamical mapping using Monte Carlo sampling.
@@ -273,7 +273,7 @@ class BasinMetrics:
             (default: 1000).
         seed : int, optional
             Seed for the random number generator used during sampling
-            (default: 13).
+            (default: 13121989).
         n_jobs : int, optional
             Number of parallel jobs used during computation
             (default: -1).

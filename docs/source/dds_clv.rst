@@ -232,7 +232,7 @@ Numerical options
     The numbers of iterations of the three stages described above: the approach to the invariant set, the forward warmup of the orthonormal basis, and the forward continuation that initializes the backward recursion. All default to zero. The vectors near the beginning and end of the stored interval depend on ``warmup_time`` and ``tail_time``, so these should be increased until the results of interest no longer change.
 
 ``seed``
-    Initializes the random upper-triangular matrix that starts the backward recursion; the forward basis starts from the identity. It defaults to ``1312``. For a sufficiently long ``tail_time``, the vectors in the stored interval do not depend on it.
+    Initializes the random upper-triangular matrix that starts the backward recursion; the forward basis starts from the identity. It defaults to ``13121989``. For a sufficiently long ``tail_time``, the vectors in the stored interval do not depend on it.
 
 ``window_time`` and ``use_abs``
     Options of ``CLV_angles``. ``window_time`` returns angles averaged over consecutive windows of the given number of iterations instead of the full time series, as described above. With the default ``use_abs=True``, the absolute value of the cosine is used, so the orientation of the vectors is ignored and the angles lie between 0 and :math:`\pi/2`.

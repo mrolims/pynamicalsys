@@ -3839,7 +3839,7 @@ class DiscreteDynamicalSystem:
         transient_time: int_t = 0,
         warmup_time: int_t = 0,
         tail_time: int_t = 0,
-        seed: int = 1312,
+        seed: int = 13121989,
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Compute covariant Lyapunov vectors (CLVs) along a trajectory of this
@@ -3969,7 +3969,7 @@ class DiscreteDynamicalSystem:
         transient_time: int_t = 0,
         warmup_time: int_t = 0,
         tail_time: int_t = 0,
-        seed: int = 1312,
+        seed: int = 13121989,
         use_abs: bool = True,
     ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
@@ -4299,7 +4299,7 @@ class DiscreteDynamicalSystem:
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
         threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
-        seed: int_t = 1312,
+        seed: int_t = 13121989,
         return_last_state: bool = False,
         tol: numeric_t | None = None,
     ) -> (
@@ -4341,7 +4341,7 @@ class DiscreteDynamicalSystem:
             Number of initial iterations to discard before starting the SALI
             computation. If None, no transient is discarded.
         seed : int_t, optional
-            Seed used to initialize the deviation vectors. Default is 1312.
+            Seed used to initialize the deviation vectors. Default is 13121989.
         return_last_state : bool, optional
             If True, also return the state of the system at the iteration where
             the computation stopped: `total_time`, or the iteration at which
@@ -4496,7 +4496,7 @@ class DiscreteDynamicalSystem:
         sample_times: Sequence[int_t] | NDArray[np.integer] | None = None,
         threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
-        seed: int = 1312,
+        seed: int = 13121989,
         return_last_state: bool = False,
         tol: numeric_t | None = None,
     ) -> (
@@ -4539,7 +4539,7 @@ class DiscreteDynamicalSystem:
             Number of initial iterations to discard before starting the LDI_k
             computation. If None, no transient is discarded.
         seed : int, optional
-            Seed used to initialize the deviation vectors. Default is 1312.
+            Seed used to initialize the deviation vectors. Default is 13121989.
         return_last_state : bool, optional
             If True, also return the state of the system at the iteration where
             the computation stopped: `total_time`, or the iteration at which
@@ -4705,7 +4705,7 @@ class DiscreteDynamicalSystem:
         method: str = "QR",
         threshold: numeric_t = 1e-16,
         transient_time: int_t | None = None,
-        seed: int = 1312,
+        seed: int = 13121989,
         return_last_state: bool = False,
         tol: numeric_t | None = None,
     ) -> (
@@ -4768,7 +4768,7 @@ class DiscreteDynamicalSystem:
             Number of initial iterations to discard before starting the GALI_k
             computation. If None, no transient is discarded.
         seed : int, optional
-            Seed used to initialize the deviation vectors. Default is 1312.
+            Seed used to initialize the deviation vectors. Default is 13121989.
         return_last_state : bool, optional
             If True, also return the state of the system at the iteration where
             the computation stopped: `total_time`, or the iteration at which

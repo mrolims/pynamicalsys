@@ -35,7 +35,7 @@ def sali(
     return_history: bool = False,
     tol: numeric_t = 1e-16,
     transient_time: Optional[int_t] = None,
-    seed: int_t = 1312,
+    seed: int_t = 13121989,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Smallest Alignment Index (SALI) for a discrete dynamical system.
@@ -69,7 +69,7 @@ def sali(
         Number of initial iterations to discard as transient before starting the
         SALI computation. If None, no transient is discarded.
     seed : int, optional
-        Seed used to initialize the deviation vectors. Default is 1312.
+        Seed used to initialize the deviation vectors. Default is 13121989.
 
     Returns
     -------
