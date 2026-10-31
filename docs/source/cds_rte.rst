@@ -120,7 +120,6 @@ The top row shows the periodic trajectory and the bottom row shows the chaotic t
 
     ps = PlotStyler()
     ps.apply_style()
-    plt.close()
 
     fig, ax = plt.subplots(2, 2, figsize=(9, 8), sharex=True, sharey=True)
     j, i = np.where(matrix_std_periodic == 1)

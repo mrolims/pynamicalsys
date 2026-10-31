@@ -1,7 +1,10 @@
 """
-PlotStyler: aliases of the line and marker parameters, the tick direction, and
-tick padding on one or several Axes.
+PlotStyler: aliases of the line and marker parameters, the tick direction,
+tick padding on one or several Axes, and apply_style changing only the
+global settings, never the figures.
 """
+
+import warnings
 
 import matplotlib
 
@@ -86,3 +89,28 @@ def test_tick_padding_list_of_axes():
     fig, ax = plt.subplots(1, 2)
     PlotStyler().set_tick_padding(list(ax), pad_y=9)
     assert all(_major_pad(axis.yaxis) == 9 for axis in ax)
+
+
+def test_apply_style_creates_no_figure():
+    PlotStyler().apply_style()
+    assert plt.get_fignums() == []
+
+
+def test_apply_style_leaves_the_current_figure_alone():
+    fig, ax = plt.subplots()
+    ax.plot([1, 2, 3])
+    PlotStyler().apply_style()
+    assert fig.axes == [ax]
+    assert len(ax.lines) == 1
+
+
+@pytest.mark.parametrize("shared", [dict(sharex=True), dict(sharey=True)])
+def test_apply_style_after_shared_log_axes_emits_no_warning(shared):
+    _, ax = plt.subplots(1, 2, **shared)
+    for axis in ax:
+        axis.plot([1, 10, 100], [1e-3, 1e-1, 1])
+        axis.set_xscale("log")
+        axis.set_yscale("log")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        PlotStyler().apply_style()
