@@ -3686,7 +3686,9 @@ class DiscreteDynamicalSystem:
 
         After the transient, the trajectory is divided into consecutive
         non-overlapping windows of `finite_time` iterations, and the Lyapunov
-        exponents are computed independently in each window.
+        exponents are averaged over each window. The deviation vectors are
+        carried from one window to the next, so the mean of the windows is
+        the Lyapunov exponent over all of them.
 
         Parameters
         ----------
@@ -3716,10 +3718,9 @@ class DiscreteDynamicalSystem:
             - "ER": the QR decomposition written in closed form for
               two-dimensional maps, after Eckmann and Ruelle, where the
               orthonormal frame is a rotation by a single angle. Only valid
-              for two-dimensional maps. Over long windows it gives the same
-              exponents as "QR"; over short windows the values differ
-              slightly, because the two methods start each window from
-              different deviation vectors.
+              for two-dimensional maps. It starts from a different frame
+              than "QR", so the first window can differ, but the later windows
+              agree with "QR" to round-off.
         transient_time : Optional[int], optional
             Number of iterations discarded before the first window. Default is
             None, which means no transient.
@@ -3729,8 +3730,9 @@ class DiscreteDynamicalSystem:
             If True, also return the state at the beginning of each window.
             Default is False.
         seed : int_t, optional
-            Seed of the random deviation vectors at the start of each window
-            with `method="QR"` or `"QR_HH"`. The `"ER"` method does not use it.
+            Seed of the random deviation vectors at the start of the first
+            window with `method="QR"` or `"QR_HH"`. The `"ER"` method does not
+            use it.
             Default is 13121989.
 
         Returns

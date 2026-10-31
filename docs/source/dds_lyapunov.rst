@@ -202,7 +202,7 @@ The lower panel makes the zero spectrum sum of the symplectic map visible. This 
 Finite-time exponents
 ^^^^^^^^^^^^^^^^^^^^^
 
-The :py:meth:`finite_time_lyapunov <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.finite_time_lyapunov>` method divides a trajectory into consecutive non-overlapping windows and computes an independent spectrum in each window. This exposes variations in local stretching that are hidden by a single long-time average. Consider a chaotic trajectory of the standard map that undergoes sticky episodes near stability islands:
+The :py:meth:`finite_time_lyapunov <pynamicalsys.core.discrete_dynamical_systems.DiscreteDynamicalSystem.finite_time_lyapunov>` method divides a trajectory into consecutive non-overlapping windows and averages the spectrum over each window. The deviation vectors are carried from one window to the next, so the mean of the windows is the exponent over the whole interval. This exposes variations in local stretching that are hidden by a single long-time average. Consider a chaotic trajectory of the standard map that undergoes sticky episodes near stability islands:
 
 .. code-block:: python
 
@@ -272,7 +272,7 @@ Numerical options
     The number of exponents to compute, between one and the dimension of the map. If omitted, the full spectrum is returned. With ``num_exponents=1``, ``lyapunov`` returns a scalar.
 
 ``method``
-    ``"QR"`` (default) uses the package's modified Gram-Schmidt decomposition, ``"QR_HH"`` uses ``numpy.linalg.qr`` with Householder reflections, and ``"ER"`` uses the Eckmann-Ruelle algorithm, available only for two-dimensional maps. The Eckmann-Ruelle algorithm is the QR decomposition written in closed form for two dimensions, where the orthonormal frame is a rotation by a single angle. It converges to the same exponents as ``"QR"``, but the windows of ``finite_time_lyapunov`` give slightly different values with the two methods, because each method starts every window from different deviation vectors.
+    ``"QR"`` (default) uses the package's modified Gram-Schmidt decomposition, ``"QR_HH"`` uses ``numpy.linalg.qr`` with Householder reflections, and ``"ER"`` uses the Eckmann-Ruelle algorithm, available only for two-dimensional maps. The Eckmann-Ruelle algorithm is the QR decomposition written in closed form for two dimensions, where the orthonormal frame is a rotation by a single angle. It gives the same exponents as ``"QR"``. In ``finite_time_lyapunov``, only the first window can differ, because the two methods start from different deviation vectors.
 
 ``transient_time``
     Number of iterations discarded before the averages start. It defaults to zero in both methods. For ``finite_time_lyapunov``, the number of complete windows is ``(total_time - transient_time) // finite_time``, and iterations that do not fill a window are discarded.
@@ -287,4 +287,4 @@ Numerical options
     With ``return_history=True``, ``sample_times`` stores the history of ``lyapunov`` only at the requested iterations. They are counted from the initial condition, like ``total_time``, and must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. ``return_last_state=True`` also returns the state at the end of the calculation, which can start a subsequent calculation, for example in a parameter continuation.
 
 ``seed``
-    Initializes the random deviation vectors of the ``"QR"`` and ``"QR_HH"`` methods, which ``finite_time_lyapunov`` uses at the start of every window. It defaults to ``13121989``. The ``"ER"`` method and one-dimensional maps do not use it. For a sufficiently long calculation, the exponents should not depend materially on it.
+    Initializes the random deviation vectors of the ``"QR"`` and ``"QR_HH"`` methods, at the start of the calculation and, for ``finite_time_lyapunov``, of the first window. It defaults to ``13121989``. The ``"ER"`` method and one-dimensional maps do not use it. For a sufficiently long calculation, the exponents should not depend materially on it.
