@@ -83,7 +83,11 @@ def _uncertainty_fraction_core(basin, dx, dy, epsilons):
 
 
 def basin_entropy(
-    basin: NDArray[np.float64], n: int, log_base: float = np.e
+    basin: NDArray[np.float64],
+    n: int,
+    log_base: float = np.e,
+    nx: int | None = None,
+    ny: int | None = None,
 ) -> Tuple[float, float]:
     """
     Calculate the basin entropy (Sb) and boundary basin entropy (Sbb) of a 2D attraction basin.
@@ -97,13 +101,17 @@ def basin_entropy(
         2D array representing the basin of attraction, where each element indicates
         the final state (attractor) for that initial condition (shape: (Nx, Ny)).
     n : int
-        Default size of square sub-boxes for partitioning (must be positive).
-    log : {'2', 'e', '10'} or Callable, optional
-        Logarithm base for entropy calculation:
-        - '2' : bits (default)
-        - 'e' : nats
-        - '10' : hartleys
-        Alternatively, a custom log function can be provided.
+        Side of the square sub-boxes, in grid points, used along each axis
+        for which `nx` or `ny` is not given.
+    log_base : float, optional
+        Base of the logarithm in the entropy: `np.e` (default) gives nats, 2
+        gives bits, and 10 gives hartleys.
+    nx : int | None, optional
+        Size of the sub-boxes along the first axis of `basin`. Default is
+        `n`.
+    ny : int | None, optional
+        Size of the sub-boxes along the second axis of `basin`. Default is
+        `n`.
 
     Returns
     -------
@@ -115,9 +123,7 @@ def basin_entropy(
     Raises
     ------
     ValueError
-        - If `basin` is not 2D
-        - If `n` ≤ 0
-        - If invalid `log` specification
+        If the sizes of the sub-boxes do not divide the dimensions of `basin`.
 
     Notes
     -----
@@ -131,20 +137,22 @@ def basin_entropy(
     Examples
     --------
     >>> basin = np.random.randint(0, 2, (100, 100))
-    >>> Sb, Sbb = boundary_entropy(basin, n=10, log='2')
+    >>> Sb, Sbb = basin_entropy(basin, n=10, log_base=2)
     >>> print(f"Basin entropy: {Sb:.3f}, Boundary entropy: {Sbb:.3f}")
     """
 
     Nx, Ny = basin.shape
+    box_x = n if nx is None else nx
+    box_y = n if ny is None else ny
 
-    if Nx % n != 0 or Ny % n != 0:
+    if Nx % box_x != 0 or Ny % box_y != 0:
         raise ValueError(
-            f"Sub-box sizes ({n}, {n}) must divide basin dimensions ({Nx}, {Ny})"
+            f"Sub-box sizes ({box_x}, {box_y}) must divide basin dimensions ({Nx}, {Ny})"
         )
 
     # Initialize
-    Mx = Nx // n
-    My = Ny // n
+    Mx = Nx // box_x
+    My = Ny // box_y
     S = np.zeros((Mx, My))
     boundary_mask = np.zeros((Mx, My), dtype=bool)
 
@@ -152,7 +160,7 @@ def basin_entropy(
     for i in range(Mx):
         for j in range(My):
             # Extract sub-box
-            box = basin[i * n : (i + 1) * n, j * n : (j + 1) * n]
+            box = basin[i * box_x : (i + 1) * box_x, j * box_y : (j + 1) * box_y]
             unique_states, counts = np.unique(box, return_counts=True)
             num_unique = len(unique_states)
 

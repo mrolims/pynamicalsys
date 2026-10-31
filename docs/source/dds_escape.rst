@@ -410,7 +410,7 @@ while the boundary basin entropy averages only over the :math:`N_b` boxes contai
 
     S_{bb}=\frac{1}{N_b}\sum_{i=1}^{N_b}S_i.
 
-The :py:class:`BasinMetrics <pynamicalsys.core.basin_metrics.BasinMetrics>` class accepts a two-dimensional array of outcome labels. Its ``basin_entropy`` method partitions the array into blocks containing ``n`` grid points along each direction. The grid dimensions must therefore be divisible by ``n``.
+The :py:class:`BasinMetrics <pynamicalsys.core.basin_metrics.BasinMetrics>` class accepts a two-dimensional array of outcome labels. Its ``basin_entropy`` method partitions the array into blocks containing ``n`` grid points along each direction, or ``nx`` along the first axis and ``ny`` along the second when they are given. The grid dimensions must therefore be divisible by the block sizes.
 
 .. code-block:: python
 
@@ -448,8 +448,8 @@ Numerical options
 ``min_time`` and ``time_step``
     The first evaluation time and the spacing between evaluation times of ``survival_probability``. They default to ``1``, which evaluates :math:`P(n)` at every iteration. A larger ``time_step`` reduces the size of the output for long escape-time ranges.
 
-``n`` and ``log_base``
-    The options of ``BasinMetrics.basin_entropy``. ``n`` is the number of grid points along each side of a box and must divide the grid dimensions. Small boxes resolve the boundary structure, but contain fewer points to estimate the probabilities of the outcomes. ``log_base`` defaults to :math:`e`; with ``log_base=2``, the entropies are expressed in bits.
+``n``, ``nx``, ``ny``, and ``log_base``
+    The options of ``BasinMetrics.basin_entropy``. ``n`` is the number of grid points along each side of a box and must divide the grid dimensions. ``nx`` and ``ny`` replace it along the first and second axes of the array, for rectangular boxes. Small boxes resolve the boundary structure, but contain fewer points to estimate the probabilities of the outcomes. ``log_base`` defaults to :math:`e`; with ``log_base=2``, the entropies are expressed in bits.
 
 References
 ~~~~~~~~~~
