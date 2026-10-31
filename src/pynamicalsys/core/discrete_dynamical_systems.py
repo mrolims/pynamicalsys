@@ -33,6 +33,7 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
 
 
 from pynamicalsys.common.differentiation import finite_difference_jacobian
+from pynamicalsys.common.errors import MissingFunctionError
 
 from pynamicalsys.common.display import render_latex
 
@@ -1929,9 +1930,8 @@ class DiscreteDynamicalSystem:
             - If `n_points` is not a positive integer or a tuple of two positive integers.
             - If `iter_time` is not a positive integer or a tuple of two positive integers.
             - If `stability` is invalid.
-        RuntimeError
-            - If `stability="stable"` but no backward mapping is available.
-            - If no Jacobian is available.
+            - If `stability="stable"` but no backward mapping is available. The
+              error is also a `RuntimeError`, which was raised for this before.
 
         Notes
         -----
@@ -1946,14 +1946,11 @@ class DiscreteDynamicalSystem:
         if self.__system_dimension != 2:
             raise ValueError("manifold is only implemented for 2D systems")
 
-        if self.__jacobian is None:
-            raise RuntimeError("Jacobian function must be provided")
-
         if stability not in ("stable", "unstable"):
             raise ValueError("stability must be either 'stable' or 'unstable'")
 
         if stability == "stable" and self.__backwards_mapping is None:
-            raise RuntimeError(
+            raise MissingFunctionError(
                 "backward mapping function must be provided to compute the stable manifold"
             )
 

@@ -76,3 +76,25 @@ def test_kernel_requires_a_backward_map_for_the_stable_manifold():
         saddle, parameters, henon_map, None, henon_map_jacobian, 1, stability="unstable"
     )
     assert len(branches) == 2
+
+
+def henon_map(u, parameters):
+    a, b = parameters
+    return np.array([1.0 - a * u[0] ** 2 + u[1], b * u[0]])
+
+
+def henon_map_jacobian(u, parameters, *args):
+    a, b = parameters
+    return np.array([[-2.0 * a * u[0], 1.0], [b, 0.0]])
+
+
+HENON_SADDLE = [0.6313544770895048, 0.18940634312685142]
+
+
+@pytest.mark.parametrize("caught", [ValueError, RuntimeError])
+def test_missing_backward_map_raises_a_value_error_that_is_also_a_runtime_error(caught):
+    # ValueError, as for the other missing or invalid arguments; RuntimeError,
+    # raised until now, so that existing code catching it keeps working.
+    ds = DDS(mapping=henon_map, jacobian=henon_map_jacobian, system_dimension=2, parameters=[1.4, 0.3])
+    with pytest.raises(caught, match="backward"):
+        ds.manifold(HENON_SADDLE, 1, stability="stable")
