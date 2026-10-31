@@ -79,9 +79,16 @@ class BasinMetrics:
         Parameters
         ----------
         n : int
-            Default size of square sub-boxes for partitioning (must be positive).
+            Size of the sub-boxes, in grid points, along each axis for which
+            `nx` or `ny` is not given. It must be positive.
         log_base : float, optional
             Logarithm base for entropy calculation (default: np.e, which is natural logarithm).
+        nx : int | None, optional
+            Size of the sub-boxes along the first axis of the basin. Default is
+            `n`.
+        ny : int | None, optional
+            Size of the sub-boxes along the second axis of the basin. Default is
+            `n`.
 
         Returns
         -------
@@ -94,11 +101,12 @@ class BasinMetrics:
         Raises
         ------
         ValueError
-            If `n` is not a positive integer, if it does not divide both
-            dimensions of the basin, or if `log_base` is not positive or is
-            equal to 1.
+            If `n`, `nx`, or `ny` is not positive, if the sizes of the
+            sub-boxes do not divide the dimensions of the basin, or if
+            `log_base` is not positive or is equal to 1.
         TypeError
-            If `log_base` is not a real number.
+            If `nx` or `ny` is not an integer, or if `log_base` is not a real
+            number.
 
         Notes
         -----
@@ -122,7 +130,21 @@ class BasinMetrics:
         if log_base == 1:
             raise ValueError("log_base must not be 1, since log(1) = 0")
 
-        return basin_entropy(basin=self.basin, n=n, log_base=log_base)
+        for name, size in (("nx", nx), ("ny", ny)):
+            if size is not None:
+                validate_positive(size, name, Integral)
+
+        box_x = n if nx is None else nx
+        box_y = n if ny is None else ny
+        rows, columns = self.basin.shape
+        if rows % box_x != 0:
+            name = "n" if nx is None else "nx"
+            raise ValueError(f"{name} must divide the first dimension of the basin ({rows})")
+        if columns % box_y != 0:
+            name = "n" if ny is None else "ny"
+            raise ValueError(f"{name} must divide the second dimension of the basin ({columns})")
+
+        return basin_entropy(basin=self.basin, n=n, log_base=log_base, nx=nx, ny=ny)
 
     def uncertainty_fraction(
         self,

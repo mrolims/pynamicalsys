@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DiscreteDynamicalSystem.trajectory` accepts `concatenate`. With `concatenate=False`, an ensemble is returned as an array of shape `(num_initial_conditions, sample_size, system_dimension)`, so that `result[i]` is the trajectory of the `i`-th initial condition, and as `(num_initial_conditions, sample_size)` for one-dimensional maps. With `concatenate=True`, the trajectories are concatenated as before.
 - `DiscreteDynamicalSystem.lyapunov` and `finite_time_lyapunov` accept `seed`, the seed of the random deviation vectors used by the QR methods, as the other methods that draw random numbers do. It defaults to 13121989.
 - `HamiltonianSystem.trajectory` accepts `sample_times`, which stores the state only at the requested times. Each time is rounded to the nearest integration step, so the step size stays constant, and the integration stops at the last of them. With an ensemble of initial conditions, every trajectory is stored at the same times.
+- `BasinMetrics.basin_entropy` uses rectangular boxes when `nx` or `ny` is given: `nx` grid points along the first axis of the basin and `ny` along the second, each defaulting to `n`. Both arguments were accepted before but ignored, so the boxes were always `n` by `n`.
 
 ### Changed
 
