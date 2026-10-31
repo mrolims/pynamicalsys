@@ -3760,12 +3760,12 @@ class DiscreteDynamicalSystem:
             - If `finite_time` is not positive, or larger than `total_time // 2` or `total_time - transient_time`.
             - If `transient_time` is negative, or greater than or equal to `total_time`.
             - If `method` is not "ER", "QR", or "QR_HH", or if it is "ER" and the system is not two-dimensional.
-            - If `num_exponents` is larger than the system dimension.
+            - If `num_exponents` is not positive or is larger than the system dimension.
             - If `log_base` is not positive, or is equal to 1.
         TypeError
             - If `u` is not a scalar or array-like type.
             - If `parameters` is not a scalar or array-like type.
-            - If `total_time`, `finite_time`, or `transient_time` is not an integer.
+            - If `total_time`, `finite_time`, `transient_time`, or `num_exponents` is not an integer.
             - If `log_base` is not a real number.
             - If `method` is not a string.
             - If `return_points` is not a boolean.
@@ -3822,8 +3822,10 @@ class DiscreteDynamicalSystem:
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
-        elif num_exponents > self.__system_dimension:
-            raise ValueError("num_exponents must be <= system_dimension")
+        else:
+            validate_positive(num_exponents, "num_exponents", Integral)
+            if num_exponents > self.__system_dimension:
+                raise ValueError("num_exponents must be <= system_dimension")
 
         validate_positive(log_base, "log_base", Real)
         if log_base == 1:

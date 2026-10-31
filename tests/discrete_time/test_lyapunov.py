@@ -298,3 +298,17 @@ def test_seed_must_be_an_integer():
         ds.lyapunov([0.1, 0.1], 10, seed=1.5)
     with pytest.raises(TypeError, match="seed"):
         ds.finite_time_lyapunov([0.1, 0.1], 100, 10, seed=1.5)
+
+
+# num_exponents must be a positive integer no larger than the dimension.
+
+
+@pytest.mark.parametrize(
+    "num_exponents, error",
+    [(0, ValueError), (-1, ValueError), (3, ValueError), (1.5, TypeError), (True, TypeError), ("2", TypeError)],
+)
+def test_finite_time_lyapunov_rejects_invalid_num_exponents(num_exponents, error):
+    ds = DDS(model="henon map")
+    ds.set_parameters([1.4, 0.3])
+    with pytest.raises(error, match="num_exponents"):
+        ds.finite_time_lyapunov([0.1, 0.1], 100, 10, num_exponents=num_exponents)
