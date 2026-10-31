@@ -20,6 +20,7 @@ from numbers import Integral, Real
 from typing import Optional, Tuple
 from numpy.typing import NDArray
 from pynamicalsys.common.basin_analysis import basin_entropy, uncertainty_fraction, uncertainty_fraction_mapping
+from pynamicalsys.common.validators import validate_positive
 
 
 class BasinMetrics:
@@ -94,7 +95,10 @@ class BasinMetrics:
         ------
         ValueError
             If `n` is not a positive integer, if it does not divide both
-            dimensions of the basin, or if `log_base` is not positive.
+            dimensions of the basin, or if `log_base` is not positive or is
+            equal to 1.
+        TypeError
+            If `log_base` is not a real number.
 
         Notes
         -----
@@ -114,8 +118,9 @@ class BasinMetrics:
         if not isinstance(n, Integral) or n <= 0:
             raise ValueError("n must be positive integer")
 
-        if log_base <= 0:
-            raise ValueError("log_base must be positive")
+        validate_positive(log_base, "log_base", Real)
+        if log_base == 1:
+            raise ValueError("log_base must not be 1, since log(1) = 0")
 
         return basin_entropy(basin=self.basin, n=n, log_base=log_base)
 
