@@ -129,7 +129,10 @@ Numerical options
 ~~~~~~~~~~~~~~~~~
 
 ``time_step``
-    The constant step size of the selected integrator, set with ``integrator``. The trajectory has ``round(total_time / time_step)`` steps, so a ``total_time`` that is not a multiple of ``time_step`` is rounded to the nearest one. The trajectory includes the initial state at :math:`t=0` and is stored at every step.
+    The constant step size of the selected integrator, set with ``integrator``. The trajectory has ``round(total_time / time_step)`` steps, so a ``total_time`` that is not a multiple of ``time_step`` is rounded to the nearest one. The trajectory includes the initial state at :math:`t=0` and is stored at every step, unless ``sample_times`` is given.
+
+``sample_times``
+    Times in :math:`(0, t_{\mathrm{total}}]` at which the state is stored, instead of at every step. Each time is rounded to the nearest integration step, so that the step size stays constant, and the first column of the result contains the times actually stored. The integration stops at the last of them, and every trajectory of an ensemble is stored at the same times.
 
 ``tol`` and ``max_iter``
     The convergence tolerance on the residual norm and the maximum number of Newton iterations per step of the implicit midpoint method ``imp``, set with ``integrator``. They default to ``1e-12`` and ``50``. If the iteration does not converge, the calculation stops with a ``RuntimeError``; a smaller ``time_step``, a larger ``tol``, or a larger ``max_iter`` then helps. The explicit methods ``vv2`` and ``svy4`` ignore both.

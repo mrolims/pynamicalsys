@@ -59,6 +59,8 @@ from pynamicalsys.hamiltonian_systems.tangent import (
 from pynamicalsys.hamiltonian_systems.trajectory import (
     generate_trajectory,
     ensemble_trajectories,
+    generate_sampled_trajectory,
+    ensemble_sampled_trajectories,
 )
 
 from pynamicalsys.hamiltonian_systems.poincare import (
@@ -675,6 +677,7 @@ class HamiltonianSystem:
         p: numeric_like_t,
         total_time: numeric_t,
         parameters: numeric_like_t | None = None,
+        sample_times: Sequence[numeric_t] | NDArray[np.float64] | None = None,
     ) -> NDArray[np.float64]:
         """
         Generate a trajectory for the Hamiltonian system.
@@ -691,6 +694,16 @@ class HamiltonianSystem:
         parameters : numeric_like_t | None, optional
             System parameters. If `None`, the parameters stored in the instance
             are used.
+        sample_times : array-like | None, optional
+            Times in `(0, total_time]` at which the state is stored. Each time
+            is rounded to the nearest integration step, so that the step size
+            stays constant, and the first column contains the times actually
+            stored. They are sorted, and duplicates, including those created by
+            the rounding, are removed. Only these times are stored, and the
+            integration stops at the last of them. With an ensemble of initial
+            conditions, every trajectory is stored at the same times. If
+            `None`, the state is stored at every step, starting from the
+            initial condition.
 
         Returns
         -------
@@ -703,6 +716,8 @@ class HamiltonianSystem:
               columns are the momenta.
             - If `q` and `p` are 2D, returns an array of shape
               `(num_ic, num_steps + 1, 2 * dof + 1)`.
+            - With `sample_times`, `num_steps + 1` is replaced by the number
+              of times stored.
 
         Raises
         ------
@@ -710,6 +725,8 @@ class HamiltonianSystem:
             If `q` and `p` do not have the same shape.
             If `total_time` is not positive.
             If the number of parameters does not match the expected number.
+            If `sample_times` is not one-dimensional or has values outside
+            `(0, total_time]`.
         TypeError
             If `total_time` is not a real number.
             If `q` or `p` cannot be interpreted as valid initial conditions.
@@ -727,6 +744,26 @@ class HamiltonianSystem:
 
         validate_positive(total_time, "total_time", Real)
         total_time = np.float64(total_time)
+
+        if sample_times is not None:
+            sample_steps = self.__sample_times_to_steps(sample_times, total_time)
+            sampled_kernel = (
+                generate_sampled_trajectory
+                if q.ndim == 1
+                else ensemble_sampled_trajectories
+            )
+            return sampled_kernel(
+                q=q,
+                p=p,
+                sample_steps=sample_steps,
+                parameters=parameters,
+                system_func_1=self.__system_func_1,
+                system_func_2=self.__system_func_2,
+                time_step=self.__time_step,
+                integrator=self.__integrator_func,
+                tol=self.__tol,
+                max_iter=self.__max_iter,
+            )
 
         if q.ndim == 1:
             return generate_trajectory(
