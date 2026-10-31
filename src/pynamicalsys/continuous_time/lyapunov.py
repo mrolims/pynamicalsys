@@ -41,7 +41,7 @@ def lyapunov_exponents(
     integrator=rk4_step_wrapped,
     return_history: bool = False,
     sample_times: NDArray[np.float64] | None = None,
-    seed: int = 13,
+    seed: int = 13121989,
     method: str = "QR",
     qr_interval: int = 1,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -236,7 +236,7 @@ def maximum_lyapunov_exponent(
     integrator=rk4_step_wrapped,
     return_history: bool = False,
     sample_times: NDArray[np.float64] | None = None,
-    seed: int = 13,
+    seed: int = 13121989,
     qr_interval: int = 1,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """

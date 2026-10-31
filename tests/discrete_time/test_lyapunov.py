@@ -258,3 +258,43 @@ def test_reference_values_for_chaotic_orbits(model, params, u, reference):
         got, reference, atol=2e-3,
         err_msg=f"{model}: exponents differ from the published values",
     )
+
+
+# The seed of the random deviation vectors used by the QR methods.
+
+
+@pytest.mark.parametrize("method", ["QR", "QR_HH"])
+def test_lyapunov_seed_sets_the_deviation_vectors(method):
+    ds = DDS(model="henon map")
+    ds.set_parameters([1.4, 0.3])
+    u = [0.1, 0.1]
+
+    default = ds.lyapunov(u, 50, method=method, return_history=True)
+    explicit = ds.lyapunov(u, 50, method=method, return_history=True, seed=13121989)
+    other = ds.lyapunov(u, 50, method=method, return_history=True, seed=1)
+
+    np.testing.assert_array_equal(default, explicit)
+    assert not np.array_equal(default, other)
+
+
+@pytest.mark.parametrize("method", ["QR", "QR_HH"])
+def test_finite_time_lyapunov_seed_sets_the_deviation_vectors(method):
+    ds = DDS(model="standard map")
+    ds.set_parameters([1.5])
+    u = [0.05, 0.05]
+
+    default = ds.finite_time_lyapunov(u, 1000, 10, method=method)
+    explicit = ds.finite_time_lyapunov(u, 1000, 10, method=method, seed=13121989)
+    other = ds.finite_time_lyapunov(u, 1000, 10, method=method, seed=1)
+
+    np.testing.assert_array_equal(default, explicit)
+    assert not np.array_equal(default, other)
+
+
+def test_seed_must_be_an_integer():
+    ds = DDS(model="henon map")
+    ds.set_parameters([1.4, 0.3])
+    with pytest.raises(TypeError, match="seed"):
+        ds.lyapunov([0.1, 0.1], 10, seed=1.5)
+    with pytest.raises(TypeError, match="seed"):
+        ds.finite_time_lyapunov([0.1, 0.1], 100, 10, seed=1.5)

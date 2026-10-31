@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `rotation_number` and `classify_orbit` accept `transient_time`, the number of iterations discarded before the averaging windows, as `dig` already did.
 - `DiscreteDynamicalSystem.trajectory` accepts `sample_times`, which stores the state only at the requested iterations, counted from the initial condition like `total_time`, and stops iterating at the last of them. With an ensemble of initial conditions, every trajectory is stored at the same iterations.
 - `DiscreteDynamicalSystem.trajectory` accepts `concatenate`. With `concatenate=False`, an ensemble is returned as an array of shape `(num_initial_conditions, sample_size, system_dimension)`, so that `result[i]` is the trajectory of the `i`-th initial condition, and as `(num_initial_conditions, sample_size)` for one-dimensional maps. With `concatenate=True`, the trajectories are concatenated as before.
+- `DiscreteDynamicalSystem.lyapunov` and `finite_time_lyapunov` accept `seed`, the seed of the random deviation vectors used by the QR methods, as the other methods that draw random numbers do. It defaults to 13121989.
 
 ### Changed
 
@@ -46,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `HamiltonianSystem.poincare_section` now interpolates the crossing time, coordinates, and momenta with a cubic Hermite polynomial, which uses the equations of motion at both ends of the step, instead of linearly. On the Hénon-Heiles system with `svy4` and `time_step=0.05`, the energy of the section points stays within about 1e-7 of that of the trajectory instead of 1e-4. This also applies to `recurrence_time_entropy` and `hurst_exponent`.
 - `HamiltonianSystem.CLV` and `CLV_angles` with `poincare_section=True` interpolate the section points between the stored samples with cubic Hermite polynomials, as `poincare_section` does, instead of linearly. On the Hénon-Heiles system with `qr_time_step=0.1`, the energy of the section points stays within about 1e-7 of that of the trajectory instead of 4e-4. The vectors are unchanged.
 - `SALI`, `LDI`, and `GALI` of `ContinuousDynamicalSystem` and `HamiltonianSystem` now stop when the indicator falls strictly below `threshold`, as documented and as in `DiscreteDynamicalSystem`, so `threshold=0` never stops the computation early. Results change only when an indicator equals `threshold` exactly.
+- Every method that draws random numbers now uses the same default seed, 13121989: `lyapunov`, `CLV`, `CLV_angles`, `SALI`, `LDI`, and `GALI` of `DiscreteDynamicalSystem`, `ContinuousDynamicalSystem`, and `HamiltonianSystem`, and `BasinMetrics.uncertainty_fraction_mapping`. The defaults were 1312 in `DiscreteDynamicalSystem`, 13 in `ContinuousDynamicalSystem` and `BasinMetrics`, and 1312 or 13 depending on the method in `HamiltonianSystem`, so results computed with the default seed change. This includes `DiscreteDynamicalSystem.lyapunov` and `finite_time_lyapunov` with the QR methods, which used a fixed seed of 1312. Pass `seed` explicitly to reproduce earlier results.
 
 ### Deprecated
 

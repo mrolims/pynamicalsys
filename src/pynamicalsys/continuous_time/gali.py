@@ -42,7 +42,7 @@ def gali_k(
     return_history: bool = False,
     sample_times: NDArray[np.float64] | None = None,
     method: str = "QR",
-    seed: int = 13,
+    seed: int = 13121989,
     threshold: np.float64 = np.float64(1e-16),
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """

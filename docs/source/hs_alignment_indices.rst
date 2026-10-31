@@ -23,7 +23,6 @@ Consider a chaotic orbit of the Hénon-Heiles system at energy :math:`E=1/8`. Ta
     p = [px, py]
     total_time = 10_000.0
     threshold = 1e-16
-    seed = 1312
 
 Smaller Alignment Index
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -52,7 +51,6 @@ Compute the history with :py:meth:`SALI <pynamicalsys.core.hamiltonian_systems.H
         total_time,
         return_history=True,
         threshold=threshold,
-        seed=seed,
     )
 
 With ``return_history=True``, the first column contains time and the second contains SALI. The calculation stops when the indicator falls below ``threshold``.
@@ -122,7 +120,6 @@ Compare the three methods for :math:`k=2` using the same initial deviation vecto
                 return_history=True,
                 method=method,
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -171,7 +168,6 @@ Compute :math:`\mathrm{GALI}_2`, :math:`\mathrm{GALI}_3`, and :math:`\mathrm{GAL
                 return_history=True,
                 method="QR_HH",
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -226,7 +222,6 @@ Compute :math:`\mathrm{LDI}_2`, :math:`\mathrm{LDI}_3`, and :math:`\mathrm{LDI}_
                 k=k,
                 return_history=True,
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -289,23 +284,23 @@ Compare SALI, the three formulations of :math:`\mathrm{GALI}_2`, and :math:`\mat
     benchmark_labels = ["SALI"] + [f"GALI {method.replace('_', '-')}" for method in gali_methods] + ["LDI SVD"]
     benchmark_times = np.empty((len(benchmark_labels), benchmark_repeats))
 
-    system.SALI(regular_q, regular_p, 1.0, threshold=0.0, seed=seed)
+    system.SALI(regular_q, regular_p, 1.0, threshold=0.0)
     for method in gali_methods:
-        system.GALI(regular_q, regular_p, 1.0, k=2, method=method, threshold=0.0, seed=seed)
-    system.LDI(regular_q, regular_p, 1.0, k=2, threshold=0.0, seed=seed)
+        system.GALI(regular_q, regular_p, 1.0, k=2, method=method, threshold=0.0)
+    system.LDI(regular_q, regular_p, 1.0, k=2, threshold=0.0)
 
     for repeat in range(benchmark_repeats):
         start = perf_counter()
-        system.SALI(regular_q, regular_p, benchmark_time, threshold=0.0, seed=seed)
+        system.SALI(regular_q, regular_p, benchmark_time, threshold=0.0)
         benchmark_times[0, repeat] = perf_counter() - start
 
         for index, method in enumerate(gali_methods):
             start = perf_counter()
-            system.GALI(regular_q, regular_p, benchmark_time, k=2, method=method, threshold=0.0, seed=seed)
+            system.GALI(regular_q, regular_p, benchmark_time, k=2, method=method, threshold=0.0)
             benchmark_times[index + 1, repeat] = perf_counter() - start
 
         start = perf_counter()
-        system.LDI(regular_q, regular_p, benchmark_time, k=2, threshold=0.0, seed=seed)
+        system.LDI(regular_q, regular_p, benchmark_time, k=2, threshold=0.0)
         benchmark_times[-1, repeat] = perf_counter() - start
 
     mean_times = np.mean(benchmark_times, axis=1)
@@ -349,7 +344,7 @@ Numerical options
     The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. Set ``threshold=0.0`` to integrate up to ``total_time`` regardless of the indicator.
 
 ``seed``
-    Initializes the random deviation vectors. It defaults to ``1312`` for ``SALI`` and to ``13`` for ``GALI`` and ``LDI``.
+    Initializes the random deviation vectors. It defaults to ``13121989``.
 
 ``sample_times`` and ``return_last_state``
     With ``return_history=True``, ``sample_times`` stores the history only at the requested times, each rounded to the nearest integration step, and ``return_last_state`` returns the coordinates and momenta at the time the integration stopped. Both behave as in ``lyapunov``, described on the :doc:`Lyapunov exponents <hs_lyapunov>` page.

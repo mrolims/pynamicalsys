@@ -116,7 +116,7 @@ The returned spectrum contains one exponent for each state-space dimension. For 
 
 .. code-block:: text
 
-    Spectrum: [ 0.41928213 -1.62325493]
+    Spectrum: [ 0.41927944 -1.62325225]
     Spectrum sum: -1.203973
     Expected sum: -1.203973
 
@@ -166,9 +166,9 @@ The four-dimensional symplectic map preserves phase-space volume. Its Lyapunov s
 .. code-block:: text
 
     Final spectra:
-    [[ 8.98676229e-06  9.24920790e-06 -8.69827987e-06 -9.53769033e-06]
-     [ 9.46539591e-03  2.71437710e-04 -2.70617113e-04 -9.46621651e-03]]
-    Spectrum sums: [-1.23327997e-18  8.67361738e-18]
+    [[ 8.73014565e-06  9.19746122e-06 -8.71500219e-06 -9.21260468e-06]
+     [ 9.46612085e-03  2.71086800e-04 -2.71526022e-04 -9.46568163e-03]]
+    Spectrum sums: [-1.10114283e-18  5.20417043e-18]
 
 Plot the histories of the largest exponent and the sum of the full spectrum:
 
@@ -285,3 +285,6 @@ Numerical options
 
 ``sample_times`` and ``return_last_state``
     With ``return_history=True``, ``sample_times`` stores the history of ``lyapunov`` only at the requested iterations. They are counted from the initial condition, like ``total_time``, and must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. ``return_last_state=True`` also returns the state at the end of the calculation, which can start a subsequent calculation, for example in a parameter continuation.
+
+``seed``
+    Initializes the random deviation vectors of the ``"QR"`` and ``"QR_HH"`` methods, which ``finite_time_lyapunov`` uses at the start of every window. It defaults to ``13121989``. The ``"ER"`` method and one-dimensional maps do not use it. For a sufficiently long calculation, the exponents should not depend materially on it.

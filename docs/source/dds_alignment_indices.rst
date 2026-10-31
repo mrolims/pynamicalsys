@@ -40,7 +40,6 @@ Compute SALI for two trajectories of the four-dimensional symplectic map with :p
     total_time = 1_000_000
     sample_times = np.unique(np.logspace(0, np.log10(total_time), 1_000).astype(int))
     threshold = 1e-16
-    seed = 1312
 
     sali_histories = []
     for initial_state in initial_states:
@@ -51,7 +50,6 @@ Compute SALI for two trajectories of the four-dimensional symplectic map with :p
                 return_history=True,
                 sample_times=sample_times,
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -130,7 +128,6 @@ Compare all three methods for :math:`k=2` using identical initial deviation vect
                 sample_times=sample_times,
                 method=method,
                 threshold=threshold,
-                seed=seed,
             )
         )
 
@@ -181,7 +178,6 @@ Compute GALI for :math:`k=2`, :math:`k=3`, and :math:`k=4` for the same two init
                     sample_times=sample_times,
                     method="QR_HH",
                     threshold=threshold,
-                    seed=seed,
                 )
             )
         gali_histories.append(histories)
@@ -246,7 +242,6 @@ Compute :math:`\mathrm{LDI}_2`, :math:`\mathrm{LDI}_3`, and :math:`\mathrm{LDI}_
                     return_history=True,
                     sample_times=sample_times,
                     threshold=threshold,
-                    seed=seed,
                 )
             )
         ldi_histories.append(histories)
@@ -311,10 +306,10 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
     benchmark_labels = ["SALI"] + [f"GALI {method.replace('_', '-')}" for method in gali_methods] + ["LDI SVD"]
     benchmark_times = np.empty((len(benchmark_labels), benchmark_repeats))
 
-    system.SALI(u=benchmark_state, total_time=1, threshold=0.0, seed=seed)
+    system.SALI(u=benchmark_state, total_time=1, threshold=0.0)
     for method in gali_methods:
-        system.GALI(u=benchmark_state, total_time=1, k=2, method=method, threshold=0.0, seed=seed)
-    system.LDI(u=benchmark_state, total_time=1, k=2, threshold=0.0, seed=seed)
+        system.GALI(u=benchmark_state, total_time=1, k=2, method=method, threshold=0.0)
+    system.LDI(u=benchmark_state, total_time=1, k=2, threshold=0.0)
 
     for repeat in range(benchmark_repeats):
         start = perf_counter()
@@ -322,7 +317,6 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
             u=benchmark_state,
             total_time=benchmark_time,
             threshold=0.0,
-            seed=seed,
         )
         benchmark_times[0, repeat] = perf_counter() - start
 
@@ -334,7 +328,6 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
                 k=2,
                 method=method,
                 threshold=0.0,
-                seed=seed,
             )
             benchmark_times[i + 1, repeat] = perf_counter() - start
 
@@ -344,7 +337,6 @@ The most useful benchmark compares SALI, the three formulations of :math:`\mathr
             total_time=benchmark_time,
             k=2,
             threshold=0.0,
-            seed=seed,
         )
         benchmark_times[-1, repeat] = perf_counter() - start
 
@@ -389,7 +381,7 @@ Numerical options
     The calculation stops when the indicator falls below this value. The default ``1e-16`` is close to the smallest value the indicators can resolve in double precision. With ``return_history=True``, the history ends at the stop. Set ``threshold=0.0`` to iterate up to ``total_time`` regardless of the indicator.
 
 ``transient_time`` and ``seed``
-    The number of iterations discarded before the deviation vectors are evolved, which defaults to zero, and the seed of the random deviation vectors, which defaults to ``1312``.
+    The number of iterations discarded before the deviation vectors are evolved, which defaults to zero, and the seed of the random deviation vectors, which defaults to ``13121989``.
 
 ``sample_times`` and ``return_last_state``
     With ``return_history=True``, ``sample_times`` stores the history only at the requested iterations, as in the examples above, and ``return_last_state=True`` also returns the state at the iteration where the calculation stopped. Both behave as in ``lyapunov``, described on the :doc:`Lyapunov exponents <dds_lyapunov>` page.

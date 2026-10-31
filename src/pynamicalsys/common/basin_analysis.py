@@ -183,7 +183,7 @@ def uncertainty_fraction_mapping(
     threshold: float = 0.1,
     n_eps: int = 100,
     max_time: int = 1000,
-    seed: int = 13,
+    seed: int = 13121989,
     n_jobs: int = -1,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """

@@ -1390,7 +1390,7 @@ class ContinuousDynamicalSystem:
         transient_time: numeric_t | None = None,
         num_exponents: int_t | None = None,
         return_history: bool = False,
-        seed: int_t = 13,
+        seed: int_t = 13121989,
         log_base: numeric_t = np.e,
         method: str = "QR",
         endpoint: bool | None = None,
@@ -1645,7 +1645,7 @@ class ContinuousDynamicalSystem:
         warmup_time: numeric_t = 0.0,
         tail_time: numeric_t = 0.0,
         qr_time_step: numeric_t | None = None,
-        seed: int_t = 13,
+        seed: int_t = 13121989,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Compute covariant Lyapunov vectors (CLVs) along a trajectory of this
@@ -1773,7 +1773,7 @@ class ContinuousDynamicalSystem:
         warmup_time: numeric_t = 0,
         tail_time: numeric_t = 0,
         qr_time_step: numeric_t | None = None,
-        seed: int_t = 13,
+        seed: int_t = 13121989,
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Compute CLV-based angle diagnostics for this continuous-time dynamical system.
@@ -1897,7 +1897,7 @@ class ContinuousDynamicalSystem:
         parameters: numeric_like_t | None = None,
         transient_time: numeric_t | None = None,
         return_history: bool = False,
-        seed: int_t = 13,
+        seed: int_t = 13121989,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
         return_last_state: bool = False,
@@ -2084,7 +2084,7 @@ class ContinuousDynamicalSystem:
         parameters: numeric_like_t | None = None,
         transient_time: numeric_t | None = None,
         return_history: bool = False,
-        seed: int_t = 13,
+        seed: int_t = 13121989,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
         return_last_state: bool = False,
@@ -2267,7 +2267,7 @@ class ContinuousDynamicalSystem:
         transient_time: numeric_t | None = None,
         return_history: bool = False,
         method: str = "QR",
-        seed: int_t = 13,
+        seed: int_t = 13121989,
         threshold: numeric_t = 1e-16,
         endpoint: bool | None = None,
         return_last_state: bool = False,

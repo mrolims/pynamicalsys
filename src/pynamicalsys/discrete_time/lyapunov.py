@@ -359,7 +359,7 @@ def lyapunov_qr(
     return_history: bool = False,
     transient_time: Optional[int_t] = None,
     log_base: numeric_t = np.e,
-    seed: int_t = 1312,
+    seed: int_t = 13121989,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute Lyapunov exponents of a discrete dynamical system using QR
@@ -401,7 +401,7 @@ def lyapunov_qr(
     log_base : numeric_t, optional
         Base of the logarithm used in the exponent calculation. Default is `np.e`.
     seed : int_t, optional
-        Seed used to initialize the random perturbation vectors. Default is 1312.
+        Seed used to initialize the random perturbation vectors. Default is 13121989.
 
     Returns
     -------
@@ -505,6 +505,7 @@ def _finite_time_windows_qr(
     num_exponents: int,
     method: str,
     log_base: numeric_t,
+    seed: int_t,
     exponents: NDArray[np.float64],
     phase_space_points: NDArray[np.float64],
 ) -> None:
@@ -519,6 +520,7 @@ def _finite_time_windows_qr(
             num_exponents,
             method=method,
             log_base=log_base,
+            seed=seed,
         )
         exponents[i] = window_exponents.ravel()
         u = u_new.copy()
@@ -586,6 +588,7 @@ def finite_time_lyapunov(
     transient_time: Optional[int_t] = None,
     log_base: numeric_t = np.e,
     return_points: bool = False,
+    seed: int_t = 13121989,
 ) -> NDArray[np.float64] | Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute finite-time Lyapunov exponents for a discrete dynamical system.
@@ -626,6 +629,10 @@ def finite_time_lyapunov(
     return_points : bool, optional
         If True, also return the phase-space point at the beginning of each
         finite-time window. Default is False.
+    seed : int_t, optional
+        Seed of the random deviation vectors at the start of each window with
+        `method="QR"` or `"QR_HH"`. The `"ER"` method does not use it. Default
+        is 13121989.
 
     Returns
     -------
@@ -691,6 +698,7 @@ def finite_time_lyapunov(
             num_exponents,
             method,
             log_base,
+            seed,
             exponents,
             phase_space_points,
         )

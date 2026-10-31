@@ -36,7 +36,7 @@ def gali_k(
     return_history: bool = False,
     tol: numeric_t = 1e-16,
     transient_time: int_t | None = None,
-    seed: int = 13,
+    seed: int = 13121989,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Generalized Alignment Index (GALI_k) for a discrete dynamical system.
@@ -108,7 +108,7 @@ def gali_k(
         Number of initial iterations to discard as transient before starting
         the GALI_k computation. If None, no transient is discarded.
     seed : int, optional
-        Seed used to initialize the deviation vectors. Default is 13.
+        Seed used to initialize the deviation vectors. Default is 13121989.
 
     Returns
     -------

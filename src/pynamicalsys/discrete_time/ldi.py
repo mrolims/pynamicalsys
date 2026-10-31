@@ -35,7 +35,7 @@ def ldi_k(
     return_history: bool = False,
     tol: numeric_t = 1e-16,
     transient_time: int_t | None = None,
-    seed: int = 13,
+    seed: int = 13121989,
 ) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
     """
     Compute the Linear Dependence Index (LDI_k) for a discrete dynamical system.
@@ -71,7 +71,7 @@ def ldi_k(
         Number of initial iterations to discard as transient before starting
         the LDI_k computation. If None, no transient is discarded.
     seed : int, optional
-        Seed used to initialize the deviation vectors. Default is 13.
+        Seed used to initialize the deviation vectors. Default is 13121989.
 
     Returns
     -------
