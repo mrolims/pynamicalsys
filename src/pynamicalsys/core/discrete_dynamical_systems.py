@@ -3579,10 +3579,10 @@ class DiscreteDynamicalSystem:
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
-        elif num_exponents > self.__system_dimension:
-            raise ValueError("num_exponents must be <= system_dimension")
         else:
-            validate_non_negative(num_exponents, "num_exponents", Integral)
+            validate_positive(num_exponents, "num_exponents", Integral)
+            if num_exponents > self.__system_dimension:
+                raise ValueError("num_exponents must be <= system_dimension")
 
         validate_positive(log_base, "log_base", Real)
         if log_base == 1:

@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `DiscreteDynamicalSystem.lyapunov` accepted `num_exponents=0` and returned an empty array, and a non-numeric `num_exponents` failed with an unrelated error. It now raises a `ValueError` unless `num_exponents` is positive and a `TypeError` unless it is an integer, as `finite_time_lyapunov` does.
 - `DiscreteDynamicalSystem.find_periodic_orbit` kept Numba's on-disk cache of its phase-space scan, which takes the map as an argument, so every new Python session added cache files that were never removed, and after many sessions loading a stale entry failed with `ReferenceError: underlying object has vanished`. The scan, and the core of `BasinMetrics.uncertainty_fraction`, are no longer cached on disk; they are compiled once per session.
 - `DiscreteDynamicalSystem.finite_time_lyapunov` did not check `num_exponents`: zero returned an empty array, and negative, fractional, or non-numeric values failed with unrelated errors. It now raises a `TypeError` unless `num_exponents` is an integer and a `ValueError` unless it is positive.
 - Arguments that must be positive numbers, such as `total_time`, `time_step`, `finite_time`, `k`, or `num_clvs`, accepted `True`, which counted as 1. They now raise a `TypeError` for booleans, as the arguments that must be non-negative already did.
