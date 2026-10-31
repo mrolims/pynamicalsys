@@ -97,13 +97,11 @@ def basin_entropy(
         2D array representing the basin of attraction, where each element indicates
         the final state (attractor) for that initial condition (shape: (Nx, Ny)).
     n : int
-        Default size of square sub-boxes for partitioning (must be positive).
-    log : {'2', 'e', '10'} or Callable, optional
-        Logarithm base for entropy calculation:
-        - '2' : bits (default)
-        - 'e' : nats
-        - '10' : hartleys
-        Alternatively, a custom log function can be provided.
+        Side of the square sub-boxes, in grid points. It must divide both
+        dimensions of `basin`.
+    log_base : float, optional
+        Base of the logarithm in the entropy: `np.e` (default) gives nats, 2
+        gives bits, and 10 gives hartleys.
 
     Returns
     -------
@@ -115,9 +113,7 @@ def basin_entropy(
     Raises
     ------
     ValueError
-        - If `basin` is not 2D
-        - If `n` ≤ 0
-        - If invalid `log` specification
+        If `n` does not divide both dimensions of `basin`.
 
     Notes
     -----
@@ -131,7 +127,7 @@ def basin_entropy(
     Examples
     --------
     >>> basin = np.random.randint(0, 2, (100, 100))
-    >>> Sb, Sbb = boundary_entropy(basin, n=10, log='2')
+    >>> Sb, Sbb = basin_entropy(basin, n=10, log_base=2)
     >>> print(f"Basin entropy: {Sb:.3f}, Boundary entropy: {Sbb:.3f}")
     """
 

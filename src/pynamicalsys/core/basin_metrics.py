@@ -79,7 +79,7 @@ class BasinMetrics:
         ----------
         n : int
             Default size of square sub-boxes for partitioning (must be positive).
-        log : float, optional
+        log_base : float, optional
             Logarithm base for entropy calculation (default: np.e, which is natural logarithm).
 
         Returns
@@ -93,7 +93,8 @@ class BasinMetrics:
         Raises
         ------
         ValueError
-            If `n`, is not positive integer, or if `log_base` is not positive.
+            If `n` is not a positive integer, if it does not divide both
+            dimensions of the basin, or if `log_base` is not positive.
 
         Notes
         -----
