@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Arguments that must be positive numbers, such as `total_time`, `time_step`, `finite_time`, `k`, or `num_clvs`, accepted `True`, which counted as 1. They now raise a `TypeError` for booleans, as the arguments that must be non-negative already did.
 - `ContinuousDynamicalSystem.poincare_section` with `rk45` computed the crossing time from the requested step size instead of the accepted one, so crossings that followed a rejected step had wrong times, off by up to about one step size. The states on the section were correct. With `rk4`, the crossing times change only at the level of round-off.
 - `HamiltonianSystem.poincare_section`, and `HamiltonianSystem.CLV` and `CLV_angles` with `poincare_section=True`, counted a crossing twice when an integration step landed exactly on the section, once on arrival and once on leaving. It is now counted once. An initial condition on the section is still counted as the first crossing.
 - `ContinuousDynamicalSystem.poincare_section` never counted a crossing when an integration step landed exactly on the section, and if no other crossing followed, it never returned. Such a crossing is now counted once, and an initial condition on the section is counted as the first crossing, as in `HamiltonianSystem.poincare_section`.
