@@ -3697,7 +3697,8 @@ class DiscreteDynamicalSystem:
             it includes `transient_time`.
         finite_time : int
             Length of each window, in iterations. It must be positive and not
-            larger than `total_time // 2` or `total_time - transient_time`.
+            larger than `total_time - transient_time`, which gives a single
+            window.
         parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
             System parameters of shape `(p,)` passed to the mapping function.
             If None, the parameters set on the system are used.
@@ -3757,7 +3758,7 @@ class DiscreteDynamicalSystem:
             - If `parameters` is None but the system expects parameters.
             - If `parameters` is a scalar or array-like but not 1D.
             - If `total_time` is negative.
-            - If `finite_time` is not positive, or larger than `total_time // 2` or `total_time - transient_time`.
+            - If `finite_time` is not positive, or larger than `total_time - transient_time`.
             - If `transient_time` is negative, or greater than or equal to `total_time`.
             - If `method` is not "ER", "QR", or "QR_HH", or if it is "ER" and the system is not two-dimensional.
             - If `num_exponents` is not positive or is larger than the system dimension.
@@ -3808,8 +3809,13 @@ class DiscreteDynamicalSystem:
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_positive(finite_time, "finite_time", Integral)
-        validate_finite_time(finite_time, total_time)
         validate_transient_time(transient_time, total_time, Integral)
+        sample_size = total_time - (transient_time if transient_time is not None else 0)
+        if finite_time > sample_size:
+            raise ValueError(
+                "finite_time must be less than or equal to "
+                f"total_time - transient_time ({sample_size})"
+            )
 
         # Validate method
         if not isinstance(method, str):

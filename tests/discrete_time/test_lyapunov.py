@@ -323,3 +323,35 @@ def test_lyapunov_rejects_invalid_num_exponents(num_exponents, error):
     ds.set_parameters([1.4, 0.3])
     with pytest.raises(error, match="num_exponents"):
         ds.lyapunov([0.1, 0.1], 100, num_exponents=num_exponents)
+
+
+# finite_time may be as long as the iterations left after the transient, which
+# gives a single window, and no longer.
+
+
+@pytest.mark.parametrize(
+    "total_time, finite_time, transient_time",
+    [(100, 80, None), (100, 100, None), (100, 60, 30), (100, 70, 30)],
+)
+def test_finite_time_lyapunov_accepts_a_single_window(total_time, finite_time, transient_time):
+    ds = DDS(model="standard map")
+    ds.set_parameters([1.5])
+    exponents = ds.finite_time_lyapunov(
+        [0.05, 0.05], total_time, finite_time, transient_time=transient_time
+    )
+    assert exponents.shape == (1, 2)
+
+
+@pytest.mark.parametrize(
+    "total_time, finite_time, transient_time",
+    [(100, 101, None), (100, 50, 60), (100, 71, 30)],
+)
+def test_finite_time_lyapunov_rejects_windows_longer_than_the_iterations_left(
+    total_time, finite_time, transient_time
+):
+    ds = DDS(model="standard map")
+    ds.set_parameters([1.5])
+    with pytest.raises(ValueError, match="total_time - transient_time"):
+        ds.finite_time_lyapunov(
+            [0.05, 0.05], total_time, finite_time, transient_time=transient_time
+        )
