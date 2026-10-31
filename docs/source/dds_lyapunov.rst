@@ -278,7 +278,7 @@ Numerical options
     Number of iterations discarded before the averages start. It defaults to zero in both methods. For ``finite_time_lyapunov``, the number of complete windows is ``(total_time - transient_time) // finite_time``, and iterations that do not fill a window are discarded.
 
 ``finite_time``
-    The window length of ``finite_time_lyapunov``, in iterations. Short windows resolve the local variability of the exponents, and long windows approach the asymptotic values.
+    The window length of ``finite_time_lyapunov``, in iterations. Short windows resolve the local variability of the exponents, and long windows approach the asymptotic values. Over short windows, the exponents of a window are local stretching rates, so the values in a row need not be in decreasing order; column ``j`` is the rate along the ``j``-th deviation vector, which tends to the ``j``-th largest exponent as ``finite_time`` grows.
 
 ``log_base``
     The default is :math:`e`, so the exponents use natural logarithms. Set ``log_base=2`` to express the rates in bits per iteration. Changing the base rescales the values but not their signs.
