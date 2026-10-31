@@ -154,3 +154,115 @@ def ensemble_trajectories(
         )
 
     return trajectories
+
+
+@njit
+def generate_sampled_trajectory(
+    q: NDArray[np.float64],
+    p: NDArray[np.float64],
+    sample_steps: NDArray[np.int64],
+    parameters: NDArray[np.float64],
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
+    time_step: np.float64,
+    integrator: symplectic_step_t,
+    tol: np.float64 = np.float64(1e-12),
+    max_iter: int = 50,
+) -> NDArray[np.float64]:
+    """
+    Generate a Hamiltonian trajectory stored only at the given steps.
+
+    Parameters
+    ----------
+    q : NDArray[np.float64]
+        Initial generalized coordinates of shape `(dof,)`.
+    p : NDArray[np.float64]
+        Initial generalized momenta of shape `(dof,)`.
+    sample_steps : NDArray[np.int64]
+        Increasing step indices, at least 1, at which the state is stored. The
+        integration stops at the last of them.
+    parameters : NDArray[np.float64]
+        Additional parameters passed to `system_func_1` and `system_func_2`.
+    system_func_1 : system_func_t
+        Gradient of the kinetic energy w.r.t. the momenta OR equations of motion of the system.
+    system_func_2 : system_func_t
+        Gradient of the potential energy w.r.t. the coordinates OR Hessian of the Hamiltonian w.r.t. z = (q, p)
+    time_step : np.float64
+        Integration time step.
+    integrator : symplectic_step_t
+        Symplectic integration step.
+    tol : np.float64
+        Newton convergence tolerance on the residual norm.
+    max_iter : int
+        Maximum Newton iterations per step.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Array of shape `(len(sample_steps), 2 * dof + 1)` with the time, the
+        coordinates, and the momenta at each sample step, as in
+        `generate_trajectory`.
+    """
+    dof = len(q)
+    num_samples = len(sample_steps)
+    result = np.zeros((num_samples, 2 * dof + 1), dtype=np.float64)
+
+    sample = 0
+    for i in range(1, sample_steps[-1] + 1):
+        q, p = integrator(
+            q, p, time_step, system_func_1, system_func_2, parameters, tol, max_iter
+        )
+        if i == sample_steps[sample]:
+            result[sample, 0] = np.float64(i) * time_step
+            result[sample, 1 : dof + 1] = q
+            result[sample, dof + 1 :] = p
+            sample += 1
+
+    return result
+
+
+@njit(parallel=True)
+def ensemble_sampled_trajectories(
+    q: NDArray[np.float64],
+    p: NDArray[np.float64],
+    sample_steps: NDArray[np.int64],
+    parameters: NDArray[np.float64],
+    system_func_1: system_func_t,
+    system_func_2: system_func_t,
+    time_step: np.float64,
+    integrator: symplectic_step_t,
+    tol: np.float64 = np.float64(1e-12),
+    max_iter: int = 50,
+) -> NDArray[np.float64]:
+    """
+    Generate an ensemble of Hamiltonian trajectories stored only at the given
+    steps.
+
+    Parameters are those of `generate_sampled_trajectory`, with `q` and `p` of
+    shape `(num_ic, dof)`.
+
+    Returns
+    -------
+    NDArray[np.float64]
+        Array of shape `(num_ic, len(sample_steps), 2 * dof + 1)`.
+    """
+    num_ic, dof = q.shape
+    trajectories = np.zeros(
+        (num_ic, len(sample_steps), 2 * dof + 1),
+        dtype=np.float64,
+    )
+    for i in prange(num_ic):
+        trajectories[i] = generate_sampled_trajectory(
+            q[i],
+            p[i],
+            sample_steps,
+            parameters,
+            system_func_1,
+            system_func_2,
+            time_step,
+            integrator,
+            tol=tol,
+            max_iter=max_iter,
+        )
+
+    return trajectories
