@@ -179,11 +179,11 @@ def validate_positive(value, name, type_: type = Integral) -> None:
     Raises
     ------
     TypeError
-        If value is not of the expected type.
+        If value is a boolean or not of the expected type.
     ValueError
-        If value is less than 0.
+        If value is not greater than 0.
     """
-    if not isinstance(value, type_):
+    if isinstance(value, bool) or not isinstance(value, type_):
         raise TypeError(f"{name} must be of type {type_.__name__}")
     if value <= 0:
         raise ValueError(f"{name} must be greater than 0")

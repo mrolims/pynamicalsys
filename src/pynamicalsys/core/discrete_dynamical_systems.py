@@ -3429,7 +3429,7 @@ class DiscreteDynamicalSystem:
         method : str, optional
             Computation method:
             - "ER": Analytical QR decomposition, after Eckmann and Ruelle [1]. Only for 2d systems
-            - "QR": QR decomposition (modifed Gram-Schmidt)
+            - "QR": QR decomposition (modified Gram-Schmidt)
             - "QR_HH": Householder QR (more stable, uses np.linalg.qr)
         return_history : bool, optional
             If True, return the exponents after each sampled iteration instead
@@ -3482,20 +3482,22 @@ class DiscreteDynamicalSystem:
             - If `parameters` is None but the system expects parameters.
             - If `parameters` is a scalar or array-like but not 1D.
             - If `total_time` is negative.
-            - If `trasient_time` is negative.
-            - If `transient_time` is greater than or equal to total_time.
-            - If `method` is not "QR" or "QR_HH".
+            - If `transient_time` is negative.
+            - If `transient_time` is greater than or equal to `total_time`.
+            - If `method` is not "ER", "QR", or "QR_HH", or if it is "ER" and
+              the system has more than two dimensions.
             - If `sample_times` is not a 1D array of integers, or contains values
               outside `(transient_time, total_time]`.
-            - If `log_base` is not positive.
-            - If `num_exponents` is larger then the system's dimension.
+            - If `log_base` is not positive, or is equal to 1.
+            - If `num_exponents` is not positive or is larger than the system
+              dimension.
         TypeError
             - If `u` is not a scalar or array-like type.
             - If `parameters` is not a scalar or array-like type.
-            - If `total_time` is not int.
-            - If `transient_time` is not int.
-            - If `log_base` is not float.
-            - If `num_exponents` is not an positive integer.
+            - If `total_time` is not an integer.
+            - If `transient_time` is not an integer.
+            - If `log_base` is not a real number.
+            - If `num_exponents` is not an integer.
             - If `seed` is not an integer.
             - If sample_times cannot be converted to a 1D array of integers.
             - If `method` is not a string.
@@ -3517,22 +3519,22 @@ class DiscreteDynamicalSystem:
 
         Examples
         --------
-        >>> # Basic 2D system with ER method
-        >>> u0 = np.array([0.1, 0.2])
-        >>> params = np.array([0.5, 1.0])
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params)
-
+        >>> from pynamicalsys import DiscreteDynamicalSystem as dds
+        >>> system = dds(model="henon map")
+        >>> system.set_parameters([1.4, 0.3])
+        >>> u0 = [0.1, 0.1]
+        >>> # Full spectrum with the default method, "QR"
+        >>> exponents = system.lyapunov(u0, 10000)
+        >>> # With the Eckmann-Ruelle method, for two-dimensional maps
+        >>> exponents = system.lyapunov(u0, 10000, method="ER")
         >>> # With convergence history
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params, return_history=True)
-        >>> # Using Householder QR for better stability
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params, method="QR_HH", return_history=True)
+        >>> history = system.lyapunov(u0, 10000, return_history=True)
+        >>> # Using Householder QR
+        >>> history = system.lyapunov(u0, 10000, method="QR_HH", return_history=True)
         >>> # With transient time and logarithm base 10
-        >>> lyapunov_exponents = system.lyapunov(u0, 10000,
-        ...         parameters=params, transient_time=1000,
-        ...         log_base=10.0, return_history=True)
+        >>> history = system.lyapunov(
+        ...     u0, 10000, transient_time=1000, log_base=10.0, return_history=True
+        ... )
         """
 
         u = validate_initial_conditions(
@@ -3579,10 +3581,10 @@ class DiscreteDynamicalSystem:
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
-        elif num_exponents > self.__system_dimension:
-            raise ValueError("num_exponents must be <= system_dimension")
         else:
-            validate_non_negative(num_exponents, "num_exponents", Integral)
+            validate_positive(num_exponents, "num_exponents", Integral)
+            if num_exponents > self.__system_dimension:
+                raise ValueError("num_exponents must be <= system_dimension")
 
         validate_positive(log_base, "log_base", Real)
         if log_base == 1:
@@ -3686,7 +3688,9 @@ class DiscreteDynamicalSystem:
 
         After the transient, the trajectory is divided into consecutive
         non-overlapping windows of `finite_time` iterations, and the Lyapunov
-        exponents are computed independently in each window.
+        exponents are averaged over each window. The deviation vectors are
+        carried from one window to the next, so the mean of the windows is
+        the Lyapunov exponent over all of them.
 
         Parameters
         ----------
@@ -3697,7 +3701,8 @@ class DiscreteDynamicalSystem:
             it includes `transient_time`.
         finite_time : int
             Length of each window, in iterations. It must be positive and not
-            larger than `total_time // 2` or `total_time - transient_time`.
+            larger than `total_time - transient_time`, which gives a single
+            window.
         parameters : Union[None, float, Sequence[np.float64], NDArray[np.float64]], optional
             System parameters of shape `(p,)` passed to the mapping function.
             If None, the parameters set on the system are used.
@@ -3715,10 +3720,9 @@ class DiscreteDynamicalSystem:
             - "ER": the QR decomposition written in closed form for
               two-dimensional maps, after Eckmann and Ruelle, where the
               orthonormal frame is a rotation by a single angle. Only valid
-              for two-dimensional maps. Over long windows it gives the same
-              exponents as "QR"; over short windows the values differ
-              slightly, because the two methods start each window from
-              different deviation vectors.
+              for two-dimensional maps. It starts from a different frame
+              than "QR", so the first window can differ, but the later windows
+              agree with "QR" to round-off.
         transient_time : Optional[int], optional
             Number of iterations discarded before the first window. Default is
             None, which means no transient.
@@ -3728,8 +3732,9 @@ class DiscreteDynamicalSystem:
             If True, also return the state at the beginning of each window.
             Default is False.
         seed : int_t, optional
-            Seed of the random deviation vectors at the start of each window
-            with `method="QR"` or `"QR_HH"`. The `"ER"` method does not use it.
+            Seed of the random deviation vectors at the start of the first
+            window with `method="QR"` or `"QR_HH"`. The `"ER"` method does not
+            use it.
             Default is 13121989.
 
         Returns
@@ -3757,15 +3762,15 @@ class DiscreteDynamicalSystem:
             - If `parameters` is None but the system expects parameters.
             - If `parameters` is a scalar or array-like but not 1D.
             - If `total_time` is negative.
-            - If `finite_time` is not positive, or larger than `total_time // 2` or `total_time - transient_time`.
+            - If `finite_time` is not positive, or larger than `total_time - transient_time`.
             - If `transient_time` is negative, or greater than or equal to `total_time`.
             - If `method` is not "ER", "QR", or "QR_HH", or if it is "ER" and the system is not two-dimensional.
-            - If `num_exponents` is larger than the system dimension.
+            - If `num_exponents` is not positive or is larger than the system dimension.
             - If `log_base` is not positive, or is equal to 1.
         TypeError
             - If `u` is not a scalar or array-like type.
             - If `parameters` is not a scalar or array-like type.
-            - If `total_time`, `finite_time`, or `transient_time` is not an integer.
+            - If `total_time`, `finite_time`, `transient_time`, or `num_exponents` is not an integer.
             - If `log_base` is not a real number.
             - If `method` is not a string.
             - If `return_points` is not a boolean.
@@ -3808,8 +3813,13 @@ class DiscreteDynamicalSystem:
 
         validate_non_negative(total_time, "total_time", Integral)
         validate_positive(finite_time, "finite_time", Integral)
-        validate_finite_time(finite_time, total_time)
         validate_transient_time(transient_time, total_time, Integral)
+        sample_size = total_time - (transient_time if transient_time is not None else 0)
+        if finite_time > sample_size:
+            raise ValueError(
+                "finite_time must be less than or equal to "
+                f"total_time - transient_time ({sample_size})"
+            )
 
         # Validate method
         if not isinstance(method, str):
@@ -3822,8 +3832,10 @@ class DiscreteDynamicalSystem:
 
         if num_exponents is None:
             num_exponents = self.__system_dimension
-        elif num_exponents > self.__system_dimension:
-            raise ValueError("num_exponents must be <= system_dimension")
+        else:
+            validate_positive(num_exponents, "num_exponents", Integral)
+            if num_exponents > self.__system_dimension:
+                raise ValueError("num_exponents must be <= system_dimension")
 
         validate_positive(log_base, "log_base", Real)
         if log_base == 1:

@@ -489,91 +489,19 @@ def lyapunov_qr(
     return (exponents / (sample_size * log_den)).reshape(1, -1), u
 
 
-# Compiled loops over the windows of `finite_time_lyapunov`, one per method,
-# so that only the kernel of the requested method is compiled. Each window
-# starts from the state at the end of the previous one, and the exponents and
-# starting states are written into the given arrays.
-
-
 @njit
-def _finite_time_windows_qr(
+def _window_start_states(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
     finite_time: int_t,
     mapping: map_t,
-    jacobian: jacobian_t,
-    num_exponents: int,
-    method: str,
-    log_base: numeric_t,
-    seed: int_t,
-    exponents: NDArray[np.float64],
     phase_space_points: NDArray[np.float64],
 ) -> None:
-    for i in range(exponents.shape[0]):
+    """Write the state at the start of each window of `finite_time_lyapunov`."""
+    for i in range(phase_space_points.shape[0]):
         phase_space_points[i] = u
-        window_exponents, u_new = lyapunov_qr(
-            u,
-            parameters,
-            finite_time,
-            mapping,
-            jacobian,
-            num_exponents,
-            method=method,
-            log_base=log_base,
-            seed=seed,
-        )
-        exponents[i] = window_exponents.ravel()
-        u = u_new.copy()
-
-
-@njit
-def _finite_time_windows_er(
-    u: NDArray[np.float64],
-    parameters: NDArray[np.float64],
-    finite_time: int_t,
-    mapping: map_t,
-    jacobian: jacobian_t,
-    log_base: numeric_t,
-    exponents: NDArray[np.float64],
-    phase_space_points: NDArray[np.float64],
-) -> None:
-    for i in range(exponents.shape[0]):
-        phase_space_points[i] = u
-        window_exponents, u_new = lyapunov_er(
-            u,
-            parameters,
-            finite_time,
-            mapping,
-            jacobian,
-            log_base=log_base,
-        )
-        exponents[i] = window_exponents.ravel()
-        u = u_new.copy()
-
-
-@njit
-def _finite_time_windows_maximum_er(
-    u: NDArray[np.float64],
-    parameters: NDArray[np.float64],
-    finite_time: int_t,
-    mapping: map_t,
-    jacobian: jacobian_t,
-    log_base: numeric_t,
-    exponents: NDArray[np.float64],
-    phase_space_points: NDArray[np.float64],
-) -> None:
-    for i in range(exponents.shape[0]):
-        phase_space_points[i] = u
-        window_exponents, u_new = maximum_lyapunov_er(
-            u,
-            parameters,
-            finite_time,
-            mapping,
-            jacobian,
-            log_base=log_base,
-        )
-        exponents[i] = window_exponents.ravel()
-        u = u_new.copy()
+        for _ in range(finite_time):
+            u = mapping(u, parameters)
 
 
 def finite_time_lyapunov(
@@ -594,8 +522,8 @@ def finite_time_lyapunov(
     Compute finite-time Lyapunov exponents for a discrete dynamical system.
 
     The trajectory is divided into consecutive non-overlapping windows of
-    length `finite_time`, and Lyapunov exponents are computed independently
-    in each window.
+    length `finite_time`, and the Lyapunov exponents are averaged over each
+    window. The deviation vectors are carried from one window to the next.
 
     Parameters
     ----------
@@ -630,9 +558,9 @@ def finite_time_lyapunov(
         If True, also return the phase-space point at the beginning of each
         finite-time window. Default is False.
     seed : int_t, optional
-        Seed of the random deviation vectors at the start of each window with
-        `method="QR"` or `"QR_HH"`. The `"ER"` method does not use it. Default
-        is 13121989.
+        Seed of the random deviation vectors at the start of the first window
+        with `method="QR"` or `"QR_HH"`. The `"ER"` method does not use it.
+        Default is 13121989.
 
     Returns
     -------
@@ -659,9 +587,11 @@ def finite_time_lyapunov(
 
     Notes
     -----
-    The finite-time exponents are computed over consecutive non-overlapping
-    windows, so each row of the output corresponds to one independent
-    finite-time estimate along the trajectory.
+    The exponents of all windows come from a single computation along the
+    trajectory, as in `lyapunov_qr`, `lyapunov_er`, and `maximum_lyapunov_er`,
+    sampled at the ends of the windows. Each row of the output is the average
+    over one window, and the mean of the rows is the exponent over all of
+    them.
     """
     method = method.upper()
 
@@ -685,46 +615,56 @@ def finite_time_lyapunov(
         raise ValueError("method must be 'ER', 'QR', or 'QR_HH'")
 
     num_windows = sample_size // finite_time
-    exponents = np.zeros((num_windows, num_exponents), dtype=np.float64)
-    phase_space_points = np.zeros((num_windows, neq), dtype=np.float64)
 
+    # A single computation carries the deviation vectors from one window to
+    # the next. The history holds the running averages at the ends of the
+    # windows, so window k is k * history[k] - (k - 1) * history[k - 1].
+    sample_times = finite_time * np.arange(1, num_windows + 1, dtype=np.int64)
+    window_total = num_windows * finite_time
     if method != "ER":
-        _finite_time_windows_qr(
+        history, _ = lyapunov_qr(
             u,
             parameters,
-            finite_time,
+            window_total,
             mapping,
             jacobian,
             num_exponents,
-            method,
-            log_base,
-            seed,
-            exponents,
-            phase_space_points,
+            sample_times=sample_times,
+            method=method,
+            return_history=True,
+            log_base=log_base,
+            seed=seed,
         )
     elif num_exponents == 1:
-        _finite_time_windows_maximum_er(
+        history, _ = maximum_lyapunov_er(
             u,
             parameters,
-            finite_time,
+            window_total,
             mapping,
             jacobian,
-            log_base,
-            exponents,
-            phase_space_points,
+            sample_times=sample_times,
+            return_history=True,
+            log_base=log_base,
         )
     else:
-        _finite_time_windows_er(
+        history, _ = lyapunov_er(
             u,
             parameters,
-            finite_time,
+            window_total,
             mapping,
             jacobian,
-            log_base,
-            exponents,
-            phase_space_points,
+            sample_times=sample_times,
+            return_history=True,
+            log_base=log_base,
         )
 
+    sums = history.reshape(num_windows, num_exponents) * np.arange(
+        1, num_windows + 1
+    ).reshape(-1, 1)
+    exponents = np.diff(sums, axis=0, prepend=np.zeros((1, num_exponents)))
+
     if return_points:
+        phase_space_points = np.zeros((num_windows, neq), dtype=np.float64)
+        _window_start_states(u, parameters, finite_time, mapping, phase_space_points)
         return exponents, phase_space_points
     return exponents

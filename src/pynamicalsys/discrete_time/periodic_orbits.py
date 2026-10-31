@@ -192,7 +192,7 @@ def is_periodic(
     return _states_close(state, state_periodic, tolerance)
 
 
-@njit(cache=True, parallel=True)
+@njit(parallel=True)
 def scan_phase_space(
     grid_points: NDArray[np.float64],
     parameters: NDArray[np.float64],

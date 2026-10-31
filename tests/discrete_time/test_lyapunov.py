@@ -298,3 +298,97 @@ def test_seed_must_be_an_integer():
         ds.lyapunov([0.1, 0.1], 10, seed=1.5)
     with pytest.raises(TypeError, match="seed"):
         ds.finite_time_lyapunov([0.1, 0.1], 100, 10, seed=1.5)
+
+
+# num_exponents must be a positive integer no larger than the dimension.
+
+
+@pytest.mark.parametrize(
+    "num_exponents, error",
+    [(0, ValueError), (-1, ValueError), (3, ValueError), (1.5, TypeError), (True, TypeError), ("2", TypeError)],
+)
+def test_finite_time_lyapunov_rejects_invalid_num_exponents(num_exponents, error):
+    ds = DDS(model="henon map")
+    ds.set_parameters([1.4, 0.3])
+    with pytest.raises(error, match="num_exponents"):
+        ds.finite_time_lyapunov([0.1, 0.1], 100, 10, num_exponents=num_exponents)
+
+
+@pytest.mark.parametrize(
+    "num_exponents, error",
+    [(0, ValueError), (-1, ValueError), (3, ValueError), (1.5, TypeError), (True, TypeError), ("2", TypeError)],
+)
+def test_lyapunov_rejects_invalid_num_exponents(num_exponents, error):
+    ds = DDS(model="henon map")
+    ds.set_parameters([1.4, 0.3])
+    with pytest.raises(error, match="num_exponents"):
+        ds.lyapunov([0.1, 0.1], 100, num_exponents=num_exponents)
+
+
+# finite_time may be as long as the iterations left after the transient, which
+# gives a single window, and no longer.
+
+
+@pytest.mark.parametrize(
+    "total_time, finite_time, transient_time",
+    [(100, 80, None), (100, 100, None), (100, 60, 30), (100, 70, 30)],
+)
+def test_finite_time_lyapunov_accepts_a_single_window(total_time, finite_time, transient_time):
+    ds = DDS(model="standard map")
+    ds.set_parameters([1.5])
+    exponents = ds.finite_time_lyapunov(
+        [0.05, 0.05], total_time, finite_time, transient_time=transient_time
+    )
+    assert exponents.shape == (1, 2)
+
+
+@pytest.mark.parametrize(
+    "total_time, finite_time, transient_time",
+    [(100, 101, None), (100, 50, 60), (100, 71, 30)],
+)
+def test_finite_time_lyapunov_rejects_windows_longer_than_the_iterations_left(
+    total_time, finite_time, transient_time
+):
+    ds = DDS(model="standard map")
+    ds.set_parameters([1.5])
+    with pytest.raises(ValueError, match="total_time - transient_time"):
+        ds.finite_time_lyapunov(
+            [0.05, 0.05], total_time, finite_time, transient_time=transient_time
+        )
+
+
+# The deviation vectors are carried from one window to the next, so the
+# windows are consecutive pieces of one computation: their mean is the
+# exponent over the whole interval, and methods that differ only in how they
+# orthonormalize give the same windows once their frames have aligned.
+
+
+@pytest.mark.parametrize(
+    "method, num_exponents", [("QR", 2), ("QR_HH", 2), ("ER", 2), ("ER", 1)]
+)
+@pytest.mark.parametrize("K, finite_time", [(1.5, 200), (0.5, 2)])
+def test_finite_time_windows_average_to_the_exponent(method, num_exponents, K, finite_time):
+    ds = DDS(model="standard map")
+    ds.set_parameters([K])
+    u = [0.05, 0.05]
+    total_time = 20_000
+
+    windows = ds.finite_time_lyapunov(
+        u, total_time, finite_time, method=method, num_exponents=num_exponents
+    )
+    exponents = ds.lyapunov(u, total_time, method=method, num_exponents=num_exponents)
+
+    np.testing.assert_allclose(windows.mean(axis=0), exponents, rtol=0, atol=1e-12)
+
+
+def test_finite_time_windows_agree_between_methods():
+    ds = DDS(model="standard map")
+    ds.set_parameters([1.5])
+    u = [0.05, 0.05]
+    windows = {
+        method: ds.finite_time_lyapunov(u, 20_000, 200, method=method)
+        for method in ("QR", "QR_HH", "ER")
+    }
+    # The first window still depends on the initial frame of each method.
+    np.testing.assert_allclose(windows["QR_HH"][1:], windows["QR"][1:], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(windows["ER"][1:], windows["QR"][1:], rtol=0, atol=1e-10)
