@@ -158,7 +158,7 @@ def sali_sep(
             history[count, 1] = sali_val
             count += 1
 
-        if sali_val <= threshold:
+        if sali_val < threshold:
             break
 
     if return_history:
@@ -288,7 +288,7 @@ def sali_imp(
             history[count, 1] = sali_val
             count += 1
 
-        if sali_val <= threshold:
+        if sali_val < threshold:
             break
 
     if return_history:

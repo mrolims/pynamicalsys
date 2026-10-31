@@ -187,7 +187,7 @@ def ldi_k(
             history[count, 1] = ldi
             count += 1
 
-        if ldi <= threshold:
+        if ldi < threshold:
             break
 
         uv[neq:] = v.reshape(neq * ndv)
