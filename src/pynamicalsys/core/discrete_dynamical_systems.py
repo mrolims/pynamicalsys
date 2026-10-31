@@ -33,6 +33,7 @@ from pynamicalsys.common.recurrence_quantification_analysis import (
 
 
 from pynamicalsys.common.differentiation import finite_difference_jacobian
+from pynamicalsys.common.errors import MissingFunctionError
 
 from pynamicalsys.common.display import render_latex
 
@@ -195,6 +196,46 @@ def _window_size_from_deprecated_total_time(window_size, total_time):
         stacklevel=3,
     )
     return total_time
+
+
+def _count_pair(value, name):
+    """
+    Return `value` as a pair of positive integers.
+
+    `value` is an integer, used for both entries, or a tuple or list of two
+    integers. Whole-number floats in a tuple or list are still accepted, with a
+    DeprecationWarning.
+    """
+    message = f"{name} must be an int or a tuple of two ints"
+    if isinstance(value, (tuple, list)):
+        if len(value) != 2:
+            raise ValueError(f"{name} must be an int or a tuple of length 2")
+        entries = value
+    elif isinstance(value, Integral) and not isinstance(value, bool):
+        entries = (value, value)
+    else:
+        raise TypeError(message)
+
+    pair = []
+    for entry in entries:
+        if isinstance(entry, bool):
+            raise TypeError(message)
+        if isinstance(entry, Integral):
+            pair.append(int(entry))
+        elif isinstance(entry, Real) and float(entry).is_integer():
+            warnings.warn(
+                f"Floats in {name} are deprecated and will stop working in a "
+                "future version. Pass integers instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            pair.append(int(entry))
+        else:
+            raise TypeError(message)
+
+    if pair[0] < 1 or pair[1] < 1:
+        raise ValueError(f"all {name} values must be positive")
+    return pair[0], pair[1]
 
 
 class DiscreteDynamicalSystem:
@@ -1898,10 +1939,12 @@ class DiscreteDynamicalSystem:
             `delta * s**(i / n_points)` for `i = 0, ..., n_points - 1`, where
             `s` is the stretching factor over one period (`|lambda_u|` for the
             unstable manifold and `1 / |lambda_s|` for the stable one). If an
-            integer is given, the same value is used for both branches.
+            integer is given, the same value is used for both branches;
+            otherwise, a tuple or list of two integers.
         iter_time : int_t | tuple[int_t, int_t], optional
             Number of iterations used to evolve each branch. If an integer is given,
-            the same value is used for both branches.
+            the same value is used for both branches; otherwise, a tuple or list
+            of two integers.
         stability : {"stable", "unstable"}, optional
             Which invariant manifold to compute.
 
@@ -1926,12 +1969,21 @@ class DiscreteDynamicalSystem:
             - If `parameters` does not match the expected number of parameters.
             - If `period` is not positive.
             - If `delta` is not positive.
-            - If `n_points` is not a positive integer or a tuple of two positive integers.
-            - If `iter_time` is not a positive integer or a tuple of two positive integers.
+            - If `n_points` or `iter_time` has a value that is not positive, or
+              is a tuple or list whose length is not two.
             - If `stability` is invalid.
-        RuntimeError
-            - If `stability="stable"` but no backward mapping is available.
-            - If no Jacobian is available.
+            - If `stability="stable"` but no backward mapping is available. The
+              error is also a `RuntimeError`, which was raised for this before.
+        TypeError
+            - If `n_points` or `iter_time` is not an integer or a tuple or list
+              of integers, including booleans, strings, and fractional numbers.
+
+        Warns
+        -----
+        DeprecationWarning
+            If `n_points` or `iter_time` is a tuple or list containing
+            whole-number floats, such as `(100.0, 50.0)`. They are converted to
+            integers for now, but will stop working in a future version.
 
         Notes
         -----
@@ -1946,14 +1998,11 @@ class DiscreteDynamicalSystem:
         if self.__system_dimension != 2:
             raise ValueError("manifold is only implemented for 2D systems")
 
-        if self.__jacobian is None:
-            raise RuntimeError("Jacobian function must be provided")
-
         if stability not in ("stable", "unstable"):
             raise ValueError("stability must be either 'stable' or 'unstable'")
 
         if stability == "stable" and self.__backwards_mapping is None:
-            raise RuntimeError(
+            raise MissingFunctionError(
                 "backward mapping function must be provided to compute the stable manifold"
             )
 
@@ -1970,39 +2019,14 @@ class DiscreteDynamicalSystem:
         validate_positive(period, "period", Integral)
         validate_positive(delta, "delta", Real)
 
-        if isinstance(n_points, Integral):
-            n_points_tuple = (int(n_points), int(n_points))
-        elif isinstance(n_points, tuple):
-            if len(n_points) != 2:
-                raise ValueError("n_points must be an int or a tuple of length 2")
-            n_points_tuple = (int(n_points[0]), int(n_points[1]))
-        else:
-            raise TypeError("n_points must be an int or a tuple of two ints")
-
-        if n_points_tuple[0] < 1 or n_points_tuple[1] < 1:
-            raise ValueError("all n_points values must be positive")
-
-        if isinstance(iter_time, Integral):
-            iter_time_tuple = (int(iter_time), int(iter_time))
-        elif isinstance(iter_time, tuple) or isinstance(iter_time, list):
-            if len(iter_time) != 2:
-                raise ValueError("iter_time must be an int or a tuple of length 2")
-            iter_time_tuple = (int(iter_time[0]), int(iter_time[1]))
-        else:
-            raise TypeError("iter_time must be an int or a tuple of two ints")
-
-        if iter_time_tuple[0] < 1 or iter_time_tuple[1] < 1:
-            raise ValueError("all iter_time values must be positive")
-
-        backward_mapping = self.__backwards_mapping
-        if backward_mapping is None:
-            backward_mapping = self.__mapping
+        n_points_tuple = _count_pair(n_points, "n_points")
+        iter_time_tuple = _count_pair(iter_time, "iter_time")
 
         return calculate_manifolds(
             u=u_arr,
             parameters=parameters_arr,
             forward_mapping=self.__mapping,
-            backward_mapping=backward_mapping,
+            backward_mapping=self.__backwards_mapping,
             jacobian=self.__jacobian,
             period=period,
             delta=delta,

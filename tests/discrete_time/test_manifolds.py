@@ -57,3 +57,71 @@ def test_the_saddle_itself_is_not_a_seed(system):
     for branch in system.manifold(SADDLE, 1, n_points=50, iter_time=5):
         distances = distance_to_saddle(branch)
         assert distances.min() > 1e-4
+
+
+def test_kernel_requires_a_backward_map_for_the_stable_manifold():
+    # The kernel needs the backward map only for the stable manifold, and must
+    # say so when it is missing instead of failing inside the compiled code.
+    from pynamicalsys.discrete_time.manifolds import calculate_manifolds
+    from pynamicalsys.discrete_time.models import henon_map, henon_map_jacobian
+
+    saddle = np.array([0.6313544770895048, 0.18940634312685142])
+    parameters = np.array([1.4, 0.3])
+    with pytest.raises(ValueError, match="backward"):
+        calculate_manifolds(
+            saddle, parameters, henon_map, None, henon_map_jacobian, 1, stability="stable"
+        )
+    # The unstable manifold does not use it.
+    branches = calculate_manifolds(
+        saddle, parameters, henon_map, None, henon_map_jacobian, 1, stability="unstable"
+    )
+    assert len(branches) == 2
+
+
+def henon_map(u, parameters):
+    a, b = parameters
+    return np.array([1.0 - a * u[0] ** 2 + u[1], b * u[0]])
+
+
+def henon_map_jacobian(u, parameters, *args):
+    a, b = parameters
+    return np.array([[-2.0 * a * u[0], 1.0], [b, 0.0]])
+
+
+HENON_SADDLE = [0.6313544770895048, 0.18940634312685142]
+
+
+@pytest.mark.parametrize("caught", [ValueError, RuntimeError])
+def test_missing_backward_map_raises_a_value_error_that_is_also_a_runtime_error(caught):
+    # ValueError, as for the other missing or invalid arguments; RuntimeError,
+    # raised until now, so that existing code catching it keeps working.
+    ds = DDS(mapping=henon_map, jacobian=henon_map_jacobian, system_dimension=2, parameters=[1.4, 0.3])
+    with pytest.raises(caught, match="backward"):
+        ds.manifold(HENON_SADDLE, 1, stability="stable")
+
+
+# n_points and iter_time are an integer, or a tuple or list of two integers.
+
+
+@pytest.mark.parametrize("name", ["n_points", "iter_time"])
+@pytest.mark.parametrize("value", [(2.7, 3), (True, 5), True, ("5", 5), 5.0])
+def test_counts_must_be_integers(system, name, value):
+    with pytest.raises(TypeError, match=name):
+        system.manifold(SADDLE, 1, **{name: value})
+
+
+@pytest.mark.parametrize("name", ["n_points", "iter_time"])
+def test_counts_accept_a_list(system, name):
+    from_list = system.manifold(SADDLE, 1, **{name: [5, 6]})
+    from_tuple = system.manifold(SADDLE, 1, **{name: (5, 6)})
+    for a, b in zip(from_list, from_tuple):
+        np.testing.assert_array_equal(a, b)
+
+
+@pytest.mark.parametrize("name", ["n_points", "iter_time"])
+def test_whole_number_floats_are_deprecated(system, name):
+    with pytest.warns(DeprecationWarning, match=f"{name}.*future version"):
+        from_floats = system.manifold(SADDLE, 1, **{name: (5.0, 6.0)})
+    from_ints = system.manifold(SADDLE, 1, **{name: (5, 6)})
+    for a, b in zip(from_floats, from_ints):
+        np.testing.assert_array_equal(a, b)
