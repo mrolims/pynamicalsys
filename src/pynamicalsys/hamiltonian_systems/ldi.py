@@ -156,7 +156,7 @@ def ldi_k_sep(
             history[count, 1] = ldi_val
             count += 1
 
-        if ldi_val <= threshold:
+        if ldi_val < threshold:
             break
 
     if return_history:
@@ -284,7 +284,7 @@ def ldi_k_imp(
             history[count, 1] = ldi_val
             count += 1
 
-        if ldi_val <= threshold:
+        if ldi_val < threshold:
             break
 
     if return_history:

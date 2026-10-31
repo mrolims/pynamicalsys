@@ -1690,7 +1690,7 @@ class HamiltonianSystem:
         seed : int_t, optional
             Random seed used to initialize the deviation vectors.
         threshold : numeric_t, optional
-            Early stopping threshold. Integration stops when `SALI <= threshold`.
+            Early stopping threshold. Integration stops when `SALI < threshold`.
         return_last_state : bool, optional
             If `True`, also return the coordinates and momenta at the time the
             integration stopped.
@@ -1862,7 +1862,7 @@ class HamiltonianSystem:
         seed : int_t, optional
             Random seed used to initialize the deviation vectors.
         threshold : numeric_t, optional
-            Early stopping threshold. Integration stops when `LDI <= threshold`.
+            Early stopping threshold. Integration stops when `LDI < threshold`.
         return_last_state : bool, optional
             If `True`, also return the coordinates and momenta at the time the
             integration stopped.
@@ -2042,7 +2042,7 @@ class HamiltonianSystem:
         seed : int_t, optional
             Random seed used to initialize the deviation vectors.
         threshold : numeric_t, optional
-            Early stopping threshold. Integration stops when `GALI <= threshold`.
+            Early stopping threshold. Integration stops when `GALI < threshold`.
         method : str, optional
             Method used to compute GALI:
             - `"DET"`: determinant of the Gram matrix

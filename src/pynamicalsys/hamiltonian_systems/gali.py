@@ -184,7 +184,7 @@ def gali_k_sep(
             history[count, 1] = gali_val
             count += 1
 
-        if gali_val <= threshold:
+        if gali_val < threshold:
             break
 
     if return_history:
@@ -349,7 +349,7 @@ def gali_k_imp(
             history[count, 1] = gali_val
             count += 1
 
-        if gali_val <= threshold:
+        if gali_val < threshold:
             break
 
     if return_history:

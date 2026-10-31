@@ -183,7 +183,7 @@ def sali(
             history[count, 1] = sali
             count += 1
 
-        if sali <= threshold:
+        if sali < threshold:
             break
 
         uv[neq:] = v.reshape(neq * ndv)

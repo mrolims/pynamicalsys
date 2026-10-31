@@ -229,7 +229,7 @@ def gali_k(
             history[count, 1] = gali
             count += 1
 
-        if gali <= threshold:
+        if gali < threshold:
             break
 
         uv[neq:] = v.reshape(neq * ndv)
