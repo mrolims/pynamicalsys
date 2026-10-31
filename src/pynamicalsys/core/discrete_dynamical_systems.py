@@ -3413,6 +3413,7 @@ class DiscreteDynamicalSystem:
         num_exponents: Optional[int] = None,
         log_base: numeric_t = np.e,
         return_last_state: bool = False,
+        seed: int_t = 13121989,
     ):
         """Compute Lyapunov exponents using specified numerical method.
 
@@ -3449,6 +3450,10 @@ class DiscreteDynamicalSystem:
         return_last_state : bool, optional
             If True, also return the state after the last iteration. Default is
             False.
+        seed : int_t, optional
+            Seed of the random deviation vectors with `method="QR"` or
+            `"QR_HH"`. The `"ER"` method and one-dimensional maps do not use
+            it. Default is 13121989.
 
         Returns
         -------
@@ -3491,6 +3496,7 @@ class DiscreteDynamicalSystem:
             - If `transient_time` is not int.
             - If `log_base` is not float.
             - If `num_exponents` is not an positive integer.
+            - If `seed` is not an integer.
             - If sample_times cannot be converted to a 1D array of integers.
             - If `method` is not a string.
 
@@ -3582,6 +3588,9 @@ class DiscreteDynamicalSystem:
         if log_base == 1:
             raise ValueError("The logarithm function is not defined with base 1.")
 
+        if isinstance(seed, bool) or not isinstance(seed, Integral):
+            raise TypeError("seed must be an integer")
+
         # Dispatch to appropriate computation
         if self.__system_dimension == 1:
             result, u = lyapunov_1D(
@@ -3634,6 +3643,7 @@ class DiscreteDynamicalSystem:
                     return_history,
                     transient_time,
                     log_base,
+                    seed,
                 )
 
         if return_history:
@@ -3670,6 +3680,7 @@ class DiscreteDynamicalSystem:
         transient_time: Optional[int] = None,
         log_base: float = np.e,
         return_points: bool = False,
+        seed: int_t = 13121989,
     ) -> Union[NDArray[np.float64], Tuple[NDArray[np.float64], NDArray[np.float64]]]:
         """Compute finite-time Lyapunov exponents along a trajectory.
 
@@ -3716,6 +3727,10 @@ class DiscreteDynamicalSystem:
         return_points : bool, optional
             If True, also return the state at the beginning of each window.
             Default is False.
+        seed : int_t, optional
+            Seed of the random deviation vectors at the start of each window
+            with `method="QR"` or `"QR_HH"`. The `"ER"` method does not use it.
+            Default is 13121989.
 
         Returns
         -------
@@ -3754,6 +3769,7 @@ class DiscreteDynamicalSystem:
             - If `log_base` is not a real number.
             - If `method` is not a string.
             - If `return_points` is not a boolean.
+            - If `seed` is not an integer.
 
         Notes
         -----
@@ -3816,6 +3832,9 @@ class DiscreteDynamicalSystem:
         if not isinstance(return_points, bool):
             raise TypeError("return_points must be a boolean")
 
+        if isinstance(seed, bool) or not isinstance(seed, Integral):
+            raise TypeError("seed must be an integer")
+
         return finite_time_lyapunov(
             u,
             parameters,
@@ -3828,6 +3847,7 @@ class DiscreteDynamicalSystem:
             transient_time=transient_time,
             log_base=log_base,
             return_points=return_points,
+            seed=seed,
         )
 
     def CLV(

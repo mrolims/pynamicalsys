@@ -285,3 +285,6 @@ Numerical options
 
 ``sample_times`` and ``return_last_state``
     With ``return_history=True``, ``sample_times`` stores the history of ``lyapunov`` only at the requested iterations. They are counted from the initial condition, like ``total_time``, and must lie in the interval :math:`(t_{\mathrm{transient}}, t_{\mathrm{total}}]`. ``return_last_state=True`` also returns the state at the end of the calculation, which can start a subsequent calculation, for example in a parameter continuation.
+
+``seed``
+    Initializes the random deviation vectors of the ``"QR"`` and ``"QR_HH"`` methods, which ``finite_time_lyapunov`` uses at the start of every window. It defaults to ``13121989``. The ``"ER"`` method and one-dimensional maps do not use it. For a sufficiently long calculation, the exponents should not depend materially on it.
