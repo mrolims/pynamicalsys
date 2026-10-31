@@ -98,3 +98,30 @@ def test_missing_backward_map_raises_a_value_error_that_is_also_a_runtime_error(
     ds = DDS(mapping=henon_map, jacobian=henon_map_jacobian, system_dimension=2, parameters=[1.4, 0.3])
     with pytest.raises(caught, match="backward"):
         ds.manifold(HENON_SADDLE, 1, stability="stable")
+
+
+# n_points and iter_time are an integer, or a tuple or list of two integers.
+
+
+@pytest.mark.parametrize("name", ["n_points", "iter_time"])
+@pytest.mark.parametrize("value", [(2.7, 3), (True, 5), True, ("5", 5), 5.0])
+def test_counts_must_be_integers(system, name, value):
+    with pytest.raises(TypeError, match=name):
+        system.manifold(SADDLE, 1, **{name: value})
+
+
+@pytest.mark.parametrize("name", ["n_points", "iter_time"])
+def test_counts_accept_a_list(system, name):
+    from_list = system.manifold(SADDLE, 1, **{name: [5, 6]})
+    from_tuple = system.manifold(SADDLE, 1, **{name: (5, 6)})
+    for a, b in zip(from_list, from_tuple):
+        np.testing.assert_array_equal(a, b)
+
+
+@pytest.mark.parametrize("name", ["n_points", "iter_time"])
+def test_whole_number_floats_are_deprecated(system, name):
+    with pytest.warns(DeprecationWarning, match=f"{name}.*future version"):
+        from_floats = system.manifold(SADDLE, 1, **{name: (5.0, 6.0)})
+    from_ints = system.manifold(SADDLE, 1, **{name: (5, 6)})
+    for a, b in zip(from_floats, from_ints):
+        np.testing.assert_array_equal(a, b)
