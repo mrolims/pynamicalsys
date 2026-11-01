@@ -20,7 +20,6 @@ from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Sequence, Union
 
 import numpy as np
-from numba.core.errors import NumbaExperimentalFeatureWarning
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t, numeric_t, numeric_like_t
@@ -298,8 +297,6 @@ class ContinuousDynamicalSystem:
         self.__atol: np.float64
         self.__rtol: np.float64
         self.__time_step: np.float64
-
-        warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
         if model is not None and equations_of_motion is not None:
             raise ValueError("Cannot specify both model and custom system")

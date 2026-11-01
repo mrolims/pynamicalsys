@@ -21,7 +21,6 @@ from numbers import Integral, Real
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union, Literal
 import numpy as np
 from numba import njit
-from numba.core.errors import NumbaExperimentalFeatureWarning
 from numba.core.registry import CPUDispatcher
 from numpy.typing import NDArray
 
@@ -577,8 +576,6 @@ class DiscreteDynamicalSystem:
         self.__parameters: NDArray[np.float64] | None
         self.__model: str | None
         self.__frequency_map: Optional[Callable]
-
-        warnings.filterwarnings("ignore", category=NumbaExperimentalFeatureWarning)
 
         if model is not None and mapping is not None:
             raise ValueError("Cannot specify both model and custom mapping")

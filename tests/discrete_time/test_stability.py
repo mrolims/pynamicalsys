@@ -15,8 +15,8 @@ import sys
 
 SOURCE = pathlib.Path(__file__).resolve().parents[2] / "src"
 
-# The kernel is called directly: creating a DiscreteDynamicalSystem would
-# install its own warning filter and hide the warning.
+# The kernel is called directly, as the public methods do, without any
+# other code that could install a warning filter first.
 SCRIPT = """
 import warnings
 import numpy as np
