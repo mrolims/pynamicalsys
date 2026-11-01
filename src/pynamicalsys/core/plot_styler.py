@@ -129,10 +129,11 @@ class PlotStyler:
         Apply global matplotlib styling.
 
         All Matplotlib rcParams are first reset to their defaults, so settings
-        made before this call are discarded.
+        made before this call are discarded. Only these global settings
+        change: existing figures are left as they are, and the style applies to
+        the figures created afterwards.
         """
         self._reset_style()  # Reset any previous styles
-        plt.clf()
         plt.rc("font", size=self.fontsize)
         plt.rc("xtick", labelsize=self.tick_labelsize)
         plt.rc("ytick", labelsize=self.tick_labelsize)
