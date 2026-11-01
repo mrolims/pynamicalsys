@@ -17,9 +17,29 @@
 
 
 import numpy as np
+from numba import njit
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import jacobian_t, map_t, numeric_t
+
+
+# Compiled, so that the Jacobian receives the map inside compiled code. Called
+# from Python with the map as an argument, a Jacobian that takes it through
+# *args would make Numba use its experimental first-class function types.
+@njit
+def _monodromy_matrix(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    mapping: map_t,
+    jacobian: jacobian_t,
+    period: int,
+) -> NDArray[np.float64]:
+    """Product of the Jacobians along `period` iterations of the map from `u`."""
+    monodromy = np.eye(u.size)
+    for _ in range(period):
+        monodromy = np.ascontiguousarray(jacobian(u, parameters, mapping)) @ monodromy
+        u = mapping(u, parameters)
+    return monodromy
 
 
 def eigenvalues_and_eigenvectors(
@@ -75,23 +95,18 @@ def eigenvalues_and_eigenvectors(
 
     where `u_{n+1} = mapping(u_n, parameters)`.
     """
-    current_u = np.asarray(u, dtype=np.float64).copy()
-    dim = current_u.size
-
-    monodromy = np.eye(dim, dtype=np.complex128)
-
-    for _ in range(period):
-        J = np.asarray(
-            jacobian(current_u, parameters, mapping),
-            dtype=np.complex128,
-        )
-        monodromy = J @ monodromy
-        current_u = mapping(current_u, parameters)
+    monodromy = _monodromy_matrix(
+        np.asarray(u, dtype=np.float64).copy(),
+        np.asarray(parameters, dtype=np.float64),
+        mapping,
+        jacobian,
+        period,
+    ).astype(np.complex128)
 
     eigenvalues, eigenvectors = np.linalg.eig(monodromy)
 
     if normalize:
-        for i in range(dim):
+        for i in range(eigenvectors.shape[1]):
             norm = np.linalg.norm(eigenvectors[:, i])
             if norm > 0.0:
                 eigenvectors[:, i] /= norm
