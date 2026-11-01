@@ -1774,7 +1774,6 @@ class DiscreteDynamicalSystem:
             - If `u` is incompatible with the system dimension.
             - If `parameters` does not match the expected number of parameters.
             - If `period` is not positive.
-            - If the system does not provide a Jacobian.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
@@ -1782,11 +1781,6 @@ class DiscreteDynamicalSystem:
             - If `normalize` is not a boolean.
             - If `sort_by_magnitude` is not a boolean.
         """
-        if self.__jacobian is None:
-            raise ValueError(
-                "eigenvalues_and_eigenvectors requires a Jacobian function."
-            )
-
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u,
             self.__system_dimension,
@@ -1864,7 +1858,6 @@ class DiscreteDynamicalSystem:
             - If `period` is not positive.
             - If `threshold` is negative.
             - If `tol` is negative.
-            - If the system does not provide a Jacobian.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
@@ -1874,9 +1867,6 @@ class DiscreteDynamicalSystem:
         """
         if self.__system_dimension != 2:
             raise ValueError("classify_stability is only implemented for 2D systems")
-
-        if self.__jacobian is None:
-            raise ValueError("classify_stability requires a Jacobian function.")
 
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u,

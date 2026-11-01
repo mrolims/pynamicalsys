@@ -39,3 +39,29 @@ def test_eigenvalues_emit_no_numba_experimental_warning():
         env={"PYTHONPATH": str(SOURCE), "PATH": ""},
     )
     assert result.returncode == 0, result.stderr[-2000:]
+
+
+def test_a_map_without_a_jacobian_uses_finite_differences():
+    # A system always has a Jacobian: without one, finite differences are used.
+    import numpy as np
+    from numba import njit
+
+    from pynamicalsys import DiscreteDynamicalSystem as DDS
+
+    @njit
+    def henon(u, parameters):
+        a, b = parameters
+        return np.array([1.0 - a * u[0] ** 2 + u[1], b * u[0]])
+
+    saddle = [0.6313544770895048, 0.18940634312685142]
+    custom = DDS(mapping=henon, system_dimension=2, parameters=[1.4, 0.3])
+    builtin = DDS(model="henon map")
+    builtin.set_parameters([1.4, 0.3])
+
+    stability = custom.classify_stability(saddle, 1)
+    assert stability["classification"] == builtin.classify_stability(saddle, 1)["classification"]
+    np.testing.assert_allclose(
+        custom.eigenvalues_and_eigenvectors(saddle, 1)[0],
+        builtin.eigenvalues_and_eigenvectors(saddle, 1)[0],
+        rtol=1e-6,
+    )
