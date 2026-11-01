@@ -55,6 +55,13 @@ from pynamicalsys.continuous_time.maxima_map import (
 )
 
 from pynamicalsys.continuous_time.basins import basin_of_attraction
+from pynamicalsys.continuous_time.bifurcation import (
+    MAXIMA_MAP,
+    POINCARE_SECTION,
+    STROBOSCOPIC_MAP,
+    bifurcation_diagram as continuous_bifurcation_diagram,
+)
+from pynamicalsys.discrete_time.validators import validate_and_convert_param_range
 
 from pynamicalsys.continuous_time.lyapunov import (
     lyapunov_exponents,
@@ -1232,6 +1239,274 @@ class ContinuousDynamicalSystem:
         )
         _warn_if_not_finite(result)
         return result
+
+    def bifurcation_diagram(
+        self,
+        u: numeric_like_t,
+        param_index: int_t,
+        param_range: NDArray[np.float64] | tuple[float, float, int],
+        num_intersections: int_t,
+        map_type: str,
+        parameters: numeric_like_t | None = None,
+        transient_time: numeric_t | None = None,
+        section_index: int_t | None = None,
+        section_value: numeric_t | None = None,
+        crossing: int_t | None = None,
+        sampling_time: numeric_t | None = None,
+        maxima_index: int_t | None = None,
+        observable_index: int_t | None = None,
+        continuation: bool = False,
+        return_last_state: bool = False,
+    ) -> (
+        tuple[NDArray[np.float64], NDArray[np.float64]]
+        | tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]
+    ):
+        """
+        Compute a bifurcation diagram by varying one parameter and recording one
+        coordinate of a reduced map at each value.
+
+        For each parameter value, the system is integrated from the initial
+        condition, the transient is discarded, and `num_intersections` points of
+        the selected map are computed, as `poincare_section`,
+        `stroboscopic_map`, or `maxima_map` would. The coordinate
+        `observable_index` of these points is recorded.
+
+        Parameters
+        ----------
+        u : numeric_like_t
+            Initial condition of shape `(system_dimension,)`.
+        param_index : int_t
+            Index of the parameter to be varied.
+        param_range : NDArray[np.float64] | tuple[float, float, int]
+            Parameter values used in the sweep. It can be either:
+            - a 1D array of parameter values, or
+            - a tuple `(start, stop, num_points)` passed to `numpy.linspace`.
+        num_intersections : int_t
+            Number of map points recorded at each parameter value.
+        map_type : str
+            Reduced map, case-insensitive:
+            - `"PS"`: Poincaré section, defined by `section_index`,
+              `section_value`, and `crossing`.
+            - `"SM"`: stroboscopic map, sampled every `sampling_time`.
+            - `"MM"`: maxima map of the coordinate `maxima_index`.
+        parameters : numeric_like_t | None, optional
+            The parameters other than the one at `param_index`, in order, so
+            it has `number_of_parameters - 1` entries. If None, the stored
+            system parameters are used, with the entry at `param_index`
+            overwritten during the sweep. It can be omitted for systems with a
+            single parameter.
+        transient_time : numeric_t | None, optional
+            Integration time discarded at each parameter value. If None, no
+            transient is discarded.
+        section_index : int_t | None, optional
+            Index of the coordinate that defines the section, for `"PS"`.
+        section_value : numeric_t | None, optional
+            Value of that coordinate on the section, for `"PS"`.
+        crossing : int_t | None, optional
+            Direction of the crossings recorded, for `"PS"`: `1` upward, `-1`
+            downward, or `0` both.
+        sampling_time : numeric_t | None, optional
+            Time between consecutive samples, for `"SM"`.
+        maxima_index : int_t | None, optional
+            Index of the coordinate whose maxima are recorded, for `"MM"`.
+        observable_index : int_t | None, optional
+            Index of the state coordinate recorded at each map point. If None,
+            `maxima_index` for `"MM"`, the first coordinate other than
+            `section_index` for `"PS"`, since `section_index` is constant on the
+            section, and `0` for `"SM"`.
+        continuation : bool, optional
+            If True, each parameter value starts from the state at the last map
+            point of the previous one, and the values are computed in order.
+            Otherwise every value starts from `u`, and the values are computed
+            in parallel. Default is False.
+        return_last_state : bool, optional
+            If True, also return the state at the last map point of the last
+            parameter value. Default is False.
+
+        Returns
+        -------
+        tuple
+            If `return_last_state` is False:
+                `(param_values, results)`
+            If `return_last_state` is True:
+                `(param_values, results, last_state)`
+
+            Here:
+            - `param_values` has shape `(num_points,)`
+            - `results` has shape `(num_points, num_intersections)`, and row
+              `i` holds the coordinate `observable_index` of the map points at
+              `param_values[i]`
+            - `last_state` has shape `(system_dimension,)`
+
+        Raises
+        ------
+        ValueError
+            - If `u` is not compatible with the system dimension.
+            - If `parameters` does not have `number_of_parameters - 1` entries.
+            - If `parameters` is None, no parameters are stored, and the system
+              has more than one parameter.
+            - If `param_index`, `observable_index`, `section_index`, or
+              `maxima_index` is out of bounds.
+            - If `num_intersections` is not positive.
+            - If `map_type` is not `"PS"`, `"SM"`, or `"MM"`, or the arguments of
+              the selected map are missing.
+            - If `crossing` is not one of `-1`, `0`, or `1`.
+            - If `sampling_time` is not positive.
+            - If `transient_time` is negative.
+        TypeError
+            - If `map_type` is not a string.
+            - If `param_index`, `num_intersections`, `observable_index`,
+              `section_index`, `crossing`, or `maxima_index` is not an integer.
+            - If `section_value`, `sampling_time`, or `transient_time` is not a
+              valid real number.
+            - If `continuation` or `return_last_state` is not a boolean.
+
+        Warns
+        -----
+        RuntimeWarning
+            If the results contain infinite or NaN values, which usually means
+            that the solution diverged.
+
+        Notes
+        -----
+        With `continuation=True`, the integration time restarts at zero for each
+        parameter value. For a periodically forced system with `"SM"`, choose a
+        `transient_time` that is a multiple of `sampling_time`, so that each
+        value starts at the same phase of the forcing.
+
+        Examples
+        --------
+        >>> from pynamicalsys import ContinuousDynamicalSystem as cds
+        >>> system = cds(model="rossler system")
+        >>> system.set_parameters([0.2, 0.2, 4.0])
+        >>> param_values, z_maxima = system.bifurcation_diagram(
+        ...     [1.0, 1.0, 0.0],
+        ...     param_index=2,
+        ...     param_range=(2.0, 6.0, 200),
+        ...     num_intersections=100,
+        ...     map_type="MM",
+        ...     maxima_index=2,
+        ...     transient_time=500.0,
+        ... )
+        >>> z_maxima.shape
+        (200, 100)
+        """
+        u_arr = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+
+        validate_non_negative(param_index, "param_index", Integral)
+        if param_index >= self.__number_of_parameters:
+            raise ValueError(
+                f"param_index {param_index} out of bounds for system with "
+                f"{self.__number_of_parameters} parameters"
+            )
+
+        param_values = validate_and_convert_param_range(param_range)
+        validate_positive(num_intersections, "num_intersections", Integral)
+        transient_time, _ = validate_times(transient_time, np.float64(1.0e300))
+
+        if not isinstance(map_type, str):
+            raise TypeError("map_type must be a string")
+        map_type = map_type.upper()
+
+        if map_type == "PS":
+            if section_index is None or section_value is None or crossing is None:
+                raise ValueError(
+                    "When map_type='PS', section_index, section_value, and crossing must be provided"
+                )
+            validate_non_negative(section_index, "section_index", Integral)
+            if section_index >= self.__system_dimension:
+                raise ValueError("section_index must be in [0, system_dimension)")
+            if isinstance(section_value, bool) or not isinstance(section_value, Real):
+                raise TypeError("section_value must be a valid real number")
+            if isinstance(crossing, bool) or not isinstance(crossing, Integral):
+                raise TypeError("crossing must be an integer")
+            if crossing not in (-1, 0, 1):
+                raise ValueError("crossing must be -1, 0, or 1")
+            map_code = POINCARE_SECTION
+            default_observable = 1 if section_index == 0 else 0
+        elif map_type == "SM":
+            if sampling_time is None:
+                raise ValueError("When map_type='SM', sampling_time must be provided")
+            validate_positive(sampling_time, "sampling_time", Real)
+            map_code = STROBOSCOPIC_MAP
+            default_observable = 0
+        elif map_type == "MM":
+            if maxima_index is None:
+                raise ValueError("When map_type='MM', maxima_index must be provided")
+            validate_non_negative(maxima_index, "maxima_index", Integral)
+            if maxima_index >= self.__system_dimension:
+                raise ValueError("maxima_index must be in [0, system_dimension)")
+            map_code = MAXIMA_MAP
+            default_observable = maxima_index
+        else:
+            raise ValueError("map_type must be 'PS', 'SM', or 'MM'")
+
+        if observable_index is None:
+            observable_index = default_observable
+        validate_non_negative(observable_index, "observable_index", Integral)
+        if observable_index >= self.__system_dimension:
+            raise ValueError(
+                f"observable_index {observable_index} out of bounds for system dimension "
+                f"{self.__system_dimension}"
+            )
+
+        if not isinstance(continuation, bool):
+            raise TypeError("continuation must be a boolean")
+
+        if not isinstance(return_last_state, bool):
+            raise TypeError("return_last_state must be a boolean")
+
+        # The entry at param_index is overwritten during the sweep, so explicit
+        # parameters hold only the other ones and a placeholder is inserted.
+        if parameters is not None:
+            parameters = validate_parameters(
+                parameters, self.__number_of_parameters - 1
+            )
+            if self.__number_of_parameters == 1:
+                # validate_parameters returns a placeholder when none are expected.
+                parameters = np.zeros(1, dtype=np.float64)
+            else:
+                parameters = np.insert(parameters, param_index, 0.0)
+        elif self.__parameters is not None:
+            parameters = self.__parameters
+        elif self.__number_of_parameters == 1:
+            parameters = np.zeros(1, dtype=np.float64)
+        else:
+            raise ValueError(
+                f"bifurcation_diagram needs the {self.__number_of_parameters - 1} "
+                "parameters other than the one at param_index. Pass them as "
+                "parameters, or set all of them with set_parameters()."
+            )
+
+        results, last_state = continuous_bifurcation_diagram(
+            u=u_arr,
+            parameters=parameters,
+            param_index=int(param_index),
+            param_values=param_values,
+            num_points=int(num_intersections),
+            map_code=map_code,
+            observable_index=int(observable_index),
+            equations_of_motion=self.__equations_of_motion,
+            transient_time=transient_time,
+            time_step=self.__time_step,
+            estimate_step=bool(self.integrator_info["estimate_initial_step"]),
+            atol=self.__atol,
+            rtol=self.__rtol,
+            integrator=self.__integrator_func,
+            continuation=continuation,
+            section_index=0 if section_index is None else int(section_index),
+            section_value=0.0 if section_value is None else np.float64(section_value),
+            crossing=0 if crossing is None else int(crossing),
+            sampling_time=1.0 if sampling_time is None else np.float64(sampling_time),
+            maxima_index=0 if maxima_index is None else int(maxima_index),
+        )
+        _warn_if_not_finite(results)
+
+        if return_last_state:
+            return param_values, results, last_state
+        return param_values, results
 
     def basin_of_attraction(
         self,

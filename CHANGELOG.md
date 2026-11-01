@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DiscreteDynamicalSystem.lyapunov` and `finite_time_lyapunov` accept `seed`, as the other methods that draw random numbers do.
 - `BasinMetrics.basin_entropy` uses boxes of `nx` by `ny` grid points when they are given, along the first and second axes of the basin. Both were accepted before but ignored.
 - `PlotStyler` accepts Matplotlib's short names `lw`, `ms`, `mew`, and `mec`, and `set_tick_padding` accepts an array or list of Axes, such as the one returned by `plt.subplots`.
+- New method `bifurcation_diagram` for continuous-time systems, which sweeps a parameter and records one coordinate of a Poincaré section, a stroboscopic map, or a maxima map at each value (`map_type="PS"`, `"SM"`, or `"MM"`). The values are computed in parallel, or in order with `continuation=True`, each starting from the last map point of the previous one.
 
 ### Changed
 
