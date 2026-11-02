@@ -1279,12 +1279,14 @@ class ContinuousDynamicalSystem:
             Index of the parameter to be varied.
         param_range : NDArray[np.float64] | tuple[float, float, int]
             Parameter values used in the sweep. It can be either:
+
             - a 1D array of parameter values, or
             - a tuple `(start, stop, num_points)` passed to `numpy.linspace`.
         num_intersections : int_t
             Number of map points recorded at each parameter value.
         map_type : str
             Reduced map, case-insensitive:
+
             - `"PS"`: Poincaré section, defined by `section_index`,
               `section_value`, and `crossing`.
             - `"SM"`: stroboscopic map, sampled every `sampling_time`.
@@ -1326,12 +1328,10 @@ class ContinuousDynamicalSystem:
         Returns
         -------
         tuple
-            If `return_last_state` is False:
-                `(param_values, results)`
-            If `return_last_state` is True:
-                `(param_values, results, last_state)`
+            `(param_values, results)`, or
+            `(param_values, results, last_state)` if `return_last_state` is
+            True, where:
 
-            Here:
             - `param_values` has shape `(num_points,)`
             - `results` has shape `(num_points, num_intersections)`, and row
               `i` holds the coordinate `observable_index` of the map points at
