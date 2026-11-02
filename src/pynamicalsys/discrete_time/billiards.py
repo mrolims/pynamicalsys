@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-from typing import Any, Callable, Tuple
+from typing import Any, Callable, Dict, Tuple
 
 import numpy as np
 from numba import njit
@@ -199,7 +199,7 @@ def make_angle_maps(
     check : Callable
         Function `check(parameters)` that raises if the parameters are invalid.
     diameter : Callable
-        Function `diameter(parameters)` that returns the longest chord allowed.
+        Function `diameter(parameters)` that returns the size of the billiard.
     inside : Callable
         Function `inside(x, y, t, parameters)`.
     boundary_point, tangent : Callable
@@ -404,8 +404,8 @@ def make_birkhoff_maps(
 @njit
 def oval_check(parameters: NDArray[np.float64]) -> None:
     eps, p = parameters
-    if not 0.0 <= eps < 1.0:
-        raise ValueError("eps must lie in [0, 1)")
+    if not 0.0 <= eps <= 1.0:
+        raise ValueError("eps must lie in [0, 1]")
     if p < 1.0 or p != np.floor(p):
         raise ValueError("p must be a positive integer")
 
@@ -490,17 +490,22 @@ def _oval_panel_edges(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
 
     The boundary repeats every `2 pi / p` and is symmetric about `pi / p`, so this
     wedge determines the arc length. The integrand `ds/dtheta` has complex
-    singularities whose real parts are `0` and `pi / p` only. The nearest one is at
-    a distance `log((D + 1) / (eps (p + 1))) / p` from `pi / p`, with
-    `D = sqrt(1 + eps^2 (p^2 - 1))`, which tends to zero as `eps` tends to one, so
-    the smallest panels are made no wider than this distance.
+    singularities whose real parts are `0` and `pi / p` only. With
+    `D = sqrt(1 + eps^2 (p^2 - 1))`, the nearest one is at a distance
+    `log((D + 1) / (eps (p + 1))) / p` from `pi / p`, which tends to zero as `eps`
+    tends to one, so the smallest panels are made no wider than this distance. At
+    `eps = 1`, the integrand is smooth up to `pi / p` from within the wedge, and the
+    nearest one is at `log((D + 1) / (eps (p - 1))) / p` from `0`.
     """
     eps, p = parameters
     wedge = np.pi / p
     halvings = 1
-    if eps > 0.0:
+    if eps > 0.0 and (eps < 1.0 or p > 1.0):
         root = np.sqrt(1.0 + eps * eps * (p * p - 1.0))
-        distance = np.log((root + 1.0) / (eps * (p + 1.0))) / p
+        if eps < 1.0:
+            distance = np.log((root + 1.0) / (eps * (p + 1.0))) / p
+        else:
+            distance = np.log((root + 1.0) / (eps * (p - 1.0))) / p
         halvings = max(1, int(np.ceil(np.log2(0.5 * wedge / distance))) + 1)
 
     edges = np.empty(2 * halvings + 1)
@@ -598,7 +603,10 @@ def oval_arc_position(
     x = lower + (upper - lower) * min(remainder / panels[j], 1.0)
     for _ in range(50):
         error = _oval_panel_integral(lower, x, parameters) - remainder
-        x_new = x - error / oval_arc_speed(x, 0.0, parameters)
+        speed = oval_arc_speed(x, 0.0, parameters)
+        if speed == 0.0:  # At the origin, with eps = 1.
+            break
+        x_new = x - error / speed
         x_new = min(max(x_new, lower), upper)
         converged = abs(x_new - x) < 1e-15
         x = x_new
@@ -609,3 +617,371 @@ def oval_arc_position(
         x = 2.0 * wedge - x
 
     return (2.0 * wedge * wedges + x) % (2.0 * np.pi)
+
+
+# ! ----------------------------- !
+# ! --- Lines and circular arcs --- !
+# ! ----------------------------- !
+
+# A boundary made of lines and circular arcs is a table with one row per piece:
+#
+#   line: [0, start, length, x0, y0, dx, dy, 0]
+#   arc:  [1, start, length, center_x, center_y, radius, first_angle, orientation]
+#
+# where start is the arc length at the beginning of the piece, (dx, dy) is the unit
+# direction of a line, and orientation is +1 or -1 for an arc run counterclockwise or
+# clockwise. The billiard is on the left of each piece.
+_PIECE_COLUMNS = 8
+
+
+@njit
+def _set_line(
+    table: NDArray[np.float64],
+    row: int,
+    start: float,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+) -> float:
+    length = np.hypot(x1 - x0, y1 - y0)
+    table[row, 0] = 0.0
+    table[row, 1] = start
+    table[row, 2] = length
+    table[row, 3] = x0
+    table[row, 4] = y0
+    table[row, 5] = (x1 - x0) / length
+    table[row, 6] = (y1 - y0) / length
+    table[row, 7] = 0.0
+
+    return start + length
+
+
+@njit
+def _set_arc(
+    table: NDArray[np.float64],
+    row: int,
+    start: float,
+    center_x: float,
+    center_y: float,
+    radius: float,
+    first_angle: float,
+    span: float,
+    orientation: float,
+) -> float:
+    length = radius * span
+    table[row, 0] = 1.0
+    table[row, 1] = start
+    table[row, 2] = length
+    table[row, 3] = center_x
+    table[row, 4] = center_y
+    table[row, 5] = radius
+    table[row, 6] = first_angle
+    table[row, 7] = orientation
+
+    return start + length
+
+
+@njit
+def piece_point(
+    table: NDArray[np.float64], row: int, u: float
+) -> Tuple[float, float]:
+    """Return the point at the arc length `u` from the beginning of a piece."""
+    if table[row, 0] == 0.0:
+        return table[row, 3] + table[row, 5] * u, table[row, 4] + table[row, 6] * u
+
+    radius = table[row, 5]
+    angle = table[row, 6] + table[row, 7] * u / radius
+
+    return (
+        table[row, 3] + radius * np.cos(angle),
+        table[row, 4] + radius * np.sin(angle),
+    )
+
+
+@njit
+def _locate_piece(table: NDArray[np.float64], s: float) -> Tuple[int, float]:
+    last = table.shape[0] - 1
+    s = s % (table[last, 1] + table[last, 2])
+    row = 0
+    while row < last and s >= table[row + 1, 1]:
+        row += 1
+
+    return row, s - table[row, 1]
+
+
+@njit
+def _nearest_on_piece(
+    table: NDArray[np.float64], row: int, x: float, y: float
+) -> Tuple[float, float]:
+    """Return the arc length from the beginning of a piece to its point nearest to `(x, y)`, and the squared distance."""
+    length = table[row, 2]
+    if table[row, 0] == 0.0:
+        u = (x - table[row, 3]) * table[row, 5] + (y - table[row, 4]) * table[row, 6]
+        u = min(max(u, 0.0), length)
+    else:
+        radius = table[row, 5]
+        angle = np.arctan2(y - table[row, 4], x - table[row, 3])
+        swept = (table[row, 7] * (angle - table[row, 6])) % (2.0 * np.pi)
+        span = length / radius
+        if swept > span:
+            # Outside the arc, so the nearest point is one of its ends.
+            swept = span if swept - span < 2.0 * np.pi - swept else 0.0
+        u = radius * swept
+
+    px, py = piece_point(table, row, u)
+
+    return u, (x - px) ** 2 + (y - py) ** 2
+
+
+def make_piecewise_geometry(pieces: Callable) -> Dict[str, Callable]:
+    """
+    Build the geometry of a boundary made of lines and circular arcs.
+
+    The position on the boundary is the arc length, so these functions have the same
+    signatures as those of the other billiards, with `q = s`.
+
+    Parameters
+    ----------
+    pieces : Callable
+        Function `pieces(parameters)` that returns the table of pieces.
+
+    Returns
+    -------
+    Dict[str, Callable]
+        The geometry functions, by name.
+    """
+
+    @njit
+    def boundary_point(
+        s: float, t: float, parameters: NDArray[np.float64]
+    ) -> Tuple[float, float]:
+        table = pieces(parameters)
+        row, u = _locate_piece(table, s)
+
+        return piece_point(table, row, u)
+
+    @njit
+    def tangent(
+        s: float, t: float, parameters: NDArray[np.float64]
+    ) -> Tuple[float, float]:
+        table = pieces(parameters)
+        row, u = _locate_piece(table, s)
+        if table[row, 0] == 0.0:
+            return table[row, 5], table[row, 6]
+
+        orientation = table[row, 7]
+        angle = table[row, 6] + orientation * u / table[row, 5]
+
+        return -orientation * np.sin(angle), orientation * np.cos(angle)
+
+    @njit
+    def curvature(s: float, t: float, parameters: NDArray[np.float64]) -> float:
+        table = pieces(parameters)
+        row, _ = _locate_piece(table, s)
+        if table[row, 0] == 0.0:
+            return 0.0
+
+        return table[row, 7] / table[row, 5]
+
+    @njit
+    def arc_speed(s: float, t: float, parameters: NDArray[np.float64]) -> float:
+        return 1.0
+
+    @njit
+    def project(
+        x: float, y: float, t: float, parameters: NDArray[np.float64]
+    ) -> float:
+        table = pieces(parameters)
+        nearest = 0
+        nearest_u, nearest_distance = _nearest_on_piece(table, 0, x, y)
+        for row in range(1, table.shape[0]):
+            u, distance = _nearest_on_piece(table, row, x, y)
+            if distance < nearest_distance:
+                nearest = row
+                nearest_u = u
+                nearest_distance = distance
+
+        last = table.shape[0] - 1
+
+        return (table[nearest, 1] + nearest_u) % (table[last, 1] + table[last, 2])
+
+    @njit
+    def perimeter(parameters: NDArray[np.float64]) -> float:
+        table = pieces(parameters)
+        last = table.shape[0] - 1
+
+        return table[last, 1] + table[last, 2]
+
+    @njit
+    def arc_length(s: float, t: float, parameters: NDArray[np.float64]) -> float:
+        return s
+
+    @njit
+    def arc_position(s: float, t: float, parameters: NDArray[np.float64]) -> float:
+        return s
+
+    return {
+        "pieces": pieces,
+        "boundary_point": boundary_point,
+        "tangent": tangent,
+        "curvature": curvature,
+        "arc_speed": arc_speed,
+        "project": project,
+        "perimeter": perimeter,
+        "arc_length": arc_length,
+        "arc_position": arc_position,
+    }
+
+
+# ! ------------------------ !
+# ! --- Stadium billiard --- !
+# ! ------------------------ !
+
+
+@njit
+def stadium_check(parameters: NDArray[np.float64]) -> None:
+    r, l = parameters
+    if not r > 0.0:
+        raise ValueError("r must be positive")
+    if not l >= 0.0:
+        raise ValueError("l must not be negative")
+
+
+@njit
+def stadium_diameter(parameters: NDArray[np.float64]) -> float:
+    r, l = parameters
+
+    return 2.0 * r + l
+
+
+@njit
+def stadium_inside(
+    x: float, y: float, t: float, parameters: NDArray[np.float64]
+) -> bool:
+    r, l = parameters
+    excess = abs(x) - 0.5 * l
+    if excess <= 0.0:
+        return abs(y) < r
+
+    return excess * excess + y * y < r * r
+
+
+@njit
+def stadium_pieces(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
+    # s = 0 at the start of the right semicircle, at (l / 2, -r).
+    r, l = parameters
+    half = 0.5 * l
+    table = np.empty((4, _PIECE_COLUMNS))
+    s = _set_arc(table, 0, 0.0, half, 0.0, r, -0.5 * np.pi, np.pi, 1.0)
+    # A stadium with l = 0 is a circle, and its straight pieces have no direction.
+    if l > 0.0:
+        s = _set_line(table, 1, s, half, r, -half, r)
+    else:
+        table[1] = [0.0, s, 0.0, 0.0, r, -1.0, 0.0, 0.0]
+    s = _set_arc(table, 2, s, -half, 0.0, r, 0.5 * np.pi, np.pi, 1.0)
+    if l > 0.0:
+        _set_line(table, 3, s, -half, -r, half, -r)
+    else:
+        table[3] = [0.0, s, 0.0, 0.0, -r, 1.0, 0.0, 0.0]
+
+    return table
+
+
+# ! ---------------------- !
+# ! --- Sinai billiard --- !
+# ! ---------------------- !
+
+
+@njit
+def sinai_check(parameters: NDArray[np.float64]) -> None:
+    r, x_d, y_d = parameters
+    if not r > 0.0:
+        raise ValueError("r must be positive")
+    if not (r < x_d < 1.0 - r and r < y_d < 1.0 - r):
+        raise ValueError("the disk must lie inside the unit square")
+
+
+@njit
+def sinai_diameter(parameters: NDArray[np.float64]) -> float:
+    return np.sqrt(2.0)
+
+
+@njit
+def sinai_inside(
+    x: float, y: float, t: float, parameters: NDArray[np.float64]
+) -> bool:
+    r, x_d, y_d = parameters
+
+    return (
+        0.0 < x < 1.0
+        and 0.0 < y < 1.0
+        and (x - x_d) ** 2 + (y - y_d) ** 2 > r * r
+    )
+
+
+@njit
+def sinai_pieces(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
+    # s = 0 at the origin, runs counterclockwise along the walls, then clockwise
+    # around the disk from its rightmost point, so the billiard stays on the left.
+    r, x_d, y_d = parameters
+    table = np.empty((5, _PIECE_COLUMNS))
+    s = _set_line(table, 0, 0.0, 0.0, 0.0, 1.0, 0.0)
+    s = _set_line(table, 1, s, 1.0, 0.0, 1.0, 1.0)
+    s = _set_line(table, 2, s, 1.0, 1.0, 0.0, 1.0)
+    s = _set_line(table, 3, s, 0.0, 1.0, 0.0, 0.0)
+    _set_arc(table, 4, s, x_d, y_d, r, 0.0, 2.0 * np.pi, -1.0)
+
+    return table
+
+
+# ! ------------------------- !
+# ! --- Mushroom billiard --- !
+# ! ------------------------- !
+
+
+@njit
+def mushroom_check(parameters: NDArray[np.float64]) -> None:
+    R, w, h = parameters
+    if not R > 0.0:
+        raise ValueError("R must be positive")
+    if not 0.0 < w < 2.0 * R:
+        raise ValueError("w must lie in (0, 2 R)")
+    if not h > 0.0:
+        raise ValueError("h must be positive")
+
+
+@njit
+def mushroom_diameter(parameters: NDArray[np.float64]) -> float:
+    R, w, h = parameters
+
+    return max(2.0 * R, R + np.hypot(0.5 * w, h))
+
+
+@njit
+def mushroom_inside(
+    x: float, y: float, t: float, parameters: NDArray[np.float64]
+) -> bool:
+    R, w, h = parameters
+    if y > 0.0:
+        return x * x + y * y < R * R
+    if abs(x) >= 0.5 * w:
+        return False
+
+    return y > -h
+
+
+@njit
+def mushroom_pieces(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
+    # s = 0 at the bottom left of the stem, running counterclockwise.
+    R, w, h = parameters
+    half = 0.5 * w
+    table = np.empty((6, _PIECE_COLUMNS))
+    s = _set_line(table, 0, 0.0, -half, -h, half, -h)
+    s = _set_line(table, 1, s, half, -h, half, 0.0)
+    s = _set_line(table, 2, s, half, 0.0, R, 0.0)
+    s = _set_arc(table, 3, s, 0.0, 0.0, R, 0.0, np.pi, 1.0)
+    s = _set_line(table, 4, s, -R, 0.0, -half, 0.0)
+    _set_line(table, 5, s, -half, 0.0, -half, -h)
+
+    return table

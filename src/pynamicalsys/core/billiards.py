@@ -28,6 +28,11 @@ from pynamicalsys.core.discrete_dynamical_systems import DiscreteDynamicalSystem
 from pynamicalsys.discrete_time.billiards import (
     make_angle_maps,
     make_birkhoff_maps,
+    make_piecewise_geometry,
+    mushroom_check,
+    mushroom_diameter,
+    mushroom_inside,
+    mushroom_pieces,
     oval_arc_length,
     oval_arc_position,
     oval_arc_speed,
@@ -39,6 +44,15 @@ from pynamicalsys.discrete_time.billiards import (
     oval_perimeter,
     oval_project,
     oval_tangent,
+    piece_point,
+    sinai_check,
+    sinai_diameter,
+    sinai_inside,
+    sinai_pieces,
+    stadium_check,
+    stadium_diameter,
+    stadium_inside,
+    stadium_pieces,
 )
 
 _BILLIARDS: Dict[str, Dict[str, Any]] = {
@@ -60,6 +74,42 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "arc_length": oval_arc_length,
         "arc_position": oval_arc_position,
         "perimeter": oval_perimeter,
+    },
+    "stadium": {
+        "description": "Stadium billiard: semicircles of radius r joined by "
+        "straight segments of length l",
+        "parameters": ["r", "l"],
+        "position": "s",
+        "closed": True,
+        "solvers": ["md"],
+        "check": stadium_check,
+        "diameter": stadium_diameter,
+        "inside": stadium_inside,
+        **make_piecewise_geometry(stadium_pieces),
+    },
+    "sinai": {
+        "description": "Sinai billiard: a disk of radius r at (x_d, y_d) in the "
+        "unit square with reflecting walls",
+        "parameters": ["r", "x_d", "y_d"],
+        "position": "s",
+        "closed": False,
+        "solvers": ["md"],
+        "check": sinai_check,
+        "diameter": sinai_diameter,
+        "inside": sinai_inside,
+        **make_piecewise_geometry(sinai_pieces),
+    },
+    "mushroom": {
+        "description": "Mushroom billiard: a semicircular hat of radius R on a "
+        "centered stem of width w and height h",
+        "parameters": ["R", "w", "h"],
+        "position": "s",
+        "closed": True,
+        "solvers": ["md"],
+        "check": mushroom_check,
+        "diameter": mushroom_diameter,
+        "inside": mushroom_inside,
+        **make_piecewise_geometry(mushroom_pieces),
     },
 }
 
@@ -105,6 +155,25 @@ class Billiard(DiscreteDynamicalSystem):
     A billiard is a discrete dynamical system, so every method of
     `DiscreteDynamicalSystem` is available, such as `trajectory`, `lyapunov`,
     and `escape_analysis`.
+
+    The available billiards, with their parameters in order, are:
+
+    - `"oval"`: `R(theta) = 1 + eps cos(p theta)`, with `eps` in `[0, 1]` and an integer
+      `p`. The position is `theta`. The cardioid is `eps = 1` and `p = 1`, which has a
+      cusp at `theta = pi`, where a reflection is not defined, as at a corner. With
+      `eps = 1` and `p > 1`, the boundary meets the origin at `p` points, which separate `p` closed
+      lobes, and a trajectory stays in the lobe where it starts.
+    - `"stadium"`: semicircles of radius `r` joined by straight segments of length
+      `l`. The position is the arc length, from the start of the right semicircle.
+    - `"sinai"`: a disk of radius `r` centered at `(x_d, y_d)` in the unit square with
+      reflecting walls. The position is the arc length, along the walls from the origin
+      and then around the disk from its rightmost point.
+    - `"mushroom"`: a semicircular hat of radius `R` on a centered stem of width `w`
+      and height `h`. The position is the arc length, from the bottom left of the stem.
+
+    Lines and arcs meet at corners, where a reflection is not defined. A trajectory
+    reaches one exactly with probability zero, and takes the reflection of a neighboring
+    piece.
 
     By default, the state is `(q, alpha)`, where `q` locates the collision on the
     boundary and `alpha`, in `(0, pi)`, is the angle of the outgoing trajectory,
@@ -234,15 +303,21 @@ class Billiard(DiscreteDynamicalSystem):
         """
         Return a dictionary with information about the billiard.
 
-        In Birkhoff coordinates, the entry `"period"` is the perimeter, or None if
-        no parameters are stored.
+        The entry `"period"` is the period of the position, the perimeter when the
+        position is an arc length. It is None if the position does not wrap or if the
+        perimeter is needed and no parameters are stored.
         """
         if self.__coordinates == "birkhoff":
             state = ["s", "cos(alpha)"]
-            period = None if self.get_parameters() is None else self.perimeter()
         else:
             state = [self.__billiard["position"], "alpha"]
-            period = self.__billiard["period"]
+
+        if self.__wraps_with_perimeter() and self.get_parameters() is None:
+            period = None
+        else:
+            period = self.__period(None)
+        if period == np.inf:
+            period = None
 
         return {
             "name": self.__name,
@@ -266,6 +341,19 @@ class Billiard(DiscreteDynamicalSystem):
         self.__billiard["check"](parameters_arr)
 
         return parameters_arr
+
+    def __wraps_with_perimeter(self) -> bool:
+        return self.__billiard.get("closed", True) and (
+            self.__coordinates == "birkhoff" or self.__billiard["position"] == "s"
+        )
+
+    def __period(self, parameters: numeric_like_t | None) -> float:
+        if not self.__billiard.get("closed", True):
+            return np.inf
+        if self.__wraps_with_perimeter():
+            return self.perimeter(parameters)
+
+        return self.__billiard["period"]
 
     def perimeter(self, parameters: numeric_like_t | None = None) -> float:
         """
@@ -304,9 +392,12 @@ class Billiard(DiscreteDynamicalSystem):
         Returns
         -------
         NDArray[np.float64]
-            Points of shape `(num_points, 2)`, from one end of the position range
-            to the other, so the first and last points coincide on a closed
-            boundary.
+            Points of shape `(n, 2)`, in order along the boundary, so the first and
+            last points coincide on a closed boundary. Here `n` is `num_points`,
+            except on a boundary made of lines and arcs, where each piece gets a
+            number of points close to its share of `num_points`, including its
+            ends. Separate parts of a boundary are separated by a row of NaN, which
+            plots as a gap.
 
         Raises
         ------
@@ -318,11 +409,32 @@ class Billiard(DiscreteDynamicalSystem):
         """
         validate_positive(num_points, "num_points", Integral)
         parameters_arr = self.__resolve_parameters(parameters)
+        if "pieces" in self.__billiard:
+            return self.__piecewise_boundary(int(num_points), parameters_arr)
+
         lower, upper = self.__billiard["position_range"]
         positions = np.linspace(lower, upper, int(num_points))
         point = self.__billiard["boundary_point"]
 
         return np.array([point(q, 0.0, parameters_arr) for q in positions])
+
+    def __piecewise_boundary(
+        self, num_points: int, parameters: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        table = self.__billiard["pieces"](parameters)
+        total = np.sum(table[:, 2])
+        points = []
+        for row in range(table.shape[0]):
+            length = table[row, 2]
+            if length == 0.0:
+                continue
+            count = max(2, int(round(num_points * length / total)))
+            part = [piece_point(table, row, u) for u in np.linspace(0.0, length, count)]
+            if points and not np.allclose(points[-1], part[0]):
+                points.append((np.nan, np.nan))
+            points.extend(part)
+
+        return np.array(points)
 
     def to_cartesian(
         self,
@@ -385,8 +497,10 @@ class Billiard(DiscreteDynamicalSystem):
 
         This is `DiscreteDynamicalSystem.escape_analysis`, except that `periods`
         defaults to the period of the boundary for the position and to no
-        wrapping for the other coordinate. In Birkhoff coordinates, the period is
-        the perimeter, and the centers and sizes of the holes are arc lengths.
+        wrapping for the other coordinate. When the position is an arc length, the
+        period is the perimeter, and the centers and sizes of the holes are arc
+        lengths. The position of the Sinai billiard does not wrap, since its boundary
+        has two separate parts, so a hole across the corner at `s = 0` takes two holes.
 
         A hole in the boundary is an interval of the position, whatever the value
         of the other coordinate: `hole_size=[h, np.inf]`. See
@@ -399,10 +513,7 @@ class Billiard(DiscreteDynamicalSystem):
             `(face_index, escape_time)`.
         """
         if periods is None and escape == "entering":
-            if self.__coordinates == "birkhoff":
-                periods = [self.perimeter(parameters), np.inf]
-            else:
-                periods = [self.__billiard["period"], np.inf]
+            periods = [self.__period(parameters), np.inf]
 
         return super().escape_analysis(
             u,
