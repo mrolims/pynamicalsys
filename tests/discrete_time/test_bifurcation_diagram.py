@@ -1,8 +1,12 @@
 """
-DiscreteDynamicalSystem.bifurcation_diagram: how the parameter vector is built.
+DiscreteDynamicalSystem.bifurcation_diagram: how the parameter vector is built,
+and the rows of the sweep.
 
 Explicit parameters are the ones other than the swept parameter, in order. The
-stored parameters, if any, are used when no explicit ones are given.
+stored parameters, if any, are used when no explicit ones are given. Without
+continuation, every row is the trajectory from the initial condition at its
+parameter value, computed in parallel; with continuation, each row starts from
+the final state of the previous one.
 """
 
 import numpy as np
@@ -86,3 +90,33 @@ def test_single_parameter_system_needs_no_parameters():
     np.testing.assert_array_equal(
         results[-1], expected.trajectory([0.2], 200, transient_time=100)
     )
+
+
+def test_rows_without_continuation_are_trajectories_from_the_initial_condition():
+    ds = henon([1.4, 0.3])
+    values, results, last_state = ds.bifurcation_diagram(
+        U0, 0, (1.0, 1.4, 16), TOTAL_TIME, transient_time=TRANSIENT_TIME,
+        return_last_state=True,
+    )
+    for row, a in zip(results, values):
+        trajectory = ds.trajectory(
+            U0, TOTAL_TIME, parameters=[a, 0.3], transient_time=TRANSIENT_TIME
+        )
+        np.testing.assert_array_equal(row, trajectory[:, 0])
+    np.testing.assert_array_equal(last_state, trajectory[-1])
+
+
+def test_rows_with_continuation_start_from_the_previous_final_state():
+    ds = henon([1.4, 0.3])
+    values, results, last_state = ds.bifurcation_diagram(
+        U0, 0, (1.0, 1.4, 16), TOTAL_TIME, transient_time=TRANSIENT_TIME,
+        continuation=True, return_last_state=True,
+    )
+    state = U0
+    for row, a in zip(results, values):
+        trajectory = ds.trajectory(
+            state, TOTAL_TIME, parameters=[a, 0.3], transient_time=TRANSIENT_TIME
+        )
+        np.testing.assert_array_equal(row, trajectory[:, 0])
+        state = trajectory[-1]
+    np.testing.assert_array_equal(last_state, state)
