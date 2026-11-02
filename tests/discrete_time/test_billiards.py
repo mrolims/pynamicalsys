@@ -759,6 +759,8 @@ def mushroom_shape(R, w, h):
     ]
 
 
+SOLVERS = ["md", "exact"]
+
 SHAPES = {"stadium": stadium_shape, "sinai": sinai_shape, "mushroom": mushroom_shape}
 
 NEW_BILLIARDS = {
@@ -847,9 +849,10 @@ def piece_ends(shape):
     return np.array(points)
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("name, parameters", PIECEWISE_PARAMETERS)
-def test_lines_and_arcs_match_exact_collisions(rng, name, parameters):
-    billiard = Billiard(name, parameters=parameters, md_steps=5000)
+def test_lines_and_arcs_match_exact_collisions(rng, name, parameters, solver):
+    billiard = Billiard(name, parameters=parameters, md_steps=5000, solver=solver)
     shape = SHAPES[name](*parameters)
     corners = piece_ends(shape)
     checked = 0
@@ -881,9 +884,10 @@ def test_perimeters(name, parameters, perimeter):
     assert billiard.perimeter() == pytest.approx(perimeter)
 
 
-def test_stadium_bounce_between_the_straight_walls():
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_stadium_bounce_between_the_straight_walls(solver):
     r, l = 1.0, 2.0
-    billiard = Billiard("stadium", parameters=[r, l])
+    billiard = Billiard("stadium", parameters=[r, l], solver=solver)
     top_middle = np.pi * r + l / 2.0
     bottom_middle = 2.0 * np.pi * r + l + l / 2.0
     s1, alpha1 = billiard.trajectory([top_middle, np.pi / 2.0], 1)[0]
@@ -893,9 +897,10 @@ def test_stadium_bounce_between_the_straight_walls():
     assert s2 == pytest.approx(top_middle, abs=1e-12)
 
 
-def test_stadium_without_straight_segments_is_a_circle(rng):
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_stadium_without_straight_segments_is_a_circle(rng, solver):
     r = 0.7
-    billiard = Billiard("stadium", parameters=[r, 0.0])
+    billiard = Billiard("stadium", parameters=[r, 0.0], solver=solver)
     for s, alpha in random_arc_states(rng, billiard, 20, margin=0.05):
         s1, alpha1 = billiard.trajectory([s, alpha], 1)[0]
         difference = (s1 - s - 2.0 * r * alpha + np.pi * r) % (2.0 * np.pi * r) - np.pi * r
@@ -903,10 +908,11 @@ def test_stadium_without_straight_segments_is_a_circle(rng):
         assert alpha1 == pytest.approx(alpha, abs=1e-11)
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("x_d, y_d", [(0.5, 0.5), (0.3, 0.6)])
-def test_sinai_head_on_hit_on_the_disk(x_d, y_d):
+def test_sinai_head_on_hit_on_the_disk(x_d, y_d, solver):
     r = 0.1
-    billiard = Billiard("sinai", parameters=[r, x_d, y_d])
+    billiard = Billiard("sinai", parameters=[r, x_d, y_d], solver=solver)
     # From the bottom wall straight up, hitting the bottom of the disk.
     s1, alpha1 = billiard.trajectory([x_d, np.pi / 2.0], 1)[0]
     assert billiard.to_cartesian([s1, alpha1]) == pytest.approx(
@@ -918,10 +924,11 @@ def test_sinai_head_on_hit_on_the_disk(x_d, y_d):
     assert s2 == pytest.approx(x_d, abs=1e-12)
 
 
-def test_sinai_disk_position_changes_the_collision():
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_sinai_disk_position_changes_the_collision(solver):
     state = [0.25, np.pi / 2.0]
-    blocked = Billiard("sinai", parameters=[0.1, 0.25, 0.5])
-    free = Billiard("sinai", parameters=[0.1, 0.75, 0.5])
+    blocked = Billiard("sinai", parameters=[0.1, 0.25, 0.5], solver=solver)
+    free = Billiard("sinai", parameters=[0.1, 0.75, 0.5], solver=solver)
     assert blocked.to_cartesian(blocked.trajectory(state, 1)[0]) == pytest.approx(
         (0.25, 0.4), abs=1e-12
     )
@@ -930,21 +937,23 @@ def test_sinai_disk_position_changes_the_collision():
     )
 
 
-def test_mushroom_bounce_in_the_stem():
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_mushroom_bounce_in_the_stem(solver):
     R, w, h = 1.0, 0.5, 1.0
-    billiard = Billiard("mushroom", parameters=[R, w, h])
+    billiard = Billiard("mushroom", parameters=[R, w, h], solver=solver)
     left_middle = billiard.perimeter() - h / 2.0
     s1, alpha1 = billiard.trajectory([left_middle, np.pi / 2.0], 1)[0]
     assert billiard.to_cartesian([s1, alpha1]) == pytest.approx((w / 2.0, -h / 2.0), abs=1e-12)
     assert alpha1 == pytest.approx(np.pi / 2.0, abs=1e-12)
 
 
-def test_mushroom_orbit_with_a_large_caustic_stays_in_the_hat():
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_mushroom_orbit_with_a_large_caustic_stays_in_the_hat(solver):
     # Bunimovich's divided phase space: chords of the hat keep their distance from
     # the center, R |cos(alpha)|, also after a reflection at the flat underside. If it
     # exceeds w / 2, the orbit never reaches the stem.
     R, w, h = 1.0, 0.5, 1.0
-    billiard = Billiard("mushroom", parameters=[R, w, h])
+    billiard = Billiard("mushroom", parameters=[R, w, h], solver=solver)
     hat_start = w + h + (R - w / 2.0)  # The start of the arc.
     alpha = np.arccos(0.4)
     orbit = billiard.trajectory([hat_start + 0.7, alpha], 5000)
@@ -954,9 +963,10 @@ def test_mushroom_orbit_with_a_large_caustic_stays_in_the_hat():
     np.testing.assert_allclose(R * np.abs(np.cos(orbit[on_arc, 1])), 0.4, atol=1e-7)
 
 
-def test_mushroom_orbit_with_a_small_caustic_reaches_the_stem():
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_mushroom_orbit_with_a_small_caustic_reaches_the_stem(solver):
     R, w, h = 1.0, 0.5, 1.0
-    billiard = Billiard("mushroom", parameters=[R, w, h])
+    billiard = Billiard("mushroom", parameters=[R, w, h], solver=solver)
     hat_start = w + h + (R - w / 2.0)
     orbit = billiard.trajectory([hat_start + 0.7, np.arccos(0.1)], 5000)
     assert np.any(billiard.to_cartesian(orbit)[:, 1] < 0.0)
@@ -985,12 +995,13 @@ def test_invalid_geometry(name, parameters):
         billiard.perimeter(parameters)
 
 
-def named_billiard(name, coordinates="angles", md_steps=500):
+def named_billiard(name, coordinates="angles", md_steps=500, solver="md"):
     return Billiard(
         name,
         parameters=NEW_BILLIARDS[name],
         coordinates=coordinates,
         md_steps=md_steps,
+        solver=solver,
     )
 
 
@@ -1003,9 +1014,10 @@ def states_for(rng, billiard, name, size, margin):
     )
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("name", list(NEW_BILLIARDS))
-def test_new_billiards_stay_in_range_and_invert(rng, name):
-    billiard = named_billiard(name, md_steps=5000)
+def test_new_billiards_stay_in_range_and_invert(rng, name, solver):
+    billiard = named_billiard(name, md_steps=5000, solver=solver)
     backward = billiard._DiscreteDynamicalSystem__backwards_mapping
     parameters = billiard.get_parameters()
     period = billiard.info["period"] or billiard.perimeter()
@@ -1018,14 +1030,15 @@ def test_new_billiards_stay_in_range_and_invert(rng, name):
         assert back[1] == pytest.approx(state[1], abs=1e-7)
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("name", list(NEW_BILLIARDS))
 @pytest.mark.parametrize("coordinates", ["angles", "birkhoff"])
-def test_new_billiards_analytic_jacobian(rng, name, coordinates):
-    billiard = named_billiard(name, coordinates, md_steps=5000)
+def test_new_billiards_analytic_jacobian(rng, name, coordinates, solver):
+    billiard = named_billiard(name, coordinates, md_steps=5000, solver=solver)
     mapping = billiard._DiscreteDynamicalSystem__mapping
     jacobian = billiard._DiscreteDynamicalSystem__jacobian
     parameters = billiard.get_parameters()
-    angles = named_billiard(name)
+    angles = named_billiard(name, solver=solver)
     period = billiard.perimeter()
     h = 1e-6
     compared = 0
@@ -1050,9 +1063,10 @@ def test_new_billiards_analytic_jacobian(rng, name, coordinates):
     assert compared >= 20
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("name", list(NEW_BILLIARDS))
-def test_new_billiards_preserve_area_in_birkhoff_coordinates(rng, name):
-    billiard = named_billiard(name, "birkhoff")
+def test_new_billiards_preserve_area_in_birkhoff_coordinates(rng, name, solver):
+    billiard = named_billiard(name, "birkhoff", solver=solver)
     jacobian = billiard._DiscreteDynamicalSystem__jacobian
     parameters = billiard.get_parameters()
     perimeter = billiard.perimeter()
@@ -1063,10 +1077,11 @@ def test_new_billiards_preserve_area_in_birkhoff_coordinates(rng, name):
         assert np.linalg.det(jacobian(state, parameters)) == pytest.approx(1.0, abs=1e-6)
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("name", ["stadium", "sinai", "mushroom"])
-def test_both_coordinates_give_the_same_orbit_on_arc_length(name):
-    angles = named_billiard(name, md_steps=2000)
-    birkhoff = named_billiard(name, "birkhoff", md_steps=2000)
+def test_both_coordinates_give_the_same_orbit_on_arc_length(name, solver):
+    angles = named_billiard(name, md_steps=2000, solver=solver)
+    birkhoff = named_billiard(name, "birkhoff", md_steps=2000, solver=solver)
     s = 0.37
     alpha = 1.1
     orbit = angles.trajectory([s, alpha], 6)
@@ -1075,10 +1090,11 @@ def test_both_coordinates_give_the_same_orbit_on_arc_length(name):
     np.testing.assert_allclose(converted[:, 1], np.cos(orbit[:, 1]), atol=1e-7)
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("name", ["stadium", "sinai"])
-def test_chaotic_billiards_have_a_positive_exponent(name):
+def test_chaotic_billiards_have_a_positive_exponent(name, solver):
     state = [1.0, 1.0]
-    billiard = named_billiard(name)
+    billiard = named_billiard(name, solver=solver)
     assert billiard.lyapunov(state, 20_000)[0] > 0.1
 
 
@@ -1107,8 +1123,9 @@ def test_boundary_of_lines_and_arcs():
     np.testing.assert_allclose(np.hypot(disk[:, 0] - 0.3, disk[:, 1] - 0.4), 0.2)
 
 
-def test_to_cartesian_on_the_boundary_of_every_piece():
-    mushroom = Billiard("mushroom", parameters=[1.0, 0.5, 1.0])
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_to_cartesian_on_the_boundary_of_every_piece(solver):
+    mushroom = Billiard("mushroom", parameters=[1.0, 0.5, 1.0], solver=solver)
     orbit = mushroom.trajectory([3.0, 1.0], 500)
     x, y = mushroom.to_cartesian(orbit).T
     in_hat = y > 1e-9
@@ -1118,8 +1135,9 @@ def test_to_cartesian_on_the_boundary_of_every_piece():
     assert np.all(np.abs(np.abs(x[in_stem][~bottom]) - 0.25) < 1e-9)
 
 
-def test_stadium_hole_wraps_with_the_perimeter():
-    billiard = Billiard("stadium", parameters=[1.0, 2.0])
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_stadium_hole_wraps_with_the_perimeter(solver):
+    billiard = Billiard("stadium", parameters=[1.0, 2.0], solver=solver)
     perimeter = billiard.perimeter()
     assert billiard.info["period"] == pytest.approx(perimeter)
     state = [3.0, 1.0]
@@ -1133,8 +1151,9 @@ def test_stadium_hole_wraps_with_the_perimeter():
     assert (orbit[inside, 0] > perimeter / 2.0).any()
 
 
-def test_sinai_hole_does_not_wrap():
-    billiard = Billiard("sinai", parameters=[0.2, 0.5, 0.5])
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_sinai_hole_does_not_wrap(solver):
+    billiard = Billiard("sinai", parameters=[0.2, 0.5, 0.5], solver=solver)
     assert billiard.info["period"] is None
     state = [0.6, 1.0]
     orbit = billiard.trajectory(state, 2000)
@@ -1149,8 +1168,9 @@ def test_sinai_hole_does_not_wrap():
     assert near_the_end[: time - 1].any()
 
 
-def test_holes_of_different_widths_on_the_walls_and_disk_of_sinai():
-    billiard = Billiard("sinai", parameters=[0.2, 0.5, 0.5])
+@pytest.mark.parametrize("solver", SOLVERS)
+def test_holes_of_different_widths_on_the_walls_and_disk_of_sinai(solver):
+    billiard = Billiard("sinai", parameters=[0.2, 0.5, 0.5], solver=solver)
     state = [0.6, 1.0]
     orbit = billiard.trajectory(state, 500)
     centers = np.array([[0.5, 0.0], [4.0 + 0.2 * np.pi, 0.0]])
@@ -1167,15 +1187,74 @@ def test_holes_of_different_widths_on_the_walls_and_disk_of_sinai():
     assert inside[first, index]
 
 
+@pytest.mark.parametrize("solver", SOLVERS)
 @pytest.mark.parametrize("name", list(NEW_BILLIARDS))
-def test_parallel_workers_for_every_billiard(name):
-    billiard = named_billiard(name)
+def test_parallel_workers_for_every_billiard(name, solver):
+    billiard = named_billiard(name, solver=solver)
     states = [[0.4, a] for a in (0.5, 1.0, 1.5)]
     kwargs = dict(max_time=100, exits=[1.0, 0.0], hole_size=[0.2, np.inf])
     in_parallel = Parallel(n_jobs=2)(
         delayed(billiard.escape_analysis)(state, **kwargs) for state in states
     )
     assert in_parallel == [billiard.escape_analysis(s, **kwargs) for s in states]
+
+
+@pytest.mark.parametrize("name, parameters", PIECEWISE_PARAMETERS)
+def test_exact_solver_matches_molecular_dynamics_along_an_orbit(name, parameters):
+    exact = Billiard(name, parameters=parameters, solver="exact")
+    md = Billiard(name, parameters=parameters, md_steps=20_000)
+    state = np.array([0.37, 1.1])
+    corners = piece_ends(SHAPES[name](*parameters))
+    for next_state in exact.trajectory(state, 40):
+        found = md.trajectory(state, 1)[0]
+        point = exact.to_cartesian(next_state)
+        # A corner within one fine step can be passed by molecular dynamics.
+        if not near_a_corner(md, corners, *point, 1e-3):
+            np.testing.assert_allclose(found[0], next_state[0], atol=1e-8)
+            np.testing.assert_allclose(found[1], next_state[1], atol=1e-8)
+        state = next_state
+
+
+def test_exact_solver_catches_a_collision_that_molecular_dynamics_steps_over():
+    # The trajectory crosses the underside of the hat just outside the stem, and is
+    # already inside the stem at the next molecular dynamics step.
+    R, w, h = 1.0, 0.5, 1.0
+    phi = 0.5
+    start = np.array([R * np.cos(phi), R * np.sin(phi)])
+    target = np.array([w / 2.0 + 1e-4, 0.0])
+    direction = np.arctan2(*(target - start)[::-1])
+    alpha = (direction - (phi + np.pi / 2.0)) % TWO_PI
+    state = [w + h + (R - w / 2.0) + R * phi, alpha]
+
+    exact = Billiard("mushroom", parameters=[R, w, h], solver="exact")
+    md = Billiard("mushroom", parameters=[R, w, h])
+    assert exact.to_cartesian(exact.trajectory(state, 1)[0]) == pytest.approx(
+        tuple(target), abs=1e-12
+    )
+    x, y = md.to_cartesian(md.trajectory(state, 1)[0])
+    assert y < -1e-3
+
+
+def test_available_solvers():
+    assert Billiard.available_solvers("oval") == ["md"]
+    for name in ("stadium", "sinai", "mushroom"):
+        assert Billiard.available_solvers(name) == ["md", "exact"]
+
+
+def test_exact_is_not_available_on_the_oval():
+    with pytest.raises(ValueError, match="exact"):
+        Billiard("oval", solver="exact")
+
+
+def test_info_reports_the_solver():
+    assert Billiard("stadium", solver="exact").info["solver"] == "exact"
+
+
+def test_exact_solver_with_a_zero_length_straight_segment():
+    billiard = Billiard("stadium", parameters=[1.0, 0.0], solver="exact")
+    s1, alpha1 = billiard.trajectory([1.0, 0.4], 1)[0]
+    assert s1 == pytest.approx(1.8, abs=1e-12)
+    assert alpha1 == pytest.approx(0.4, abs=1e-12)
 
 
 # ! --- The oval billiard at eps = 1 --------------------------------------- !

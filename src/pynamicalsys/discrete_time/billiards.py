@@ -24,6 +24,10 @@ from numpy.typing import NDArray
 # Smallest length resolved when locating a collision.
 COLLISION_TOLERANCE = 1e-14
 
+# How far past the end of a line or arc an intersection still counts, in its length
+# or angle, so that round-off cannot let a trajectory through the joint of two pieces.
+PIECE_END_TOLERANCE = 1e-12
+
 # Gauss-Legendre rule for the arc length of smooth boundaries.
 _QUADRATURE_NODES, _QUADRATURE_WEIGHTS = np.polynomial.legendre.leggauss(12)
 
@@ -159,11 +163,10 @@ def _static_collision(
     cos_alpha: float,
     sin_alpha: float,
     parameters: NDArray[np.float64],
-    inside: Callable,
+    collide: Callable,
     boundary_point: Callable,
     tangent: Callable,
     project: Callable,
-    step_length: float,
 ) -> Tuple[float, float, float, float]:
     """Return `(q1, cos_alpha1, sin_alpha1, chord)` for a collision with a static wall."""
     x0, y0 = boundary_point(q, 0.0, parameters)
@@ -171,7 +174,7 @@ def _static_collision(
     vx = cos_alpha * tx - sin_alpha * ty
     vy = sin_alpha * tx + cos_alpha * ty
 
-    chord, x1, y1 = md_collision(x0, y0, vx, vy, 0.0, inside, parameters, step_length)
+    chord, x1, y1 = collide(q, x0, y0, vx, vy, 0.0, parameters)
 
     q1 = project(x1, y1, 0.0, parameters)
     tx, ty = tangent(q1, 0.0, parameters)
@@ -180,16 +183,55 @@ def _static_collision(
     return q1, tx * vx + ty * vy, tx * vy - ty * vx, chord
 
 
+def make_md_solver(inside: Callable, diameter: Callable, md_steps: int) -> Callable:
+    """
+    Build the molecular dynamics solver of a billiard.
+
+    Every solver is a function `collide(q0, x0, y0, vx, vy, t0, parameters)` that takes
+    the position `q0` and the point `(x0, y0)` of a particle leaving the boundary at
+    time `t0` with velocity `(vx, vy)`, and returns the time and point `(t1, x1, y1)` of
+    its next collision.
+
+    Parameters
+    ----------
+    inside : Callable
+        Function `inside(x, y, t, parameters)`.
+    diameter : Callable
+        Function `diameter(parameters)` that returns the size of the billiard.
+    md_steps : int
+        Number of molecular dynamics steps across the diameter of the billiard.
+
+    Returns
+    -------
+    Callable
+        The solver.
+    """
+
+    @njit
+    def collide(
+        q0: float,
+        x0: float,
+        y0: float,
+        vx: float,
+        vy: float,
+        t0: float,
+        parameters: NDArray[np.float64],
+    ) -> Tuple[float, float, float]:
+        return md_collision(
+            x0, y0, vx, vy, t0, inside, parameters, diameter(parameters) / md_steps
+        )
+
+    return collide
+
+
 def make_angle_maps(
     check: Callable,
-    diameter: Callable,
-    inside: Callable,
+    collide: Callable,
     boundary_point: Callable,
     tangent: Callable,
     curvature: Callable,
     arc_speed: Callable,
     project: Callable,
-    md_steps: int,
 ) -> Tuple[Callable, Callable, Callable]:
     """
     Build the map of a static billiard in the coordinates `(q, alpha)`.
@@ -198,10 +240,8 @@ def make_angle_maps(
     ----------
     check : Callable
         Function `check(parameters)` that raises if the parameters are invalid.
-    diameter : Callable
-        Function `diameter(parameters)` that returns the size of the billiard.
-    inside : Callable
-        Function `inside(x, y, t, parameters)`.
+    collide : Callable
+        Solver that finds the next collision, as in `make_md_solver`.
     boundary_point, tangent : Callable
         Functions of `(q, t, parameters)` that return the point and the unit
         tangent of the boundary, with the billiard on the left of the tangent.
@@ -210,8 +250,6 @@ def make_angle_maps(
         `ds/dq`, the arc length per unit of `q`.
     project : Callable
         Function `project(x, y, t, parameters)` that returns `q`.
-    md_steps : int
-        Number of molecular dynamics steps across the diameter of the billiard.
 
     Returns
     -------
@@ -232,11 +270,10 @@ def make_angle_maps(
             np.cos(alpha),
             np.sin(alpha),
             parameters,
-            inside,
+            collide,
             boundary_point,
             tangent,
             project,
-            diameter(parameters) / md_steps,
         )
 
         return np.array([q1, np.arctan2(sin_alpha1, cos_alpha1)])
@@ -255,11 +292,10 @@ def make_angle_maps(
             np.cos(alpha),
             sin_alpha,
             parameters,
-            inside,
+            collide,
             boundary_point,
             tangent,
             project,
-            diameter(parameters) / md_steps,
         )
 
         kappa = curvature(q, 0.0, parameters)
@@ -295,15 +331,13 @@ def make_angle_maps(
 
 def make_birkhoff_maps(
     check: Callable,
-    diameter: Callable,
-    inside: Callable,
+    collide: Callable,
     boundary_point: Callable,
     tangent: Callable,
     curvature: Callable,
     project: Callable,
     arc_length: Callable,
     arc_position: Callable,
-    md_steps: int,
 ) -> Tuple[Callable, Callable, Callable]:
     """
     Build the map of a static billiard in the Birkhoff coordinates `(s, p)`.
@@ -313,14 +347,12 @@ def make_birkhoff_maps(
 
     Parameters
     ----------
-    check, diameter, inside, boundary_point, tangent, curvature, project : Callable
+    check, collide, boundary_point, tangent, curvature, project : Callable
         As in `make_angle_maps`.
     arc_length : Callable
         Function `arc_length(q, t, parameters)` that returns `s`.
     arc_position : Callable
         Function `arc_position(s, t, parameters)` that returns `q`.
-    md_steps : int
-        Number of molecular dynamics steps across the diameter of the billiard.
 
     Returns
     -------
@@ -341,11 +373,10 @@ def make_birkhoff_maps(
             cos_alpha,
             np.sqrt(1.0 - cos_alpha * cos_alpha),
             parameters,
-            inside,
+            collide,
             boundary_point,
             tangent,
             project,
-            diameter(parameters) / md_steps,
         )
 
         return np.array([arc_length(q1, 0.0, parameters), cos_alpha1])
@@ -365,11 +396,10 @@ def make_birkhoff_maps(
             cos_alpha,
             sin_alpha,
             parameters,
-            inside,
+            collide,
             boundary_point,
             tangent,
             project,
-            diameter(parameters) / md_steps,
         )
 
         kappa = curvature(q, 0.0, parameters)
@@ -734,6 +764,80 @@ def _nearest_on_piece(
     return u, (x - px) ** 2 + (y - py) ** 2
 
 
+@njit
+def _exact_piecewise_collision(
+    table: NDArray[np.float64], q0: float, x0: float, y0: float, dx: float, dy: float
+) -> float:
+    """
+    Return the distance from a point on the boundary to the next collision.
+
+    The distance is the smallest positive one over the intersections of the line with
+    the pieces, for a unit direction `(dx, dy)`. On the piece that the particle leaves,
+    the intersection at the start is removed exactly: a line has no other, and on a
+    circle the other one is at `-2 d.(q - c)`.
+    """
+    leaving, _ = _locate_piece(table, q0)
+    nearest = np.inf
+
+    for row in range(table.shape[0]):
+        length = table[row, 2]
+        if length == 0.0:
+            continue
+
+        if table[row, 0] == 0.0:
+            if row == leaving:
+                continue
+            ex = table[row, 5]
+            ey = table[row, 6]
+            denominator = dx * ey - dy * ex
+            if denominator == 0.0:
+                continue
+            fx = table[row, 3] - x0
+            fy = table[row, 4] - y0
+            distance = (fx * ey - fy * ex) / denominator
+            along = (fx * dy - fy * dx) / denominator
+            if (
+                COLLISION_TOLERANCE < distance < nearest
+                and -PIECE_END_TOLERANCE <= along <= length + PIECE_END_TOLERANCE
+            ):
+                nearest = distance
+            continue
+
+        fx = x0 - table[row, 3]
+        fy = y0 - table[row, 4]
+        radius = table[row, 5]
+        b = fx * dx + fy * dy
+        if row == leaving:
+            first = -2.0 * b
+            second = np.inf
+        else:
+            discriminant = b * b - (fx * fx + fy * fy - radius * radius)
+            if discriminant < 0.0:
+                continue
+            root = np.sqrt(discriminant)
+            first = -b - root
+            second = -b + root
+
+        span = length / radius
+        for distance in (first, second):
+            if not COLLISION_TOLERANCE < distance < nearest or distance == np.inf:
+                continue
+            angle = np.arctan2(fy + distance * dy, fx + distance * dx)
+            swept = (table[row, 7] * (angle - table[row, 6])) % (2.0 * np.pi)
+            # Within the arc, or just past one of its ends.
+            if (
+                swept <= span + PIECE_END_TOLERANCE
+                or swept >= 2.0 * np.pi - PIECE_END_TOLERANCE
+            ):
+                nearest = distance
+                break
+
+    if nearest == np.inf:
+        raise RuntimeError("no collision found: the boundary is not closed")
+
+    return nearest
+
+
 def make_piecewise_geometry(pieces: Callable) -> Dict[str, Callable]:
     """
     Build the geometry of a boundary made of lines and circular arcs.
@@ -751,6 +855,24 @@ def make_piecewise_geometry(pieces: Callable) -> Dict[str, Callable]:
     Dict[str, Callable]
         The geometry functions, by name.
     """
+
+    @njit
+    def exact_solver(
+        q0: float,
+        x0: float,
+        y0: float,
+        vx: float,
+        vy: float,
+        t0: float,
+        parameters: NDArray[np.float64],
+    ) -> Tuple[float, float, float]:
+        speed = np.sqrt(vx * vx + vy * vy)
+        distance = _exact_piecewise_collision(
+            pieces(parameters), q0, x0, y0, vx / speed, vy / speed
+        )
+        time = distance / speed
+
+        return t0 + time, x0 + vx * time, y0 + vy * time
 
     @njit
     def boundary_point(
@@ -823,6 +945,7 @@ def make_piecewise_geometry(pieces: Callable) -> Dict[str, Callable]:
 
     return {
         "pieces": pieces,
+        "exact_solver": exact_solver,
         "boundary_point": boundary_point,
         "tangent": tangent,
         "curvature": curvature,

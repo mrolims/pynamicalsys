@@ -28,6 +28,7 @@ from pynamicalsys.core.discrete_dynamical_systems import DiscreteDynamicalSystem
 from pynamicalsys.discrete_time.billiards import (
     make_angle_maps,
     make_birkhoff_maps,
+    make_md_solver,
     make_piecewise_geometry,
     mushroom_check,
     mushroom_diameter,
@@ -81,7 +82,7 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "parameters": ["r", "l"],
         "position": "s",
         "closed": True,
-        "solvers": ["md"],
+        "solvers": ["md", "exact"],
         "check": stadium_check,
         "diameter": stadium_diameter,
         "inside": stadium_inside,
@@ -93,7 +94,7 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "parameters": ["r", "x_d", "y_d"],
         "position": "s",
         "closed": False,
-        "solvers": ["md"],
+        "solvers": ["md", "exact"],
         "check": sinai_check,
         "diameter": sinai_diameter,
         "inside": sinai_inside,
@@ -105,7 +106,7 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "parameters": ["R", "w", "h"],
         "position": "s",
         "closed": True,
-        "solvers": ["md"],
+        "solvers": ["md", "exact"],
         "check": mushroom_check,
         "diameter": mushroom_diameter,
         "inside": mushroom_inside,
@@ -115,36 +116,43 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
 
 
 @lru_cache(maxsize=None)
-def _billiard_maps(
-    name: str, coordinates: str, md_steps: int
-) -> Tuple[Callable, Callable, Callable]:
-    # Each map is compiled once for every billiard, coordinates, and number of steps.
+def _collision_solver(name: str, solver: str, md_steps: int) -> Callable:
     billiard = _BILLIARDS[name]
+    if solver == "exact":
+        return billiard["exact_solver"]
+
+    return make_md_solver(billiard["inside"], billiard["diameter"], md_steps)
+
+
+@lru_cache(maxsize=None)
+def _billiard_maps(
+    name: str, coordinates: str, solver: str, md_steps: int
+) -> Tuple[Callable, Callable, Callable]:
+    # Each map is compiled once for every billiard, coordinates, and solver, and for
+    # every number of steps with molecular dynamics.
+    billiard = _BILLIARDS[name]
+    collide = _collision_solver(name, solver, md_steps)
 
     if coordinates == "birkhoff":
         return make_birkhoff_maps(
             billiard["check"],
-            billiard["diameter"],
-            billiard["inside"],
+            collide,
             billiard["boundary_point"],
             billiard["tangent"],
             billiard["curvature"],
             billiard["project"],
             billiard["arc_length"],
             billiard["arc_position"],
-            md_steps,
         )
 
     return make_angle_maps(
         billiard["check"],
-        billiard["diameter"],
-        billiard["inside"],
+        collide,
         billiard["boundary_point"],
         billiard["tangent"],
         billiard["curvature"],
         billiard["arc_speed"],
         billiard["project"],
-        md_steps,
     )
 
 
@@ -161,8 +169,8 @@ class Billiard(DiscreteDynamicalSystem):
     - `"oval"`: `R(theta) = 1 + eps cos(p theta)`, with `eps` in `[0, 1]` and an integer
       `p`. The position is `theta`. The cardioid is `eps = 1` and `p = 1`, which has a
       cusp at `theta = pi`, where a reflection is not defined, as at a corner. With
-      `eps = 1` and `p > 1`, the boundary meets the origin at `p` points, which separate `p` closed
-      lobes, and a trajectory stays in the lobe where it starts.
+      `eps = 1` and `p > 1`, the boundary meets the origin at `p` points, which
+      separate `p` closed lobes, and a trajectory stays in the lobe where it starts.
     - `"stadium"`: semicircles of radius `r` joined by straight segments of length
       `l`. The position is the arc length, from the start of the right semicircle.
     - `"sinai"`: a disk of radius `r` centered at `(x_d, y_d)` in the unit square with
@@ -195,7 +203,10 @@ class Billiard(DiscreteDynamicalSystem):
         Method that finds the next collision, one of
         `Billiard.available_solvers(name)`. Default is `"md"`, molecular
         dynamics: the particle advances in small steps until it is outside the
-        billiard, and the collision is located by bisection.
+        billiard, and the collision is located by bisection. It works on every
+        billiard. With `"exact"`, available on boundaries made of lines and arcs,
+        the collision comes from the closed-form intersection of the trajectory with
+        each piece, so no collision can be missed.
     coordinates : str, optional
         Coordinates of the state. Default is `"angles"`, the state `(q, alpha)`.
         With `"birkhoff"`, the state is `(s, cos(alpha))`, and positions and sizes
@@ -203,8 +214,8 @@ class Billiard(DiscreteDynamicalSystem):
         oval billiard, each collision computes it by quadrature, which adds to the
         cost. Near grazing, `cos(alpha)` resolves `alpha` only to about `1e-8`.
     md_steps : int_t, optional
-        Number of molecular dynamics steps across the diameter of the billiard.
-        Default is `500`. A collision and a return to the interior within one
+        Number of molecular dynamics steps across the diameter of the billiard, used
+        only by `solver="md"`. Default is `500`. A collision and a return to the interior within one
         step are not detected, so a trajectory that barely touches a part of the
         boundary that bulges inward can pass through it. Larger values are safer
         and slower.
@@ -220,7 +231,7 @@ class Billiard(DiscreteDynamicalSystem):
     Notes
     -----
     Each map is compiled by Numba the first time it is used with a given billiard,
-    coordinates, and `md_steps`.
+    coordinates, and solver, and with `solver="md"`, `md_steps`.
 
     Examples
     --------
@@ -270,7 +281,10 @@ class Billiard(DiscreteDynamicalSystem):
         self.__md_steps = int(md_steps)
 
         mapping, jacobian, backwards_mapping = _billiard_maps(
-            name, coordinates, self.__md_steps
+            name,
+            coordinates,
+            solver,
+            self.__md_steps if solver == "md" else 0,
         )
         super().__init__(
             mapping=mapping,
