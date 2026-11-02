@@ -31,6 +31,7 @@ def escape_basin_and_time_entering(
     mapping: map_t,
     max_time: int_t,
     exits: NDArray[np.float64],
+    periods: NDArray[np.float64],
 ) -> Tuple[int, int_t]:
     """
     Track the trajectory until it enters one of a set of exit regions.
@@ -48,7 +49,11 @@ def escape_basin_and_time_entering(
     exits : NDArray[np.float64]
         Exit regions of shape `(n_exits, system_dimension, 2)`, where
         `exits[k, i, 0]` and `exits[k, i, 1]` are the lower and upper bounds
-        of the `i`-th coordinate for the `k`-th exit region.
+        of the `i`-th coordinate for the `k`-th exit region. Infinite bounds
+        leave a coordinate unconstrained.
+    periods : NDArray[np.float64]
+        Wrapping period of each coordinate, of shape `(system_dimension,)`,
+        with `np.inf` for coordinates that do not wrap.
 
     Returns
     -------
@@ -68,7 +73,8 @@ def escape_basin_and_time_entering(
 
     Notes
     -----
-    Each exit region is interpreted as a hyperrectangle in phase space.
+    Each exit region is interpreted as a hyperrectangle in phase space. A state
+    that is NaN or infinite in a constrained coordinate is never inside a region.
     """
     if max_time <= 0:
         raise ValueError("max_time must be positive")
@@ -88,7 +94,14 @@ def escape_basin_and_time_entering(
             for dim in range(n_dim):
                 lower = exits[exit_idx, dim, 0]
                 upper = exits[exit_idx, dim, 1]
-                if state[dim] < lower or state[dim] > upper:
+                width = upper - lower
+                if np.isfinite(periods[dim]):
+                    # A hole at least one period wide covers the whole circle.
+                    if width < periods[dim]:
+                        if not ((state[dim] - lower) % periods[dim] <= width):
+                            in_exit = False
+                            break
+                elif not (lower <= state[dim] <= upper):
                     in_exit = False
                     break
 

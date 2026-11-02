@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `BasinMetrics.basin_entropy` uses boxes of `nx` by `ny` grid points when they are given, along the first and second axes of the basin. Both were accepted before but ignored.
 - `PlotStyler` accepts Matplotlib's short names `lw`, `ms`, `mew`, and `mec`, and `set_tick_padding` accepts an array or list of Axes, such as the one returned by `plt.subplots`.
 - New method `bifurcation_diagram` for continuous-time systems, which sweeps a parameter and records one coordinate of a Poincaré section, a stroboscopic map, or a maxima map at each value (`map_type="PS"`, `"SM"`, or `"MM"`). The values are computed in parallel, or in order with `continuation=True`, each starting from the last map point of the previous one.
+- The `hole_size` of `DiscreteDynamicalSystem.escape_analysis` can be an array broadcast to `(n_exits, system_dimension)`, so holes can differ between coordinates and between each other. A side length of `np.inf` leaves a coordinate unconstrained, as for a hole in the boundary of a billiard: `hole_size=[h, np.inf]`.
+- `DiscreteDynamicalSystem.escape_analysis` accepts `periods`, the wrapping period of each coordinate (`np.inf` for coordinates that do not wrap), so a hole that extends past the end of a periodic coordinate continues at its other end.
 
 ### Changed
 
@@ -39,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `lyapunov`, `SALI`, `LDI`, and `GALI` emit a `UserWarning` when `sample_times` is passed without `return_history=True`, where it has no effect.
 - `PlotStyler.apply_style` no longer clears the current figure, which also removes the warnings it emitted after figures with shared logarithmic axes. Call `plt.clf()` yourself if you relied on it.
 - `DiscreteDynamicalSystem.manifold` raises a `ValueError` for a stable manifold without a backward map. The error is also a `RuntimeError`, as raised before.
+- With `escape="entering"`, `DiscreteDynamicalSystem.escape_analysis` wraps the first coordinate with period `2 * np.pi` by default, so a hole at an angle of 0 also covers the angles just below `2 * np.pi`. If `x` is not an angle, a point at `x + 2 * np.pi` now counts as being at `x`; pass `periods=[np.inf, np.inf]` to reproduce previous results.
 - Python 3.14 and 3.15 are supported. On Python 3.15, pip installs Numba 0.68 or newer.
 
 ### Deprecated
@@ -81,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TimeSeriesMetrics.recurrence_time_entropy` and `recurrence_matrix` with `compute_white_vert_distr=True` started the white-line distribution at `lmin + 1` instead of `lmin`.
 - The recurrence methods warned that `threshold_std` is deprecated even when it was not passed.
 - `PlotStyler(tick_direction_in=False)` had no effect.
+- `DiscreteDynamicalSystem.escape_analysis` accepted `hole_size=np.nan`, which made every trajectory escape at the first iteration, and counted a trajectory that reached NaN as entering the first hole. `hole_size=np.nan` now raises a `ValueError`, and such a trajectory does not enter a hole.
 
 [Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
 
