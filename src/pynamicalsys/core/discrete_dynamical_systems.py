@@ -2504,7 +2504,8 @@ class DiscreteDynamicalSystem:
         | Sequence[NDArray[np.float64]],
         parameters: numeric_like_t | None = None,
         escape: str = "entering",
-        hole_size: numeric_t | None = None,
+        hole_size: numeric_like_t | None = None,
+        periods: numeric_like_t | None = None,
     ) -> Tuple[int, int_t]:
         """
         Compute the escape index and escape time for a single trajectory.
@@ -2530,8 +2531,25 @@ class DiscreteDynamicalSystem:
             System parameters. If None, stored system parameters are used.
         escape : str, optional
             Escape mode. Must be either `"entering"` or `"exiting"`.
-        hole_size : numeric_t | None, optional
-            Side length of the hyperrectangular holes used when `escape == "entering"`.
+        hole_size : numeric_like_t | None, optional
+            Side lengths of the hyperrectangular holes used when `escape == "entering"`,
+            broadcast to shape `(n_exits, system_dimension)`:
+
+            - a scalar gives every hole the same side length in every coordinate,
+            - shape `(system_dimension,)` gives one side length per coordinate,
+            - shape `(n_exits, 1)` gives one side length per hole,
+            - shape `(n_exits, system_dimension)` sets each hole and coordinate.
+
+            A one-dimensional value is always per coordinate, even if its length
+            equals `n_exits`. A side length of `np.inf` leaves that coordinate
+            unconstrained.
+        periods : numeric_like_t | None, optional
+            Wrapping period of each coordinate when `escape == "entering"`, of shape
+            `(system_dimension,)`, with `np.inf` for coordinates that do not wrap. A
+            hole that extends past the end of a wrapped coordinate continues at its
+            other end. If None, the first coordinate has period `2 * np.pi` and the
+            others do not wrap. Pass `np.inf` for the first coordinate if it is not
+            an angle, since a point at `x + 2 * np.pi` then counts as being at `x`.
 
         Returns
         -------
@@ -2549,12 +2567,31 @@ class DiscreteDynamicalSystem:
             - If `parameters` does not match the expected number of parameters.
             - If `max_time <= 0`.
             - If `escape` is not `"entering"` or `"exiting"`.
-            - If `hole_size` is missing or not positive when `escape == "entering"`.
+            - If `hole_size` is missing, has an entry that is not positive, or cannot
+              be broadcast to `(n_exits, system_dimension)` when `escape == "entering"`.
+            - If `periods` has the wrong shape or a non-positive entry.
             - If `exits` has an invalid shape.
         TypeError
             - If `u` is not a scalar or array-like numeric object.
             - If `parameters` is not a scalar or array-like numeric object.
             - If `max_time` is not an integer.
+            - If `hole_size` is not numeric.
+
+        Examples
+        --------
+        A hole in the boundary of a billiard is an interval of the angle, whatever
+        the value of the other coordinate. This hole is centered at the angle 0 and
+        also covers the angles just below `2 * np.pi`:
+
+        >>> ds = DiscreteDynamicalSystem(model="leonel map")
+        >>> ds.escape_analysis(
+        ...     [1.0, 0.5],
+        ...     10_000,
+        ...     exits=[0.0, 0.0],
+        ...     parameters=[0.1, 1.0],
+        ...     hole_size=[0.2, np.inf],
+        ... )
+        (0, 3)
         """
         u_arr: NDArray[np.float64] = validate_initial_conditions(
             u, self.__system_dimension, allow_ensemble=False
@@ -2576,7 +2613,14 @@ class DiscreteDynamicalSystem:
         if escape == "entering":
             if hole_size is None:
                 raise ValueError("hole_size must be provided when escape='entering'")
-            validate_positive(hole_size, "hole_size", Real)
+            try:
+                if np.asarray(hole_size).dtype == np.bool_:
+                    raise TypeError
+                hole_size_arr = np.asarray(hole_size, dtype=np.float64)
+            except (TypeError, ValueError) as e:
+                raise TypeError("hole_size must be numeric") from e
+            if np.any(np.isnan(hole_size_arr) | (hole_size_arr <= 0)):
+                raise ValueError("every entry of hole_size must be positive")
 
             if exits_arr.ndim == 1:
                 if exits_arr.shape[0] != self.__system_dimension:
@@ -2595,8 +2639,31 @@ class DiscreteDynamicalSystem:
                     "(system_dimension,) or (n_exits, system_dimension)"
                 )
 
-            lower = exits_arr - hole_size / 2.0
-            upper = exits_arr + hole_size / 2.0
+            try:
+                hole_size_arr = np.broadcast_to(hole_size_arr, exits_arr.shape)
+            except ValueError as e:
+                raise ValueError(
+                    "hole_size must be a scalar or have shape "
+                    f"({self.__system_dimension},), ({exits_arr.shape[0]}, 1), or "
+                    f"({exits_arr.shape[0]}, {self.__system_dimension}), "
+                    f"got {hole_size_arr.shape}"
+                ) from e
+
+            if periods is None:
+                periods_arr = np.full(self.__system_dimension, np.inf)
+                periods_arr[0] = 2.0 * np.pi
+            else:
+                periods_arr = np.atleast_1d(np.asarray(periods, dtype=np.float64))
+                if periods_arr.shape != (self.__system_dimension,):
+                    raise ValueError(
+                        f"periods must have shape ({self.__system_dimension},), "
+                        f"got {periods_arr.shape}"
+                    )
+                if np.any(periods_arr <= 0):
+                    raise ValueError("every entry of periods must be positive")
+
+            lower = exits_arr - hole_size_arr / 2.0
+            upper = exits_arr + hole_size_arr / 2.0
             holes = np.empty(
                 (exits_arr.shape[0], self.__system_dimension, 2), dtype=np.float64
             )
@@ -2609,6 +2676,7 @@ class DiscreteDynamicalSystem:
                 mapping=self.__mapping,
                 max_time=max_time,
                 exits=holes,
+                periods=periods_arr,
             )
 
         if exits_arr.ndim != 2 or exits_arr.shape != (self.__system_dimension, 2):

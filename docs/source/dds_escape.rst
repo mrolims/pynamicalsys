@@ -9,7 +9,7 @@ The :py:meth:`escape_analysis <pynamicalsys.core.discrete_dynamical_systems.Disc
     ``exits`` defines a bounded region with shape ``(system_dimension, 2)``. Each row contains the lower and upper limits of one coordinate. The returned index identifies the first boundary crossed, with ``2 * i`` for the lower boundary of coordinate ``i`` and ``2 * i + 1`` for its upper boundary.
 
 ``escape="entering"``
-    ``exits`` contains the centers of one or more holes. The scalar ``hole_size`` is the side length of the hyperrectangular holes constructed around those centers. The returned index identifies the first hole entered.
+    ``exits`` contains the centers of one or more holes. ``hole_size`` gives the side lengths of the hyperrectangular holes constructed around those centers, which can differ between coordinates and between holes. ``periods`` wraps the holes around periodic coordinates. The returned index identifies the first hole entered.
 
 In both modes, a trajectory that does not escape within ``max_time`` returns ``(-1, max_time)``. This is a right-censored observation rather than evidence that the trajectory can never escape.
 
@@ -241,7 +241,7 @@ Plotting the same curves on semilogarithmic and logarithmic axes helps distingui
 Entering holes
 ~~~~~~~~~~~~~~
 
-For ``escape="entering"``, every row of ``exits`` is the center of a hole and ``hole_size`` gives its side length in every coordinate. The method returns the zero-based index of the first hole entered. The map was introduced by `Weiss (1991) <https://doi.org/10.1063/1.858068>`_, while the following hole configuration reproduces the setup studied by `Souza et al. (2023) <https://doi.org/10.3390/e25081142>`_:
+For ``escape="entering"``, every row of ``exits`` is the center of a hole and a scalar ``hole_size`` gives its side length in every coordinate. The method returns the zero-based index of the first hole entered. The map was introduced by `Weiss (1991) <https://doi.org/10.1063/1.858068>`_, while the following hole configuration reproduces the setup studied by `Souza et al. (2023) <https://doi.org/10.3390/e25081142>`_:
 
 .. math::
 
@@ -387,6 +387,43 @@ The first result channel contains :math:`-1` for a trajectory that did not enter
 
     Escape basins and escape times for the Weiss map with two holes and four values of :math:`k`.
 
+Holes of different sizes
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+An array ``hole_size`` gives the holes different side lengths. It is broadcast to ``(n_exits, system_dimension)``, so a one-dimensional value has one side length per coordinate, shape ``(n_exits, 1)`` has one per hole, and shape ``(n_exits, system_dimension)`` sets each hole and coordinate. A side length of ``np.inf`` leaves that coordinate unconstrained.
+
+This describes a hole in the boundary of a billiard, where a trajectory escapes when the angle :math:`\theta` of a collision lies in :math:`[\theta_{\mathrm{hole}}-h/2,\theta_{\mathrm{hole}}+h/2]`, whatever the value of the other coordinate. With a mapping ``billiard_map`` of the state :math:`(\theta,p)`:
+
+.. code-block:: python
+
+    system = dds(
+        mapping=billiard_map,
+        system_dimension=2,
+        number_of_parameters=1,
+    )
+
+    theta_hole = 0.0
+    h = 0.1
+    escape_index, escape_time = system.escape_analysis(
+        u=[1.0, 0.2],
+        max_time=100_000,
+        exits=[theta_hole, 0.0],
+        parameters=[0.5],
+        hole_size=[h, np.inf],
+    )
+
+The center of the second coordinate has no effect here, since the hole extends over all of it. By default the first coordinate has period :math:`2\pi`, so this hole also covers the angles just below :math:`2\pi`, whether the map returns :math:`\theta` in :math:`[0,2\pi)` or in :math:`[-\pi,\pi)`. Two holes of different widths are given by
+
+.. code-block:: python
+
+    system.escape_analysis(
+        u=[1.0, 0.2],
+        max_time=100_000,
+        exits=[[0.0, 0.0], [np.pi, 0.0]],
+        parameters=[0.5],
+        hole_size=[[0.1, np.inf], [0.3, np.inf]],
+    )
+
 Basin entropy
 ~~~~~~~~~~~~~
 
@@ -443,7 +480,10 @@ Numerical options
     The largest number of iterations of ``escape_analysis``. Trajectories that do not escape return ``(-1, max_time)``, and ``survival_probability`` counts an escape time equal to ``max_time`` as a trajectory that has not escaped, so its value at ``max_time`` is the fraction of trapped trajectories. A trajectory that escapes exactly at iteration ``max_time`` has the same escape time and is counted the same way. Since the escape times of trapped trajectories are unknown, ``max_time`` should exceed the time range of interest by a wide margin when a large fraction of trajectories remains trapped.
 
 ``escape`` and ``hole_size``
-    ``escape="entering"`` records the first entry into one of the holes, which are hyperrectangles of side ``hole_size`` centered on the points of ``exits``. ``escape="exiting"`` records the first exit from the region given by ``exits``, one ``[lower, upper]`` pair per coordinate. In both modes the boundaries belong to the hole or to the region. A smaller hole gives longer escape times, so the number of iterations and of initial conditions needed for a well-sampled distribution grows as ``hole_size`` decreases.
+    ``escape="entering"`` records the first entry into one of the holes, which are hyperrectangles of side ``hole_size`` centered on the points of ``exits``. ``hole_size`` is a scalar or an array broadcast to ``(n_exits, system_dimension)``, and ``np.inf`` leaves a coordinate unconstrained. A one-dimensional ``hole_size`` is always per coordinate, even if its length equals the number of holes; use shape ``(n_exits, 1)`` for one size per hole. ``escape="exiting"`` records the first exit from the region given by ``exits``, one ``[lower, upper]`` pair per coordinate. In both modes the boundaries belong to the hole or to the region. A smaller hole gives longer escape times, so the number of iterations and of initial conditions needed for a well-sampled distribution grows as ``hole_size`` decreases.
+
+``periods``
+    The wrapping period of each coordinate for ``escape="entering"``, with ``np.inf`` for coordinates that do not wrap. A hole that extends past the end of a wrapped coordinate continues at its other end. By default the first coordinate has period :math:`2\pi` and the others do not wrap. Pass ``[1.0, np.inf]`` for a map with :math:`x` modulo 1, and ``[np.inf, np.inf]`` if :math:`x` is not an angle, since a point at :math:`x+2\pi` otherwise counts as being at :math:`x`.
 
 ``min_time`` and ``time_step``
     The first evaluation time and the spacing between evaluation times of ``survival_probability``. They default to ``1``, which evaluates :math:`P(n)` at every iteration. A larger ``time_step`` reduces the size of the output for long escape-time ranges.
