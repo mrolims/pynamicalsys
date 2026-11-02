@@ -1115,7 +1115,9 @@ class DiscreteDynamicalSystem:
             Default is `0`.
         continuation : bool, optional
             If True, use the final state from the previous parameter value as the
-            initial condition for the next one.
+            initial condition for the next one, and compute the values in order.
+            Otherwise every value starts from `u`, and the values are computed in
+            parallel.
         return_last_state : bool, optional
             If True, also return the final state obtained at the last parameter value.
         observable_index : int_t, optional

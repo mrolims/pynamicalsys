@@ -18,15 +18,15 @@
 from typing import Callable
 
 import numpy as np
-from numba import njit
+from numba import njit, prange
 from numpy.typing import NDArray
 
 from pynamicalsys.common.types import int_t
 from pynamicalsys.discrete_time.trajectory import generate_trajectory
 
 
-@njit
-def _sweep(
+@njit(parallel=True)
+def _sweep_parallel(
     u: NDArray[np.float64],
     parameters: NDArray[np.float64],
     param_index: int,
@@ -34,21 +34,52 @@ def _sweep(
     total_time: int_t,
     mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
     transient_time: int_t,
-    continuation: bool,
     observable_index: int,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    # Compiled loop over the parameter values of `bifurcation_diagram`.
+    # Every parameter value starts from `u`, so the values are independent.
+    sample_size = total_time - transient_time
+    num_points = param_values.shape[0]
+    results = np.empty((num_points, sample_size), dtype=np.float64)
+    last_states = np.empty((num_points, u.shape[0]), dtype=np.float64)
+
+    for i in prange(num_points):
+        current_params = parameters.copy()
+        current_params[param_index] = param_values[i]
+        trajectory = generate_trajectory(
+            u.copy(),
+            current_params,
+            total_time,
+            mapping,
+            transient_time=transient_time,
+        )
+        for j in range(sample_size):
+            results[i, j] = trajectory[j, observable_index]
+        last_states[i] = trajectory[-1]
+
+    return results, last_states[-1].copy()
+
+
+@njit
+def _sweep_continuation(
+    u: NDArray[np.float64],
+    parameters: NDArray[np.float64],
+    param_index: int,
+    param_values: NDArray[np.float64],
+    total_time: int_t,
+    mapping: Callable[[NDArray[np.float64], NDArray[np.float64]], NDArray[np.float64]],
+    transient_time: int_t,
+    observable_index: int,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    # Each parameter value starts from the final state of the previous one, so
+    # the values are computed in order.
     state = u.copy()
     sample_size = total_time - transient_time
     num_points = param_values.shape[0]
-
     results = np.empty((num_points, sample_size), dtype=np.float64)
     current_params = parameters.copy()
-    last_state = state.copy()
 
     for i in range(num_points):
         current_params[param_index] = param_values[i]
-
         trajectory = generate_trajectory(
             state,
             current_params,
@@ -56,15 +87,11 @@ def _sweep(
             mapping,
             transient_time=transient_time,
         )
-
         for j in range(sample_size):
             results[i, j] = trajectory[j, observable_index]
+        state = trajectory[-1].copy()
 
-        last_state = trajectory[-1].copy()
-        if continuation:
-            state = last_state.copy()
-
-    return results, last_state
+    return results, state
 
 
 def bifurcation_diagram(
@@ -107,7 +134,9 @@ def bifurcation_diagram(
         Default is `0`.
     continuation : bool, optional
         If True, use the final state from the previous parameter value as the
-        initial condition for the next one.
+        initial condition for the next one, and compute the values in order.
+        Otherwise every value starts from `u`, and the values are computed in
+        parallel.
     return_last_state : bool, optional
         If True, also return the final state from the last parameter value.
     observable_index : int, optional
@@ -138,7 +167,8 @@ def bifurcation_diagram(
     else:
         param_values = np.ascontiguousarray(param_range, dtype=np.float64)
 
-    results, last_state = _sweep(
+    sweep = _sweep_continuation if continuation else _sweep_parallel
+    results, last_state = sweep(
         u,
         np.asarray(parameters, dtype=np.float64),
         param_index,
@@ -146,7 +176,6 @@ def bifurcation_diagram(
         total_time,
         mapping,
         0 if transient_time is None else transient_time,
-        continuation,
         observable_index,
     )
 
