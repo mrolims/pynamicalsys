@@ -27,12 +27,16 @@ from pynamicalsys.common.validators import validate_parameters, validate_positiv
 from pynamicalsys.core.discrete_dynamical_systems import DiscreteDynamicalSystem
 from pynamicalsys.discrete_time.billiards import (
     make_angle_maps,
+    make_birkhoff_maps,
+    oval_arc_length,
+    oval_arc_position,
     oval_arc_speed,
     oval_boundary_point,
     oval_check,
     oval_curvature,
     oval_diameter,
     oval_inside,
+    oval_perimeter,
     oval_project,
     oval_tangent,
 )
@@ -53,14 +57,33 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "curvature": oval_curvature,
         "arc_speed": oval_arc_speed,
         "project": oval_project,
+        "arc_length": oval_arc_length,
+        "arc_position": oval_arc_position,
+        "perimeter": oval_perimeter,
     },
 }
 
 
 @lru_cache(maxsize=None)
-def _angle_maps(name: str, md_steps: int) -> Tuple[Callable, Callable, Callable]:
-    # Each map is compiled once for every billiard and number of steps.
+def _billiard_maps(
+    name: str, coordinates: str, md_steps: int
+) -> Tuple[Callable, Callable, Callable]:
+    # Each map is compiled once for every billiard, coordinates, and number of steps.
     billiard = _BILLIARDS[name]
+
+    if coordinates == "birkhoff":
+        return make_birkhoff_maps(
+            billiard["check"],
+            billiard["diameter"],
+            billiard["inside"],
+            billiard["boundary_point"],
+            billiard["tangent"],
+            billiard["curvature"],
+            billiard["project"],
+            billiard["arc_length"],
+            billiard["arc_position"],
+            md_steps,
+        )
 
     return make_angle_maps(
         billiard["check"],
@@ -83,9 +106,14 @@ class Billiard(DiscreteDynamicalSystem):
     `DiscreteDynamicalSystem` is available, such as `trajectory`, `lyapunov`,
     and `escape_analysis`.
 
-    The state is `(q, alpha)`, where `q` locates the collision on the boundary
-    and `alpha`, in `(0, pi)`, is the angle of the outgoing trajectory, measured
-    counterclockwise from the tangent of the boundary.
+    By default, the state is `(q, alpha)`, where `q` locates the collision on the
+    boundary and `alpha`, in `(0, pi)`, is the angle of the outgoing trajectory,
+    measured counterclockwise from the tangent of the boundary. This map preserves
+    the measure `sin(alpha) ds dalpha`, where `s` is the arc length along the
+    boundary, and not the area in `(q, alpha)`.
+
+    The Birkhoff coordinates `(s, cos(alpha))` are canonical, so the map preserves
+    area in them.
 
     Parameters
     ----------
@@ -101,6 +129,10 @@ class Billiard(DiscreteDynamicalSystem):
         billiard, and the collision is located by bisection.
     coordinates : str, optional
         Coordinates of the state. Default is `"angles"`, the state `(q, alpha)`.
+        With `"birkhoff"`, the state is `(s, cos(alpha))`, and positions and sizes
+        of holes are arc lengths. When the arc length has no closed form, as in the
+        oval billiard, each collision computes it by quadrature, which adds to the
+        cost. Near grazing, `cos(alpha)` resolves `alpha` only to about `1e-8`.
     md_steps : int_t, optional
         Number of molecular dynamics steps across the diameter of the billiard.
         Default is `500`. A collision and a return to the interior within one
@@ -118,8 +150,8 @@ class Billiard(DiscreteDynamicalSystem):
 
     Notes
     -----
-    Each map is compiled by Numba the first time it is used with a given billiard
-    and `md_steps`.
+    Each map is compiled by Numba the first time it is used with a given billiard,
+    coordinates, and `md_steps`.
 
     Examples
     --------
@@ -133,6 +165,11 @@ class Billiard(DiscreteDynamicalSystem):
     >>> index, time = bl.escape_analysis(
     ...     [2.0, 1.0], 10_000, exits=[0.2, 0.0], hole_size=[0.2, np.inf]
     ... )
+
+    In Birkhoff coordinates, the state is the arc length and `cos(alpha)`:
+
+    >>> bl = Billiard("oval", parameters=[0.08, 3], coordinates="birkhoff")
+    >>> s, cos_alpha = bl.trajectory([2.0, 0.5], 1)[0]
     """
 
     def __init__(
@@ -153,8 +190,8 @@ class Billiard(DiscreteDynamicalSystem):
                 f"Solver '{solver}' not available for the {name} billiard. "
                 f"Available solvers: {self.available_solvers(name)}"
             )
-        if coordinates != "angles":
-            raise ValueError("coordinates must be 'angles'")
+        if coordinates not in ("angles", "birkhoff"):
+            raise ValueError("coordinates must be either 'angles' or 'birkhoff'")
         validate_positive(md_steps, "md_steps", Integral)
 
         self.__name = name
@@ -163,7 +200,9 @@ class Billiard(DiscreteDynamicalSystem):
         self.__coordinates = coordinates
         self.__md_steps = int(md_steps)
 
-        mapping, jacobian, backwards_mapping = _angle_maps(name, self.__md_steps)
+        mapping, jacobian, backwards_mapping = _billiard_maps(
+            name, coordinates, self.__md_steps
+        )
         super().__init__(
             mapping=mapping,
             jacobian=jacobian,
@@ -192,13 +231,25 @@ class Billiard(DiscreteDynamicalSystem):
 
     @property
     def info(self) -> Dict[str, Any]:
-        """Return a dictionary with information about the billiard."""
+        """
+        Return a dictionary with information about the billiard.
+
+        In Birkhoff coordinates, the entry `"period"` is the perimeter, or None if
+        no parameters are stored.
+        """
+        if self.__coordinates == "birkhoff":
+            state = ["s", "cos(alpha)"]
+            period = None if self.get_parameters() is None else self.perimeter()
+        else:
+            state = [self.__billiard["position"], "alpha"]
+            period = self.__billiard["period"]
+
         return {
             "name": self.__name,
             "description": self.__billiard["description"],
             "parameters": list(self.__billiard["parameters"]),
-            "state": [self.__billiard["position"], "alpha"],
-            "period": self.__billiard["period"],
+            "state": state,
+            "period": period,
             "solver": self.__solver,
             "coordinates": self.__coordinates,
             "md_steps": self.__md_steps,
@@ -215,6 +266,27 @@ class Billiard(DiscreteDynamicalSystem):
         self.__billiard["check"](parameters_arr)
 
         return parameters_arr
+
+    def perimeter(self, parameters: numeric_like_t | None = None) -> float:
+        """
+        Return the length of the boundary of the billiard.
+
+        Parameters
+        ----------
+        parameters : numeric_like_t | None, optional
+            Parameters of the billiard. If None, the stored parameters are used.
+
+        Returns
+        -------
+        float
+            The perimeter.
+
+        Raises
+        ------
+        ValueError
+            If the parameters are invalid.
+        """
+        return float(self.__billiard["perimeter"](self.__resolve_parameters(parameters)))
 
     def boundary(
         self, num_points: int_t = 1000, parameters: numeric_like_t | None = None
@@ -284,11 +356,17 @@ class Billiard(DiscreteDynamicalSystem):
             raise ValueError("states must have shape (2,) or (n, 2)")
         parameters_arr = self.__resolve_parameters(parameters)
         point = self.__billiard["boundary_point"]
+        arc_position = self.__billiard["arc_position"]
+
+        def position(first: float) -> Tuple[float, float]:
+            if self.__coordinates == "birkhoff":
+                first = arc_position(first, 0.0, parameters_arr)
+            return point(first, 0.0, parameters_arr)
 
         if states_arr.ndim == 1:
-            return np.array(point(states_arr[0], 0.0, parameters_arr))
+            return np.array(position(states_arr[0]))
 
-        return np.array([point(q, 0.0, parameters_arr) for q in states_arr[:, 0]])
+        return np.array([position(first) for first in states_arr[:, 0]])
 
     def escape_analysis(
         self,
@@ -307,7 +385,8 @@ class Billiard(DiscreteDynamicalSystem):
 
         This is `DiscreteDynamicalSystem.escape_analysis`, except that `periods`
         defaults to the period of the boundary for the position and to no
-        wrapping for the other coordinate.
+        wrapping for the other coordinate. In Birkhoff coordinates, the period is
+        the perimeter, and the centers and sizes of the holes are arc lengths.
 
         A hole in the boundary is an interval of the position, whatever the value
         of the other coordinate: `hole_size=[h, np.inf]`. See
@@ -320,7 +399,10 @@ class Billiard(DiscreteDynamicalSystem):
             `(face_index, escape_time)`.
         """
         if periods is None and escape == "entering":
-            periods = [self.__billiard["period"], np.inf]
+            if self.__coordinates == "birkhoff":
+                periods = [self.perimeter(parameters), np.inf]
+            else:
+                periods = [self.__billiard["period"], np.inf]
 
         return super().escape_analysis(
             u,

@@ -24,6 +24,9 @@ from numpy.typing import NDArray
 # Smallest length resolved when locating a collision.
 COLLISION_TOLERANCE = 1e-14
 
+# Gauss-Legendre rule for the arc length of smooth boundaries.
+_QUADRATURE_NODES, _QUADRATURE_WEIGHTS = np.polynomial.legendre.leggauss(12)
+
 
 # ! ---------------------- !
 # ! --- Collision core --- !
@@ -153,22 +156,18 @@ def reflect(
 @njit
 def _static_collision(
     q: float,
-    alpha: float,
+    cos_alpha: float,
+    sin_alpha: float,
     parameters: NDArray[np.float64],
     inside: Callable,
     boundary_point: Callable,
     tangent: Callable,
     project: Callable,
     step_length: float,
-) -> Tuple[float, float, float]:
-    """Return `(q1, alpha1, chord)` for a collision at `(q, alpha)` with a static wall."""
-    if not 0.0 < alpha < np.pi:
-        raise ValueError("alpha must lie in (0, pi)")
-
+) -> Tuple[float, float, float, float]:
+    """Return `(q1, cos_alpha1, sin_alpha1, chord)` for a collision with a static wall."""
     x0, y0 = boundary_point(q, 0.0, parameters)
     tx, ty = tangent(q, 0.0, parameters)
-    cos_alpha = np.cos(alpha)
-    sin_alpha = np.sin(alpha)
     vx = cos_alpha * tx - sin_alpha * ty
     vy = sin_alpha * tx + cos_alpha * ty
 
@@ -177,9 +176,8 @@ def _static_collision(
     q1 = project(x1, y1, 0.0, parameters)
     tx, ty = tangent(q1, 0.0, parameters)
     vx, vy = reflect(vx, vy, tx, ty, 0.0, 0.0)
-    alpha1 = np.arctan2(tx * vy - ty * vx, tx * vx + ty * vy)
 
-    return q1, alpha1, chord
+    return q1, tx * vx + ty * vy, tx * vy - ty * vx, chord
 
 
 def make_angle_maps(
@@ -227,9 +225,12 @@ def make_angle_maps(
     ) -> NDArray[np.float64]:
         check(parameters)
         q, alpha = u
-        q1, alpha1, _ = _static_collision(
+        if not 0.0 < alpha < np.pi:
+            raise ValueError("alpha must lie in (0, pi)")
+        q1, cos_alpha1, sin_alpha1, _ = _static_collision(
             q,
-            alpha,
+            np.cos(alpha),
+            np.sin(alpha),
             parameters,
             inside,
             boundary_point,
@@ -238,7 +239,7 @@ def make_angle_maps(
             diameter(parameters) / md_steps,
         )
 
-        return np.array([q1, alpha1])
+        return np.array([q1, np.arctan2(sin_alpha1, cos_alpha1)])
 
     @njit
     def jacobian(
@@ -246,9 +247,13 @@ def make_angle_maps(
     ) -> NDArray[np.float64]:
         check(parameters)
         q, alpha = u
-        q1, alpha1, chord = _static_collision(
+        if not 0.0 < alpha < np.pi:
+            raise ValueError("alpha must lie in (0, pi)")
+        sin_alpha = np.sin(alpha)
+        q1, _, sin_alpha1, chord = _static_collision(
             q,
-            alpha,
+            np.cos(alpha),
+            sin_alpha,
             parameters,
             inside,
             boundary_point,
@@ -261,8 +266,6 @@ def make_angle_maps(
         kappa1 = curvature(q1, 0.0, parameters)
         speed = arc_speed(q, 0.0, parameters)
         speed1 = arc_speed(q1, 0.0, parameters)
-        sin_alpha = np.sin(alpha)
-        sin_alpha1 = np.sin(alpha1)
 
         # Derivatives with respect to arc length, from
         # sin(alpha1) ds1 = (chord kappa - sin(alpha)) ds + chord dalpha
@@ -286,6 +289,109 @@ def make_angle_maps(
         reversed_state = mapping(np.array([u[0], np.pi - u[1]]), parameters)
 
         return np.array([reversed_state[0], np.pi - reversed_state[1]])
+
+    return mapping, jacobian, backwards_mapping
+
+
+def make_birkhoff_maps(
+    check: Callable,
+    diameter: Callable,
+    inside: Callable,
+    boundary_point: Callable,
+    tangent: Callable,
+    curvature: Callable,
+    project: Callable,
+    arc_length: Callable,
+    arc_position: Callable,
+    md_steps: int,
+) -> Tuple[Callable, Callable, Callable]:
+    """
+    Build the map of a static billiard in the Birkhoff coordinates `(s, p)`.
+
+    Here `s` is the arc length along the boundary and `p = cos(alpha)`. These
+    coordinates are canonical, so the map preserves area.
+
+    Parameters
+    ----------
+    check, diameter, inside, boundary_point, tangent, curvature, project : Callable
+        As in `make_angle_maps`.
+    arc_length : Callable
+        Function `arc_length(q, t, parameters)` that returns `s`.
+    arc_position : Callable
+        Function `arc_position(s, t, parameters)` that returns `q`.
+    md_steps : int
+        Number of molecular dynamics steps across the diameter of the billiard.
+
+    Returns
+    -------
+    Tuple[Callable, Callable, Callable]
+        Tuple `(mapping, jacobian, backwards_mapping)`.
+    """
+
+    @njit
+    def mapping(
+        u: NDArray[np.float64], parameters: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        check(parameters)
+        s, cos_alpha = u
+        if not -1.0 < cos_alpha < 1.0:
+            raise ValueError("cos(alpha) must lie in (-1, 1)")
+        q1, cos_alpha1, _, _ = _static_collision(
+            arc_position(s, 0.0, parameters),
+            cos_alpha,
+            np.sqrt(1.0 - cos_alpha * cos_alpha),
+            parameters,
+            inside,
+            boundary_point,
+            tangent,
+            project,
+            diameter(parameters) / md_steps,
+        )
+
+        return np.array([arc_length(q1, 0.0, parameters), cos_alpha1])
+
+    @njit
+    def jacobian(
+        u: NDArray[np.float64], parameters: NDArray[np.float64], *args: Any
+    ) -> NDArray[np.float64]:
+        check(parameters)
+        s, cos_alpha = u
+        if not -1.0 < cos_alpha < 1.0:
+            raise ValueError("cos(alpha) must lie in (-1, 1)")
+        q = arc_position(s, 0.0, parameters)
+        sin_alpha = np.sqrt(1.0 - cos_alpha * cos_alpha)
+        q1, _, sin_alpha1, chord = _static_collision(
+            q,
+            cos_alpha,
+            sin_alpha,
+            parameters,
+            inside,
+            boundary_point,
+            tangent,
+            project,
+            diameter(parameters) / md_steps,
+        )
+
+        kappa = curvature(q, 0.0, parameters)
+        kappa1 = curvature(q1, 0.0, parameters)
+        ds1_ds = (chord * kappa - sin_alpha) / sin_alpha1
+
+        J = np.zeros((2, 2))
+        J[0, 0] = ds1_ds
+        J[0, 1] = -chord / (sin_alpha * sin_alpha1)
+        J[1, 0] = sin_alpha1 * (kappa - kappa1 * ds1_ds)
+        J[1, 1] = (kappa1 * chord - sin_alpha1) / sin_alpha
+
+        return J
+
+    @njit
+    def backwards_mapping(
+        u: NDArray[np.float64], parameters: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        # Time reversal: reverse the velocity, advance, and reverse it again.
+        reversed_state = mapping(np.array([u[0], -u[1]]), parameters)
+
+        return np.array([reversed_state[0], -reversed_state[1]])
 
     return mapping, jacobian, backwards_mapping
 
@@ -375,3 +481,131 @@ def oval_project(
     x: float, y: float, t: float, parameters: NDArray[np.float64]
 ) -> float:
     return np.arctan2(y, x) % (2.0 * np.pi)
+
+
+@njit
+def _oval_panel_edges(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
+    """
+    Return the quadrature panels of `[0, pi / p]`, graded towards both ends.
+
+    The boundary repeats every `2 pi / p` and is symmetric about `pi / p`, so this
+    wedge determines the arc length. The integrand `ds/dtheta` has complex
+    singularities whose real parts are `0` and `pi / p` only. The nearest one is at
+    a distance `log((D + 1) / (eps (p + 1))) / p` from `pi / p`, with
+    `D = sqrt(1 + eps^2 (p^2 - 1))`, which tends to zero as `eps` tends to one, so
+    the smallest panels are made no wider than this distance.
+    """
+    eps, p = parameters
+    wedge = np.pi / p
+    halvings = 1
+    if eps > 0.0:
+        root = np.sqrt(1.0 + eps * eps * (p * p - 1.0))
+        distance = np.log((root + 1.0) / (eps * (p + 1.0))) / p
+        halvings = max(1, int(np.ceil(np.log2(0.5 * wedge / distance))) + 1)
+
+    edges = np.empty(2 * halvings + 1)
+    for j in range(halvings):
+        width = 0.5 * wedge * 0.5**j
+        edges[halvings - j] = width
+        edges[halvings + j] = wedge - width
+    edges[0] = 0.0
+    edges[-1] = wedge
+
+    return edges
+
+
+@njit
+def _oval_panel_integral(
+    lower: float, upper: float, parameters: NDArray[np.float64]
+) -> float:
+    half_width = 0.5 * (upper - lower)
+    center = lower + half_width
+    total = 0.0
+    for node, weight in zip(_QUADRATURE_NODES, _QUADRATURE_WEIGHTS):
+        total += weight * oval_arc_speed(center + half_width * node, 0.0, parameters)
+
+    return half_width * total
+
+
+@njit
+def oval_perimeter(parameters: NDArray[np.float64]) -> float:
+    edges = _oval_panel_edges(parameters)
+    half_wedge = 0.0
+    for j in range(edges.size - 1):
+        half_wedge += _oval_panel_integral(edges[j], edges[j + 1], parameters)
+
+    return 2.0 * parameters[1] * half_wedge
+
+
+@njit
+def oval_arc_length(
+    theta: float, t: float, parameters: NDArray[np.float64]
+) -> float:
+    p = parameters[1]
+    wedge = np.pi / p
+    theta = theta % (2.0 * np.pi)
+    wedges = np.floor(theta / (2.0 * wedge))
+    x = theta - 2.0 * wedge * wedges
+    mirrored = x > wedge
+    if mirrored:
+        x = 2.0 * wedge - x
+
+    edges = _oval_panel_edges(parameters)
+    half_wedge = 0.0
+    partial = 0.0
+    for j in range(edges.size - 1):
+        lower = edges[j]
+        upper = edges[j + 1]
+        half_wedge += _oval_panel_integral(lower, upper, parameters)
+        if lower < x < upper:
+            partial = half_wedge - _oval_panel_integral(x, upper, parameters)
+        elif x >= upper:
+            partial = half_wedge
+
+    if mirrored:
+        return 2.0 * half_wedge * (wedges + 1.0) - partial
+
+    return 2.0 * half_wedge * wedges + partial
+
+
+@njit
+def oval_arc_position(
+    s: float, t: float, parameters: NDArray[np.float64]
+) -> float:
+    p = parameters[1]
+    wedge = np.pi / p
+    edges = _oval_panel_edges(parameters)
+    panels = np.empty(edges.size - 1)
+    for j in range(panels.size):
+        panels[j] = _oval_panel_integral(edges[j], edges[j + 1], parameters)
+    half_wedge = np.sum(panels)
+
+    s = s % (2.0 * p * half_wedge)
+    wedges = np.floor(s / (2.0 * half_wedge))
+    remainder = s - 2.0 * half_wedge * wedges
+    mirrored = remainder > half_wedge
+    if mirrored:
+        remainder = 2.0 * half_wedge - remainder
+
+    j = 0
+    while j < panels.size - 1 and remainder > panels[j]:
+        remainder -= panels[j]
+        j += 1
+
+    # Newton's method inside the panel, kept within it.
+    lower = edges[j]
+    upper = edges[j + 1]
+    x = lower + (upper - lower) * min(remainder / panels[j], 1.0)
+    for _ in range(50):
+        error = _oval_panel_integral(lower, x, parameters) - remainder
+        x_new = x - error / oval_arc_speed(x, 0.0, parameters)
+        x_new = min(max(x_new, lower), upper)
+        converged = abs(x_new - x) < 1e-15
+        x = x_new
+        if converged:
+            break
+
+    if mirrored:
+        x = 2.0 * wedge - x
+
+    return (2.0 * wedge * wedges + x) % (2.0 * np.pi)

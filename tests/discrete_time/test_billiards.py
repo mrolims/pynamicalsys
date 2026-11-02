@@ -11,10 +11,17 @@ import numpy as np
 import pytest
 from joblib import Parallel, delayed
 from numba import njit
+from scipy.integrate import quad
 from scipy.optimize import brentq
 
 from pynamicalsys import Billiard
-from pynamicalsys.discrete_time.billiards import md_collision, reflect
+from pynamicalsys.discrete_time.billiards import (
+    md_collision,
+    oval_arc_length,
+    oval_arc_position,
+    oval_arc_speed,
+    reflect,
+)
 
 TWO_PI = 2.0 * np.pi
 
@@ -305,6 +312,250 @@ def test_survival_decays_faster_through_the_chaotic_hole_as_in_hansen():
     mixed = hansen_survival_slope(3.14, 3.04, 1, 60)
     assert chaotic == pytest.approx(-0.0437, rel=0.25)
     assert chaotic < 1.5 * mixed
+
+
+# ! --- Birkhoff coordinates ---------------------------------------------- !
+
+ARC_PARAMETERS = [
+    (eps, p)
+    for p in (1, 2, 3, 4, 5, 12)
+    for eps in (0.0, 0.01, 0.08, 0.1, 0.5, 0.9, 0.99, 0.999, 0.999999)
+]
+
+
+def oval_speed(theta, eps, p):
+    return np.hypot(oval_radius(theta, eps, p), eps * p * np.sin(p * theta))
+
+
+def integrated_arc_length(theta, eps, p):
+    # Adaptive quadrature between the extrema of the radius.
+    wedge = np.pi / p
+    breaks = np.arange(0.0, theta, wedge)
+    edges = np.append(breaks, theta)
+    return sum(
+        quad(
+            oval_speed,
+            a,
+            b,
+            args=(eps, p),
+            limit=500,
+            epsabs=1e-13,
+            epsrel=1e-13,
+        )[0]
+        for a, b in zip(edges[:-1], edges[1:])
+    )
+
+
+@pytest.mark.parametrize("eps, p", ARC_PARAMETERS)
+def test_perimeter_matches_adaptive_quadrature(eps, p):
+    billiard = Billiard("oval", parameters=[eps, p])
+    assert billiard.perimeter() == pytest.approx(
+        integrated_arc_length(TWO_PI, eps, p), abs=1e-11
+    )
+
+
+@pytest.mark.parametrize("eps, p", ARC_PARAMETERS)
+def test_arc_length_matches_adaptive_quadrature(rng, eps, p):
+    parameters = np.array([eps, p], dtype=np.float64)
+    for theta in rng.uniform(0.0, TWO_PI, 5):
+        assert oval_arc_length(theta, 0.0, parameters) == pytest.approx(
+            integrated_arc_length(theta, eps, p), abs=1e-11
+        )
+
+
+@pytest.mark.parametrize("eps, p", ARC_PARAMETERS)
+def test_arc_position_inverts_arc_length(rng, eps, p):
+    parameters = np.array([eps, p], dtype=np.float64)
+    thetas = np.concatenate(
+        (
+            rng.uniform(0.0, TWO_PI, 8),
+            np.arange(2 * p) * np.pi / p,  # Ends of the wedges.
+            np.arange(2 * p) * np.pi / p + 1e-9,
+        )
+    )
+    for theta in thetas:
+        s = oval_arc_length(theta, 0.0, parameters)
+        position = oval_arc_position(s, 0.0, parameters)
+        # The error as a length along the boundary: where ds/dtheta is small, as at
+        # an inward bulge with eps close to one, round-off in s is large in theta.
+        error = angle_difference(position, theta) * oval_speed(theta, eps, p)
+        assert error == pytest.approx(0.0, abs=1e-12)
+
+
+def test_arc_length_increases_and_covers_the_perimeter():
+    parameters = np.array([0.9, 3.0])
+    thetas = np.linspace(0.0, TWO_PI, 2001)[:-1]
+    arcs = np.array([oval_arc_length(theta, 0.0, parameters) for theta in thetas])
+    assert np.all(np.diff(arcs) > 0.0)
+    assert arcs[0] == 0.0
+    assert arcs[-1] < Billiard("oval", parameters=parameters).perimeter()
+
+
+def test_arc_speed_is_the_derivative_of_the_arc_length():
+    parameters = np.array([0.4, 3.0])
+    h = 1e-5
+    for theta in (0.3, 1.0, 2.5, 5.0):
+        derivative = (
+            oval_arc_length(theta + h, 0.0, parameters)
+            - oval_arc_length(theta - h, 0.0, parameters)
+        ) / (2.0 * h)
+        assert derivative == pytest.approx(
+            oval_arc_speed(theta, 0.0, parameters), rel=1e-8
+        )
+
+
+def test_circle_in_birkhoff_coordinates():
+    billiard = Billiard("oval", parameters=[0.0, 3], coordinates="birkhoff")
+    assert billiard.perimeter() == pytest.approx(TWO_PI)
+    s1, cos_alpha1 = billiard.trajectory([1.0, 0.5], 1)[0]
+    assert s1 == pytest.approx(1.0 + 2.0 * np.arccos(0.5), abs=1e-12)
+    assert cos_alpha1 == pytest.approx(0.5, abs=1e-12)
+
+
+@pytest.mark.parametrize("eps, p", [(0.05, 3), (0.08, 3), (0.2, 3), (0.5, 4), (0.9, 2)])
+def test_both_coordinates_give_the_same_orbit(eps, p):
+    angles = Billiard("oval", parameters=[eps, p], md_steps=5000)
+    birkhoff = Billiard(
+        "oval", parameters=[eps, p], coordinates="birkhoff", md_steps=5000
+    )
+    parameters = angles.get_parameters()
+    theta, alpha = 1.3, 0.9
+    # Compare over few collisions, before round-off grows along the chaotic orbit.
+    orbit = angles.trajectory([theta, alpha], 8)
+    converted = birkhoff.trajectory(
+        [oval_arc_length(theta, 0.0, parameters), np.cos(alpha)], 8
+    )
+    np.testing.assert_allclose(
+        birkhoff.to_cartesian(converted), angles.to_cartesian(orbit), atol=1e-6
+    )
+    np.testing.assert_allclose(converted[:, 1], np.cos(orbit[:, 1]), atol=1e-6)
+
+
+def birkhoff_states(rng, parameters, size, margin=0.1):
+    perimeter = Billiard("oval", parameters=parameters).perimeter()
+    return np.column_stack(
+        (
+            rng.uniform(0.0, perimeter, size),
+            rng.uniform(-1.0 + margin, 1.0 - margin, size),
+        )
+    )
+
+
+@pytest.mark.parametrize("eps, p", [(0.05, 3), (0.08, 3), (0.2, 3), (0.1, 2)])
+def test_birkhoff_jacobian_matches_finite_differences(rng, eps, p):
+    billiard = Billiard(
+        "oval", parameters=[eps, p], coordinates="birkhoff", md_steps=5000
+    )
+    mapping = billiard._DiscreteDynamicalSystem__mapping
+    jacobian = billiard._DiscreteDynamicalSystem__jacobian
+    parameters = billiard.get_parameters()
+    perimeter = billiard.perimeter()
+    h = 1e-6
+    for state in birkhoff_states(rng, [eps, p], 10, margin=0.2):
+        numerical = np.empty((2, 2))
+        for j in range(2):
+            step = np.zeros(2)
+            step[j] = h
+            plus = mapping(state + step, parameters)
+            minus = mapping(state - step, parameters)
+            wrapped = (plus[0] - minus[0] + perimeter / 2.0) % perimeter
+            numerical[0, j] = (wrapped - perimeter / 2.0) / (2.0 * h)
+            numerical[1, j] = (plus[1] - minus[1]) / (2.0 * h)
+        np.testing.assert_allclose(
+            jacobian(state, parameters), numerical, rtol=1e-4, atol=1e-4
+        )
+
+
+@pytest.mark.parametrize(
+    "eps, p", [(0.05, 3), (0.08, 3), (0.2, 3), (0.5, 4), (0.9, 3), (0.3, 1)]
+)
+def test_birkhoff_map_preserves_area(rng, eps, p):
+    billiard = Billiard("oval", parameters=[eps, p], coordinates="birkhoff")
+    jacobian = billiard._DiscreteDynamicalSystem__jacobian
+    parameters = billiard.get_parameters()
+    for state in birkhoff_states(rng, [eps, p], 30):
+        assert np.linalg.det(jacobian(state, parameters)) == pytest.approx(1.0, abs=1e-8)
+
+
+@pytest.mark.parametrize("eps, p", [(0.05, 3), (0.08, 3), (0.4, 3), (0.3, 2)])
+def test_birkhoff_backward_map_inverts_forward_map(rng, eps, p):
+    billiard = Billiard(
+        "oval", parameters=[eps, p], coordinates="birkhoff", md_steps=5000
+    )
+    backward = billiard._DiscreteDynamicalSystem__backwards_mapping
+    parameters = billiard.get_parameters()
+    perimeter = billiard.perimeter()
+    for state in birkhoff_states(rng, [eps, p], 20):
+        back = backward(billiard.trajectory(state, 1)[0], parameters)
+        difference = (back[0] - state[0] + perimeter / 2.0) % perimeter - perimeter / 2.0
+        assert difference == pytest.approx(0.0, abs=1e-9)
+        assert back[1] == pytest.approx(state[1], abs=1e-9)
+
+
+@pytest.mark.parametrize("cos_alpha", [1.0, -1.0, 1.5, np.nan])
+def test_cos_alpha_outside_its_range(cos_alpha):
+    billiard = Billiard("oval", parameters=[0.08, 3], coordinates="birkhoff")
+    with pytest.raises(ValueError, match="alpha"):
+        billiard.trajectory([1.0, cos_alpha], 1)
+
+
+def test_birkhoff_info():
+    billiard = Billiard("oval", coordinates="birkhoff")
+    assert billiard.info["state"] == ["s", "cos(alpha)"]
+    assert billiard.info["period"] is None
+    billiard.set_parameters([0.2, 3])
+    assert billiard.info["period"] == pytest.approx(billiard.perimeter())
+
+
+def test_a_hole_in_arc_length_is_the_same_hole_in_angle():
+    parameters = [0.08, 3]
+    angles = Billiard("oval", parameters=parameters)
+    birkhoff = Billiard("oval", parameters=parameters, coordinates="birkhoff")
+    values = np.asarray(parameters, dtype=np.float64)
+    lower = oval_arc_length(1.0, 0.0, values)
+    upper = oval_arc_length(1.2, 0.0, values)
+    for theta, alpha in [(2.0, 1.0), (3.5, 0.6), (5.0, 2.0)]:
+        in_angle = angles.escape_analysis(
+            [theta, alpha], 2000, exits=[1.1, 0.0], hole_size=[0.2, np.inf]
+        )
+        # The hole in angle is not centered in arc length, but has the same ends.
+        in_arc = birkhoff.escape_analysis(
+            [oval_arc_length(theta, 0.0, values), np.cos(alpha)],
+            2000,
+            exits=[0.5 * (lower + upper), 0.0],
+            hole_size=[upper - lower, np.inf],
+        )
+        assert in_arc == in_angle
+
+
+def test_birkhoff_hole_at_zero_wraps_with_the_perimeter():
+    billiard = Billiard("oval", parameters=[0.08, 3], coordinates="birkhoff")
+    perimeter = billiard.perimeter()
+    state = [2.0, 0.5]
+    orbit = billiard.trajectory(state, 500)
+    width = 0.2
+    index, time = billiard.escape_analysis(
+        state, 500, exits=[0.0, 0.0], hole_size=[width, np.inf]
+    )
+    inside = (orbit[:, 0] <= width / 2.0) | (orbit[:, 0] >= perimeter - width / 2.0)
+    assert (index, time) == (0, np.flatnonzero(inside)[0] + 1)
+
+
+def test_birkhoff_lyapunov_exponents_sum_to_zero():
+    billiard = Billiard("oval", parameters=[0.1, 3], coordinates="birkhoff")
+    exponents = billiard.lyapunov([2.0, 0.8], 5000)
+    assert exponents[0] > 0.0
+    assert np.sum(exponents) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_parallel_workers_in_birkhoff_coordinates():
+    billiard = Billiard("oval", parameters=[0.08, 3], coordinates="birkhoff")
+    states = [[2.0, c] for c in (-0.5, 0.0, 0.5)]
+    kwargs = dict(max_time=200, exits=[1.0, 0.0], hole_size=[0.3, np.inf])
+    in_parallel = Parallel(n_jobs=2)(
+        delayed(billiard.escape_analysis)(state, **kwargs) for state in states
+    )
+    assert in_parallel == [billiard.escape_analysis(s, **kwargs) for s in states]
 
 
 # ! --- Interface --------------------------------------------------------- !
