@@ -16,6 +16,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 from pynamicalsys.core.discrete_dynamical_systems import DiscreteDynamicalSystem
+from pynamicalsys.core.billiards import Billiard
 
 from pynamicalsys.core.continuous_dynamical_systems import ContinuousDynamicalSystem
 from pynamicalsys.core.hamiltonian_systems import HamiltonianSystem
@@ -26,6 +27,7 @@ from .__version__ import __version__
 
 __all__ = [
     "DiscreteDynamicalSystem",
+    "Billiard",
     "ContinuousDynamicalSystem",
     "HamiltonianSystem",
     "PlotStyler",
