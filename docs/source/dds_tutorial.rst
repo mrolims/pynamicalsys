@@ -15,4 +15,5 @@ This tutorial is also available as a Jupyter notebook. You can view it directly 
    dds_chaotic_indicators
    dds_manifolds
    dds_escape
+   dds_billiards
    dds_transport

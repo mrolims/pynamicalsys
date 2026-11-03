@@ -31,6 +31,7 @@
 
 - **Bifurcation diagrams**, **Poincaré sections**, and **stroboscopic maps** for analyzing system trajectories.
 - **Symplectic integrators** for analyzing Hamiltonian systems.
+- **Billiards**, with built-in and user-defined boundaries and selectable collision solvers.
 - **Linear dependence index** for chaos detection.
 - **Recurrence plots** and recurrence time statistics.
 - Chaos indicators based on **weighted Birkhoff averages**.

@@ -40,6 +40,8 @@ matches your system:
 - **Hamiltonian systems:** dynamics described by positions, momenta, and a
   Hamiltonian, with symplectic integration methods. Start with the
   :doc:`Hamiltonian-system tutorial <hs_tutorial>`.
+- **Billiards:** a particle reflecting at the boundary of a region, with built-in
+  shapes or your own. Start with the :doc:`billiards page <dds_billiards>`.
 - **Existing data:** use :doc:`TimeSeriesMetrics <api/time_series_metrics>` for
   recurrence analysis and Hurst exponents, or
   :doc:`BasinMetrics <api/basin_metrics>` to quantify basin structure.
@@ -138,6 +140,7 @@ See :doc:`citation` for citation formats.
    api/dds
    api/cds
    api/hs
+   api/billiards
    api/basin_metrics
    api/time_series_metrics
    api/plot_styler

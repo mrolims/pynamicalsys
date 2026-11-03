@@ -194,6 +194,11 @@ th {
     color: #ffffff;
 }
 
+/* The theme gives odd rows a light background, which hides light text. */
+.rst-content table.docutils:not(.field-list) tr:nth-child(2n-1) td {
+    background-color: #2b2247;
+}
+
 /* === NAVBAR TOGGLE (small screen menu icon) === */
 .wy-nav-top {
     background-color: #4b2c8a;
@@ -413,6 +418,9 @@ html[data-theme="light"] .wy-table-responsive table {
     border: 1px solid #cfc7e6;
 }
 html[data-theme="light"] th { background-color: #e6e2f3; color: #221d33; }
+html[data-theme="light"] .rst-content table.docutils:not(.field-list) tr:nth-child(2n-1) td {
+    background-color: #f5f3fb;
+}
 html[data-theme="light"] .wy-nav-top { background-color: #e6e2f3; color: #221d33; }
 html[data-theme="light"] footer { background: #ece9f7; color: #666; }
 html[data-theme="light"] .rst-content .admonition,
