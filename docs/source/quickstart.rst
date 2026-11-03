@@ -1,9 +1,9 @@
 Quickstart
 ==========
 
-This guide introduces the three system classes through small simulations you can run in Python or a notebook. Each example includes its own imports and produces a plot. If you have not installed **pynamicalsys**, start with :doc:`installation`.
+This guide introduces the four system classes through small simulations you can run in Python or a notebook. Each example includes its own imports and produces a plot. If you have not installed **pynamicalsys**, start with :doc:`installation`.
 
-The workflow is the same in each case: choose a model, specify its parameters and initial state, then calculate and visualize a trajectory. For a discrete map, ``total_time`` counts iterations. For continuous and Hamiltonian systems, it specifies the duration in the system's time units.
+The workflow is the same in each case: choose a model, specify its parameters and initial state, then calculate and visualize a trajectory. For a discrete map, ``total_time`` counts iterations. For continuous and Hamiltonian systems, it specifies the duration in the system's time units. For a billiard, it counts collisions.
 
 Discrete maps: compare parameter values
 ---------------------------------------
@@ -178,9 +178,53 @@ Positions and momenta are passed separately. The output combines them into rows 
 
 The Yoshida method applies to separable Hamiltonians of the form :math:`H(\mathbf{q},\mathbf{p}) = T(\mathbf{p}) + V(\mathbf{q})`. The :doc:`Hamiltonian-system tutorial <hs_tutorial>` explains the available integrators, custom Hamiltonians, and how to check energy error. The :py:meth:`poincare_section <pynamicalsys.core.hamiltonian_systems.HamiltonianSystem.poincare_section>` method provides another way to examine phase-space structure.
 
+Billiards: follow a particle between collisions
+-----------------------------------------------
+
+Use ``Billiard`` for a particle that moves in straight lines inside a region and reflects at its boundary. It describes the motion as a map from one collision to the next. The state after a collision is :math:`(s,\alpha)`, where :math:`s` is the arc length along the boundary and :math:`\alpha` is the angle between the outgoing velocity and the tangent of the boundary.
+
+The Sinai billiard is a disk inside the unit square, and its parameters are the radius of the disk and the coordinates of its center. The ``solver`` argument is required and selects how the next collision is found. Since this boundary is made of lines and arcs, ``"exact"`` finds it in closed form:
+
+.. code-block:: python
+
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from pynamicalsys import Billiard, PlotStyler
+
+    billiard = Billiard("sinai", parameters=[0.2, 0.5, 0.5], solver="exact")
+    state = [0.3, 1.0]
+
+    boundary = billiard.boundary()
+    points = billiard.to_cartesian(billiard.trajectory(state, 100))
+    orbit = billiard.trajectory(state, 100_000)
+
+    ps = PlotStyler(fontsize=18)
+    ps.apply_style()
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+    ax[0].plot(points[:, 0], points[:, 1], lw=0.75, color="tab:blue")
+    ax[0].plot(boundary[:, 0], boundary[:, 1], "k", lw=1.5)
+    ax[0].set_aspect("equal")
+    ax[0].set_xlabel("$x$")
+    ax[0].set_ylabel("$y$")
+    ax[1].plot(orbit[:, 0], orbit[:, 1], "o", ms=0.4, mew=0, color="tab:blue")
+    ax[1].set_xlim(0.0, billiard.perimeter())
+    ax[1].set_ylim(0.0, np.pi)
+    ax[1].set_xlabel("$s$")
+    ax[1].set_ylabel(r"$\alpha$")
+    fig.tight_layout()
+    plt.show()
+
+.. figure:: images/quickstart_sinai.png
+    :align: center
+    :width: 100%
+
+    A trajectory in the Sinai billiard and its phase space.
+
+The output of ``trajectory`` has one row per collision, and ``to_cartesian`` converts the rows to points in the plane. Here the arc length runs along the walls up to :math:`s=4`, and then around the disk. :doc:`Billiards <dds_billiards>` explains the solvers, the other built-in boundaries, and how to define your own.
+
 Next steps
 ----------
 
 - Use the tutorials linked above to explore the system type relevant to your work.
-- Consult the :doc:`discrete <api/dds>`, :doc:`continuous <api/cds>`, and :doc:`Hamiltonian <api/hs>` API references for method arguments and return values.
+- Consult the :doc:`discrete <api/dds>`, :doc:`continuous <api/cds>`, :doc:`Hamiltonian <api/hs>`, and :doc:`billiards <api/billiards>` API references for method arguments and return values.
 - Explore :doc:`PlotStyler <api/plot_styler>` for consistent plot formatting. The examples above apply its default style before creating their figures.

@@ -392,35 +392,31 @@ Holes of different sizes
 
 An array ``hole_size`` gives the holes different side lengths. It is broadcast to ``(n_exits, system_dimension)``, so a one-dimensional value has one side length per coordinate, shape ``(n_exits, 1)`` has one per hole, and shape ``(n_exits, system_dimension)`` sets each hole and coordinate. A side length of ``np.inf`` leaves that coordinate unconstrained.
 
-This describes a hole in the boundary of a billiard, where a trajectory escapes when the angle :math:`\theta` of a collision lies in :math:`[\theta_{\mathrm{hole}}-h/2,\theta_{\mathrm{hole}}+h/2]`, whatever the value of the other coordinate. With a mapping ``billiard_map`` of the state :math:`(\theta,p)`:
+This describes a hole in the boundary of a billiard, where a trajectory escapes when the angle :math:`\theta` of a collision lies in :math:`[\theta_{\mathrm{hole}}-h/2,\theta_{\mathrm{hole}}+h/2]`, whatever the value of the other coordinate. With the :doc:`Billiard <dds_billiards>` class:
 
 .. code-block:: python
 
-    system = dds(
-        mapping=billiard_map,
-        system_dimension=2,
-        number_of_parameters=1,
-    )
+    from pynamicalsys import Billiard
+
+    billiard = Billiard("oval", parameters=[0.08, 3], solver="circle")
 
     theta_hole = 0.0
     h = 0.1
-    escape_index, escape_time = system.escape_analysis(
-        u=[1.0, 0.2],
+    escape_index, escape_time = billiard.escape_analysis(
+        u=[2.0, 1.0],
         max_time=100_000,
         exits=[theta_hole, 0.0],
-        parameters=[0.5],
         hole_size=[h, np.inf],
     )
 
-The center of the second coordinate has no effect here, since the hole extends over all of it. By default the first coordinate has period :math:`2\pi`, so this hole also covers the angles just below :math:`2\pi`, whether the map returns :math:`\theta` in :math:`[0,2\pi)` or in :math:`[-\pi,\pi)`. Two holes of different widths are given by
+The center of the second coordinate has no effect here, since the hole extends over all of it. The position of this billiard has period :math:`2\pi`, so this hole also covers the angles just below :math:`2\pi`. For other maps, the first coordinate has period :math:`2\pi` by default, whether the map returns it in :math:`[0,2\pi)` or in :math:`[-\pi,\pi)`. Two holes of different widths are given by
 
 .. code-block:: python
 
-    system.escape_analysis(
-        u=[1.0, 0.2],
+    billiard.escape_analysis(
+        u=[2.0, 1.0],
         max_time=100_000,
         exits=[[0.0, 0.0], [np.pi, 0.0]],
-        parameters=[0.5],
         hole_size=[[0.1, np.inf], [0.3, np.inf]],
     )
 

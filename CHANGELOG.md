@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New method `bifurcation_diagram` for continuous-time systems, which sweeps a parameter and records one coordinate of a Poincaré section, a stroboscopic map, or a maxima map at each value (`map_type="PS"`, `"SM"`, or `"MM"`). The values are computed in parallel, or in order with `continuation=True`, each starting from the last map point of the previous one.
 - The `hole_size` of `DiscreteDynamicalSystem.escape_analysis` can be an array broadcast to `(n_exits, system_dimension)`, so holes can differ between coordinates and between each other. A side length of `np.inf` leaves a coordinate unconstrained, as for a hole in the boundary of a billiard: `hole_size=[h, np.inf]`.
 - `DiscreteDynamicalSystem.escape_analysis` accepts `periods`, the wrapping period of each coordinate (`np.inf` for coordinates that do not wrap), so a hole that extends past the end of a periodic coordinate continues at its other end.
+- New class `Billiard`, which describes a billiard as the map from one collision to the next and inherits the methods of `DiscreteDynamicalSystem`. It includes the `"oval"` (with the cardioid as a special case), `"stadium"`, `"sinai"`, and `"mushroom"` billiards.
+- `Billiard` requires choosing how to find the next collision with the `solver` argument: `"md"` (molecular dynamics, for every boundary), `"exact"` (closed form, for lines and arcs and the oval with `p = 1`), `"circle"` (tangent method, for a convex `R(theta)`), or `"polygon"` (tangent method, for the non-convex oval).
+- `Billiard` works in `(position, alpha)` and, with `coordinates="birkhoff"`, in the area-preserving coordinates `(s, cos(alpha))`.
+- `Billiard.from_polar` and `Billiard.from_pieces` define billiards from a radius `R(theta)` or from lines and arcs. A boundary that is not valid raises an error and is drawn with the problem in red, and `Billiard.plot_pieces` draws any boundary made of lines and arcs.
 
 ### Changed
 
