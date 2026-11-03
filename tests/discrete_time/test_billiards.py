@@ -7,20 +7,36 @@ triangle orbit, identities that hold at every point of phase space (time
 reversal, the preserved measure), and results published for the oval billiard.
 """
 
+import pickle
+import warnings
+
 import numpy as np
 import pytest
 from joblib import Parallel, delayed
+from joblib.externals import cloudpickle
 from numba import njit
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
 from pynamicalsys import Billiard
+from pynamicalsys.core.billiards import _fixed_pieces_table
 from pynamicalsys.discrete_time.billiards import (
+    inside_pieces,
     md_collision,
+    mushroom_inside,
+    new_pieces,
     oval_arc_length,
     oval_arc_position,
     oval_arc_speed,
+    oval_boundary_point,
+    oval_circle_distance,
+    oval_polygon_distance,
+    oval_tangent,
     reflect,
+    set_arc,
+    set_line,
+    sinai_inside,
+    stadium_inside,
 )
 
 TWO_PI = 2.0 * np.pi
@@ -222,8 +238,8 @@ def test_a_large_step_skips_the_first_collision_da_costa_fig_9():
     # boundary and reach the far wall, which is not the true collision.
     state = [0.55, 0.1442]
     parameters = [0.4, 3]
-    coarse = Billiard("oval", parameters=parameters, md_steps=50)
-    fine = Billiard("oval", parameters=parameters)
+    coarse = Billiard("oval", parameters=parameters, solver="md", md_steps=50)
+    fine = Billiard("oval", parameters=parameters, solver="md")
     x_coarse, _ = coarse.to_cartesian(coarse.trajectory(state, 1)[0])
     x_fine, _ = fine.to_cartesian(fine.trajectory(state, 1)[0])
     assert x_coarse == pytest.approx(-0.86, abs=0.01)
@@ -563,14 +579,20 @@ def test_parallel_workers_in_birkhoff_coordinates():
 
 def test_available_names():
     assert "oval" in Billiard.available_billiards()
-    assert Billiard.available_solvers("oval") == ["md"]
+    assert Billiard.available_solvers("oval") == [
+        "auto",
+        "md",
+        "exact",
+        "circle",
+        "polygon",
+    ]
 
 
 def test_info():
     info = Billiard("oval", md_steps=100).info
     assert info["parameters"] == ["eps", "p"]
     assert info["state"] == ["theta", "alpha"]
-    assert info["solver"] == "md"
+    assert info["solver"] == "auto"
     assert info["md_steps"] == 100
 
 
@@ -1202,7 +1224,7 @@ def test_parallel_workers_for_every_billiard(name, solver):
 @pytest.mark.parametrize("name, parameters", PIECEWISE_PARAMETERS)
 def test_exact_solver_matches_molecular_dynamics_along_an_orbit(name, parameters):
     exact = Billiard(name, parameters=parameters, solver="exact")
-    md = Billiard(name, parameters=parameters, md_steps=20_000)
+    md = Billiard(name, parameters=parameters, solver="md", md_steps=20_000)
     state = np.array([0.37, 1.1])
     corners = piece_ends(SHAPES[name](*parameters))
     for next_state in exact.trajectory(state, 40):
@@ -1227,7 +1249,7 @@ def test_exact_solver_catches_a_collision_that_molecular_dynamics_steps_over():
     state = [w + h + (R - w / 2.0) + R * phi, alpha]
 
     exact = Billiard("mushroom", parameters=[R, w, h], solver="exact")
-    md = Billiard("mushroom", parameters=[R, w, h])
+    md = Billiard("mushroom", parameters=[R, w, h], solver="md")
     assert exact.to_cartesian(exact.trajectory(state, 1)[0]) == pytest.approx(
         tuple(target), abs=1e-12
     )
@@ -1236,14 +1258,8 @@ def test_exact_solver_catches_a_collision_that_molecular_dynamics_steps_over():
 
 
 def test_available_solvers():
-    assert Billiard.available_solvers("oval") == ["md"]
     for name in ("stadium", "sinai", "mushroom"):
-        assert Billiard.available_solvers(name) == ["md", "exact"]
-
-
-def test_exact_is_not_available_on_the_oval():
-    with pytest.raises(ValueError, match="exact"):
-        Billiard("oval", solver="exact")
+        assert Billiard.available_solvers(name) == ["auto", "md", "exact"]
 
 
 def test_info_reports_the_solver():
@@ -1318,3 +1334,842 @@ def test_lobes_at_eps_one_keep_the_trajectory():
     billiard = Billiard("oval", parameters=[1.0, 3])
     theta = billiard.trajectory([0.3, 1.2], 2000)[:, 0]
     assert np.all(np.abs(angle_difference(theta, 0.0)) <= np.pi / 3.0 + 1e-9)
+
+
+# ! --- Oval solvers ------------------------------------------------------- !
+
+
+def critical_eps(p):
+    return 1.0 / (1.0 + p * p)
+
+
+CIRCLE_PARAMETERS = [
+    (f * critical_eps(p), p) for p in (2, 3, 4, 5, 8) for f in (0.0, 0.3, 0.8, 1.0)
+]
+POLYGON_PARAMETERS = [
+    (eps, p)
+    for p in (2, 3, 4, 5, 8)
+    for eps in (1.1 * critical_eps(p), 2.0 * critical_eps(p), 0.38, 0.6, 0.9, 0.99, 0.999)
+    if eps > critical_eps(p)
+]
+EXACT_PARAMETERS = [(eps, 1) for eps in (0.0, 0.1, 0.5, 0.6, 0.9, 0.99, 1.0)]
+SOLVER_PARAMETERS = (
+    [("circle", eps, p) for eps, p in CIRCLE_PARAMETERS]
+    + [("polygon", eps, p) for eps, p in POLYGON_PARAMETERS]
+    + [("exact", eps, p) for eps, p in EXACT_PARAMETERS]
+)
+
+
+def oval_ray(theta, alpha, eps, p):
+    parameters = np.array([eps, float(p)])
+    x0, y0 = oval_boundary_point(theta, 0.0, parameters)
+    tx, ty = oval_tangent(theta, 0.0, parameters)
+    return (
+        x0,
+        y0,
+        np.cos(alpha) * tx - np.sin(alpha) * ty,
+        np.sin(alpha) * tx + np.cos(alpha) * ty,
+    )
+
+
+def first_root_along(x0, y0, dx, dy, eps, p, around=None):
+    """The first crossing of the boundary, on a grid refined around a given distance."""
+
+    def gap(tau):
+        x, y = x0 + tau * dx, y0 + tau * dy
+        return np.hypot(x, y) - oval_radius(np.arctan2(y, x), eps, p)
+
+    grids = [
+        np.geomspace(1e-9, 1e-2, 2000, endpoint=False),
+        np.linspace(1e-2, 2.0 * (1.0 + eps), 100_000),
+    ]
+    if around is not None:
+        grids.append(np.linspace(max(around - 0.05, 1e-9), around + 0.05, 200_000))
+    taus = np.unique(np.concatenate(grids))
+    first = np.flatnonzero(gap(taus) > 0.0)[0]
+
+    return brentq(gap, taus[first - 1], taus[first], xtol=1e-14)
+
+
+@pytest.mark.parametrize("solver, eps, p", SOLVER_PARAMETERS)
+def test_oval_solvers_match_a_dense_scan_in_the_full_angle(rng, solver, eps, p):
+    billiard = Billiard("oval", parameters=[eps, p], solver=solver)
+    states = random_states(rng, 12, margin=0.002)
+    for theta, alpha in states:
+        if eps == 1.0 and abs(theta - np.pi) < 0.05:  # Away from the cusp.
+            continue
+        theta1, alpha1 = billiard.trajectory([theta, alpha], 1)[0]
+        x0, y0, dx, dy = oval_ray(theta, alpha, eps, p)
+        # The grid is refined where the solver lands, because the necks of the boundary
+        # at eps close to one are narrower than the coarser grid.
+        x1, y1 = billiard.to_cartesian([theta1, alpha1])
+        distance = first_root_along(x0, y0, dx, dy, eps, p, np.hypot(x1 - x0, y1 - y0))
+        expected = np.arctan2(y0 + distance * dy, x0 + distance * dx)
+        # As a length along the boundary, where a small radius magnifies the angle.
+        error = angle_difference(theta1, expected) * oval_speed(expected, eps, p)
+        assert error == pytest.approx(0.0, abs=1e-8)
+        assert 0.0 < alpha1 < np.pi
+
+
+@pytest.mark.parametrize(
+    "solver, eps, p",
+    [("circle", 0.05, 3), ("circle", 0.1, 3), ("polygon", 0.2, 3), ("polygon", 0.54, 3)]
+    + [("polygon", 0.4, 2), ("polygon", 0.3, 5), ("exact", 0.3, 1), ("exact", 0.8, 1)],
+)
+def test_oval_solvers_match_molecular_dynamics_along_an_orbit(solver, eps, p):
+    fast = Billiard("oval", parameters=[eps, p], solver=solver)
+    md = Billiard("oval", parameters=[eps, p], solver="md", md_steps=20_000)
+    state = np.array([1.3, 0.9])
+    for next_state in fast.trajectory(state, 200):
+        theta1, alpha1 = md.trajectory(state, 1)[0]
+        assert angle_difference(theta1, next_state[0]) == pytest.approx(0.0, abs=1e-8)
+        assert alpha1 == pytest.approx(next_state[1], abs=1e-8)
+        state = next_state
+
+
+@pytest.mark.parametrize("eps, p", POLYGON_PARAMETERS)
+def test_polygon_converges_without_the_fallback(rng, eps, p):
+    parameters = np.array([eps, float(p)])
+    for theta, alpha in random_states(rng, 200, margin=0.002):
+        _, _, dx, dy = oval_ray(theta, alpha, eps, p)
+        assert not np.isnan(oval_polygon_distance(theta, dx, dy, parameters))
+
+
+@pytest.mark.parametrize("eps, p", CIRCLE_PARAMETERS)
+def test_circle_converges_without_the_fallback(rng, eps, p):
+    parameters = np.array([eps, float(p)])
+    for theta, alpha in random_states(rng, 200, margin=0.002):
+        x0, y0, dx, dy = oval_ray(theta, alpha, eps, p)
+        assert not np.isnan(oval_circle_distance(x0, y0, dx, dy, parameters))
+
+
+@pytest.mark.parametrize("eps, p", [(0.13, 3), (0.4, 3), (0.9, 3), (0.8, 2), (0.5, 5)])
+def test_polygon_when_a_trajectory_barely_hits_or_misses_the_inward_bulge(rng, eps, p):
+    # The hard case of the seed: a first collision that depends on a very small change.
+    parameters = np.array([eps, float(p)])
+    wedge = np.pi / p
+    hits = misses = 0
+    while hits + misses < 25:
+        bulge = rng.uniform(0.8 * wedge, wedge)
+        xb, yb = oval_boundary_point(bulge, 0.0, parameters)
+        tx, ty = oval_tangent(bulge, 0.0, parameters)
+        theta = rng.uniform(0.0, TWO_PI)
+        x0, y0 = oval_boundary_point(theta, 0.0, parameters)
+        offset = rng.choice([-1.0, 1.0]) * 10.0 ** rng.uniform(-8.0, -3.0)
+        px, py = xb - ty * offset, yb + tx * offset
+        angle = np.arctan2(py - y0, px - x0)
+        dx, dy = np.cos(angle), np.sin(angle)
+        start_x, start_y = oval_tangent(theta, 0.0, parameters)
+        if start_x * dy - start_y * dx < 0.01 or abs(tx * dy - ty * dx) > 0.3:
+            continue
+        around = np.hypot(px - x0, py - y0)
+        expected = first_root_along(x0, y0, dx, dy, eps, p, around)
+        if abs(expected - around) < 0.05:
+            hits += 1
+        else:
+            misses += 1
+        assert oval_polygon_distance(theta, dx, dy, parameters) == pytest.approx(
+            expected, abs=1e-8
+        )
+    assert hits > 0
+
+
+def test_polygon_finds_the_first_collision_of_da_costa_fig_9():
+    billiard = Billiard("oval", parameters=[0.4, 3], solver="polygon")
+    x, y = billiard.to_cartesian(billiard.trajectory([0.55, 0.1442], 1)[0])
+    assert x == pytest.approx(0.417, abs=0.01)
+    assert y == pytest.approx(0.5, abs=0.01)
+
+
+@pytest.mark.parametrize("start", [0.3, 1.5, 2.8, 4.4, 5.9])
+def test_polygon_recovers_the_angle_across_many_wedges(start):
+    # Through the middle of the billiard, the trajectory crosses several wedges.
+    eps, p = 0.6, 5
+    billiard = Billiard("oval", parameters=[eps, p], solver="polygon")
+    theta1, _ = billiard.trajectory([start, np.pi / 2.0], 1)[0]
+    x0, y0, dx, dy = oval_ray(start, np.pi / 2.0, eps, p)
+    distance = first_root_along(x0, y0, dx, dy, eps, p)
+    assert distance > 0.5
+    assert angle_difference(
+        theta1, np.arctan2(y0 + distance * dy, x0 + distance * dx)
+    ) == pytest.approx(0.0, abs=1e-10)
+
+
+@pytest.mark.parametrize(
+    "solver, parameters, message",
+    [
+        ("circle", [0.2, 3], "circle"),
+        ("circle", [0.6, 1], "circle"),
+        ("polygon", [0.05, 3], "polygon"),
+        ("polygon", [1.0, 3], "polygon"),
+        ("polygon", [0.8, 1], "polygon"),
+        ("exact", [0.1, 3], "exact"),
+    ],
+)
+def test_a_solver_outside_its_range_raises(solver, parameters, message):
+    billiard = Billiard("oval", parameters=parameters, solver=solver)
+    with pytest.raises(ValueError, match=message):
+        billiard.trajectory([1.0, 1.0], 1)
+
+
+@pytest.mark.parametrize(
+    "parameters, chosen",
+    [
+        ([0.3, 1], "exact"),
+        ([1.0, 1], "exact"),
+        ([0.05, 3], "circle"),
+        ([0.1, 3], "circle"),
+        ([0.2, 3], "polygon"),
+        ([0.999, 3], "polygon"),
+        ([1.0, 3], "md"),
+    ],
+)
+def test_auto_uses_the_expected_solver(parameters, chosen):
+    auto = Billiard("oval", parameters=parameters)
+    assert auto.info["solver"] == "auto"
+    assert auto.info["active_solver"] == chosen
+    same = Billiard("oval", parameters=parameters, solver=chosen)
+    state = [1.0, 1.0]
+    np.testing.assert_array_equal(auto.trajectory(state, 20), same.trajectory(state, 20))
+
+
+def test_auto_follows_the_parameters_of_each_call():
+    billiard = Billiard("oval")
+    assert billiard.info["active_solver"] is None
+    state = [1.0, 1.0]
+    for parameters, chosen in (([0.05, 3], "circle"), ([0.5, 3], "polygon")):
+        same = Billiard("oval", parameters=parameters, solver=chosen)
+        np.testing.assert_array_equal(
+            billiard.trajectory(state, 5, parameters=parameters),
+            same.trajectory(state, 5),
+        )
+
+
+def test_auto_on_lines_and_arcs_is_exact():
+    assert Billiard("sinai").info["active_solver"] == "exact"
+
+
+@pytest.mark.parametrize(
+    "solver, eps, p", [("circle", 0.08, 3), ("polygon", 0.4, 3), ("exact", 0.5, 1)]
+)
+def test_oval_solvers_in_birkhoff_coordinates(rng, solver, eps, p):
+    billiard = Billiard(
+        "oval", parameters=[eps, p], coordinates="birkhoff", solver=solver
+    )
+    jacobian = billiard._DiscreteDynamicalSystem__jacobian
+    backward = billiard._DiscreteDynamicalSystem__backwards_mapping
+    parameters = billiard.get_parameters()
+    perimeter = billiard.perimeter()
+    for state in birkhoff_states(rng, [eps, p], 20):
+        assert np.linalg.det(jacobian(state, parameters)) == pytest.approx(1.0, abs=1e-7)
+        back = backward(billiard.trajectory(state, 1)[0], parameters)
+        difference = (back[0] - state[0] + perimeter / 2.0) % perimeter - perimeter / 2.0
+        assert difference == pytest.approx(0.0, abs=1e-8)
+        assert back[1] == pytest.approx(state[1], abs=1e-8)
+
+
+@pytest.mark.parametrize(
+    "solver, eps, p", [("circle", 0.08, 3), ("polygon", 0.4, 3), ("exact", 0.5, 1)]
+)
+def test_oval_solvers_give_the_same_escape_as_molecular_dynamics(solver, eps, p):
+    fast = Billiard("oval", parameters=[eps, p], solver=solver)
+    md = Billiard("oval", parameters=[eps, p], solver="md", md_steps=5000)
+    # Few collisions, before round-off grows along the chaotic orbit.
+    kwargs = dict(max_time=15, exits=[1.0, 0.0], hole_size=[1.0, np.inf])
+    for alpha in (0.4, 1.0, 1.6, 2.5):
+        state = [2.0, alpha]
+        assert fast.escape_analysis(state, **kwargs) == md.escape_analysis(state, **kwargs)
+
+
+def test_parallel_workers_with_auto():
+    billiard = Billiard("oval", parameters=[0.3, 3])
+    states = [[2.0, a] for a in (0.5, 1.0, 1.5)]
+    kwargs = dict(max_time=100, exits=[1.0, 0.0], hole_size=[0.2, np.inf])
+    in_parallel = Parallel(n_jobs=2)(
+        delayed(billiard.escape_analysis)(state, **kwargs) for state in states
+    )
+    assert in_parallel == [billiard.escape_analysis(s, **kwargs) for s in states]
+
+
+# ! --- Billiards defined by users ----------------------------------------- !
+
+
+@njit
+def oval_radius_user(theta, parameters):
+    return 1.0 + parameters[0] * np.cos(parameters[1] * theta)
+
+
+@njit
+def oval_dradius_user(theta, parameters):
+    return -parameters[0] * parameters[1] * np.sin(parameters[1] * theta)
+
+
+@njit
+def oval_ddradius_user(theta, parameters):
+    return -parameters[0] * parameters[1] ** 2 * np.cos(parameters[1] * theta)
+
+
+@njit
+def oval_max_radius_user(parameters):
+    return 1.0 + parameters[0]
+
+
+@njit
+def two_mode_radius(theta, parameters):
+    return 1.0 + 0.1 * np.cos(2.0 * theta) + 0.05 * np.sin(5.0 * theta)
+
+
+@njit
+def two_mode_dradius(theta, parameters):
+    return -0.2 * np.sin(2.0 * theta) + 0.25 * np.cos(5.0 * theta)
+
+
+@njit
+def two_mode_ddradius(theta, parameters):
+    return -0.4 * np.cos(2.0 * theta) - 1.25 * np.sin(5.0 * theta)
+
+
+def user_oval(parameters, **kwargs):
+    return Billiard.from_polar(
+        oval_radius_user,
+        oval_dradius_user,
+        ddradius=oval_ddradius_user,
+        max_radius=oval_max_radius_user,
+        parameters=parameters,
+        **kwargs,
+    )
+
+
+def stadium_as_pieces(r, l):
+    half = l / 2.0
+    return [
+        ("arc", half, 0.0, r, -np.pi / 2.0, np.pi),
+        ("line", half, r, -half, r),
+        ("arc", -half, 0.0, r, np.pi / 2.0, np.pi),
+        ("line", -half, -r, half, -r),
+    ]
+
+
+def sinai_as_pieces(r, x_d, y_d):
+    return [
+        ("line", 0.0, 0.0, 1.0, 0.0),
+        ("line", 1.0, 0.0, 1.0, 1.0),
+        ("line", 1.0, 1.0, 0.0, 1.0),
+        ("line", 0.0, 1.0, 0.0, 0.0),
+        ("arc", x_d, y_d, r, 0.0, -TWO_PI),
+    ]
+
+
+def mushroom_as_pieces(R, w, h):
+    half = w / 2.0
+    return [
+        ("line", -half, -h, half, -h),
+        ("line", half, -h, half, 0.0),
+        ("line", half, 0.0, R, 0.0),
+        ("arc", 0.0, 0.0, R, 0.0, np.pi),
+        ("line", -R, 0.0, -half, 0.0),
+        ("line", -half, 0.0, -half, -h),
+    ]
+
+
+AS_PIECES = {
+    "stadium": stadium_as_pieces,
+    "sinai": sinai_as_pieces,
+    "mushroom": mushroom_as_pieces,
+}
+
+
+@njit
+def stadium_table(parameters):
+    r, l = parameters
+    half = l / 2.0
+    table = new_pieces(4)
+    set_arc(table, 0, half, 0.0, r, -np.pi / 2.0, np.pi)
+    set_line(table, 1, half, r, -half, r)
+    set_arc(table, 2, -half, 0.0, r, np.pi / 2.0, np.pi)
+    set_line(table, 3, -half, -r, half, -r)
+    return table
+
+
+@pytest.mark.parametrize("eps, p", [(0.05, 3), (0.08, 3), (0.1, 3), (0.1, 2)])
+@pytest.mark.parametrize("solver", ["md", "circle"])
+def test_from_polar_reproduces_the_oval(rng, eps, p, solver):
+    user = user_oval([eps, p], solver=solver, md_steps=5000)
+    builtin = Billiard("oval", parameters=[eps, p], solver="md", md_steps=5000)
+    for state in random_states(rng, 10, margin=0.01):
+        np.testing.assert_allclose(
+            user.trajectory(state, 1), builtin.trajectory(state, 1), atol=1e-10
+        )
+        np.testing.assert_allclose(
+            user._DiscreteDynamicalSystem__jacobian(state, user.get_parameters()),
+            builtin._DiscreteDynamicalSystem__jacobian(state, builtin.get_parameters()),
+            atol=1e-7,
+        )
+
+
+@pytest.mark.parametrize("eps, p", [(0.08, 3), (0.4, 3), (0.2, 5)])
+def test_from_polar_reproduces_the_oval_with_negative_curvature(rng, eps, p):
+    user = user_oval([eps, p], solver="md", md_steps=5000)
+    builtin = Billiard("oval", parameters=[eps, p], solver="md", md_steps=5000)
+    for state in random_states(rng, 10, margin=0.01):
+        np.testing.assert_allclose(
+            user.trajectory(state, 1), builtin.trajectory(state, 1), atol=1e-10
+        )
+
+
+@pytest.mark.parametrize("eps, p", [(0.08, 3), (0.4, 3), (0.2, 5), (0.5, 2)])
+def test_from_polar_arc_length_matches_the_oval(rng, eps, p):
+    user = user_oval([eps, p], coordinates="birkhoff")
+    builtin = Billiard("oval", parameters=[eps, p], coordinates="birkhoff")
+    assert user.perimeter() == pytest.approx(builtin.perimeter(), abs=1e-11)
+
+    values = np.array([eps, p], dtype=np.float64)
+    for s in rng.uniform(0.0, user.perimeter(), 10):
+        state = np.array([s, 0.3])
+        np.testing.assert_allclose(
+            user.to_cartesian(state), builtin.to_cartesian(state), atol=1e-10
+        )
+    assert values.size == 2
+
+
+def test_two_mode_boundary_matches_a_dense_scan(rng):
+    billiard = Billiard.from_polar(
+        two_mode_radius, two_mode_dradius, ddradius=two_mode_ddradius, md_steps=5000
+    )
+    for theta, alpha in random_states(rng, 20, margin=0.01):
+        r0 = two_mode_radius(theta, np.zeros(0))
+        dr0 = two_mode_dradius(theta, np.zeros(0))
+        phi = np.arctan2(dr0 * np.sin(theta) + r0 * np.cos(theta), dr0 * np.cos(theta) - r0 * np.sin(theta))
+        dx, dy = np.cos(phi + alpha), np.sin(phi + alpha)
+        x0, y0 = r0 * np.cos(theta), r0 * np.sin(theta)
+
+        def gap(tau):
+            x, y = x0 + tau * dx, y0 + tau * dy
+            angle = np.arctan2(y, x)
+            return np.hypot(x, y) - (
+                1.0 + 0.1 * np.cos(2.0 * angle) + 0.05 * np.sin(5.0 * angle)
+            )
+
+        taus = np.concatenate(
+            (np.geomspace(1e-9, 1e-2, 1000, endpoint=False), np.linspace(1e-2, 3.0, 60_000))
+        )
+        first = np.flatnonzero(gap(taus) > 0.0)[0]
+        distance = brentq(gap, taus[first - 1], taus[first], xtol=1e-14)
+        theta1, alpha1 = billiard.trajectory([theta, alpha], 1)[0]
+        assert angle_difference(
+            theta1, np.arctan2(y0 + distance * dy, x0 + distance * dx)
+        ) == pytest.approx(0.0, abs=1e-9)
+        assert 0.0 < alpha1 < np.pi
+
+
+def test_user_polar_invariants(rng):
+    billiard = Billiard.from_polar(
+        two_mode_radius,
+        two_mode_dradius,
+        ddradius=two_mode_ddradius,
+        coordinates="birkhoff",
+    )
+    jacobian = billiard._DiscreteDynamicalSystem__jacobian
+    backward = billiard._DiscreteDynamicalSystem__backwards_mapping
+    values = np.zeros(0)
+    perimeter = billiard.perimeter()
+    for s, c in zip(rng.uniform(0.0, perimeter, 20), rng.uniform(-0.9, 0.9, 20)):
+        state = np.array([s, c])
+        assert np.linalg.det(jacobian(state, values)) == pytest.approx(1.0, abs=1e-7)
+        back = backward(billiard.trajectory(state, 1)[0], values)
+        difference = (back[0] - s + perimeter / 2.0) % perimeter - perimeter / 2.0
+        assert difference == pytest.approx(0.0, abs=1e-8)
+        assert back[1] == pytest.approx(c, abs=1e-8)
+
+
+def test_user_polar_without_the_second_derivative_differentiates_numerically():
+    billiard = Billiard.from_polar(two_mode_radius, two_mode_dradius)
+    assert billiard.lyapunov([1.0, 1.0], 3000)[0] > 0.0
+    jacobian = billiard._DiscreteDynamicalSystem__jacobian
+    mapping = billiard._DiscreteDynamicalSystem__mapping
+    J = jacobian(np.array([1.0, 1.0]), np.zeros(0), mapping)
+    assert J.shape == (2, 2)
+
+
+def test_user_polar_escape():
+    billiard = user_oval([0.08, 3], solver="circle")
+    state = [2.0, 1.0]
+    orbit = billiard.trajectory(state, 500)
+    index, time = billiard.escape_analysis(
+        state, 500, exits=[0.0, 0.0], hole_size=[0.2, np.inf]
+    )
+    inside = np.abs(angle_difference(orbit[:, 0], 0.0)) <= 0.1
+    assert (index, time) == (0, np.flatnonzero(inside)[0] + 1)
+    assert billiard.info["period"] == pytest.approx(TWO_PI)
+
+
+def test_circle_on_a_user_boundary_that_is_not_convex_raises():
+    with pytest.raises(ValueError, match="convex"):
+        user_oval([0.3, 3], solver="circle")
+    billiard = user_oval([0.08, 3], solver="circle")
+    with pytest.raises(ValueError, match="convex"):
+        billiard.set_parameters([0.3, 3])
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        (dict(solver="circle"), "not available"),
+        (dict(solver="polygon"), "not available"),
+        (dict(solver="exact"), "not available"),
+    ],
+)
+def test_unavailable_solver_on_a_user_polar_boundary(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        Billiard.from_polar(two_mode_radius, two_mode_dradius, **kwargs)
+
+
+@njit
+def negative_radius(theta, parameters):
+    return -1.0 + 0.0 * theta
+
+
+@njit
+def zero_derivative(theta, parameters):
+    return 0.0 * theta
+
+
+@njit
+def not_periodic(theta, parameters):
+    return 1.0 + 0.1 * theta
+
+
+@njit
+def not_periodic_derivative(theta, parameters):
+    return 0.1 + 0.0 * theta
+
+
+@njit
+def too_small(parameters):
+    return 0.5
+
+
+@njit
+def always_invalid(parameters):
+    raise ValueError("these parameters are never valid")
+
+
+def test_wrong_polar_functions_raise():
+    with pytest.raises(ValueError, match="positive"):
+        Billiard.from_polar(negative_radius, zero_derivative)
+    with pytest.raises(ValueError, match="period"):
+        Billiard.from_polar(not_periodic, not_periodic_derivative)
+    with pytest.raises(ValueError, match="dradius"):
+        Billiard.from_polar(two_mode_radius, zero_derivative)
+    with pytest.raises(ValueError, match="ddradius"):
+        Billiard.from_polar(two_mode_radius, two_mode_dradius, ddradius=zero_derivative)
+    with pytest.raises(ValueError, match="max_radius"):
+        Billiard.from_polar(two_mode_radius, two_mode_dradius, max_radius=too_small)
+
+
+def test_functions_must_be_compiled():
+    def plain(theta, parameters):
+        return 1.0
+
+    with pytest.raises(TypeError, match="radius"):
+        Billiard.from_polar(plain, two_mode_dradius)
+    with pytest.raises(TypeError, match="dradius"):
+        Billiard.from_polar(two_mode_radius, plain)
+    with pytest.raises(TypeError, match="pieces"):
+        Billiard.from_pieces(plain)
+    with pytest.raises(TypeError, match="inside"):
+        Billiard.from_pieces(stadium_as_pieces(1.0, 1.0), inside=plain)
+
+
+def test_user_check_function():
+    with pytest.raises(ValueError, match="never valid"):
+        Billiard.from_polar(
+            oval_radius_user,
+            oval_dradius_user,
+            check=always_invalid,
+            parameters=[0.1, 3],
+        )
+
+
+@pytest.mark.parametrize("name", list(AS_PIECES))
+@pytest.mark.parametrize("solver", ["exact", "md"])
+def test_from_pieces_reproduces_the_builtin_billiards(rng, name, solver):
+    parameters = NEW_BILLIARDS[name]
+    user = Billiard.from_pieces(AS_PIECES[name](*parameters), solver=solver)
+    builtin = Billiard(name, parameters=parameters, solver=solver)
+    assert user.perimeter() == pytest.approx(builtin.perimeter())
+    for state in states_for(rng, builtin, name, 30, 0.05):
+        np.testing.assert_allclose(
+            user.trajectory(state, 1), builtin.trajectory(state, 1), atol=1e-10
+        )
+
+
+@pytest.mark.parametrize("name", list(AS_PIECES))
+def test_inside_from_the_pieces_agrees_with_the_formula(name):
+    parameters = np.array(NEW_BILLIARDS[name], dtype=np.float64)
+    formula = {
+        "stadium": stadium_inside,
+        "sinai": sinai_inside,
+        "mushroom": mushroom_inside,
+    }[name]
+    table = _fixed_pieces_table(AS_PIECES[name](*parameters))
+    # The grid includes the heights of ends of pieces, such as y = 0 on the mushroom.
+    # The shift keeps the points off the vertical walls and the ends of the arcs.
+    for x in np.linspace(-3.0, 3.0, 121) + 0.00137:
+        for y in np.linspace(-1.5, 1.5, 61):
+            # Points on the boundary itself may go either way.
+            if name == "mushroom" and y == 0.0 and abs(x) >= 0.25:
+                continue
+            if name == "stadium" and abs(abs(y) - 1.0) < 1e-12:
+                continue
+            if name == "sinai" and (abs(y - 1.0) < 1e-12 or abs(y) < 1e-12):
+                continue
+            if name == "mushroom" and abs(y + 1.0) < 1e-12:
+                continue
+            assert inside_pieces(table, x, y) == formula(x, y, 0.0, parameters), (x, y)
+
+
+def test_shape_with_a_hole_matches_exact_intersections(rng):
+    # A rectangle with two disks.
+    pieces = [
+        ("line", 0.0, 0.0, 3.0, 0.0),
+        ("line", 3.0, 0.0, 3.0, 1.0),
+        ("line", 3.0, 1.0, 0.0, 1.0),
+        ("line", 0.0, 1.0, 0.0, 0.0),
+        ("arc", 1.0, 0.5, 0.2, 0.0, -TWO_PI),
+        ("arc", 2.0, 0.5, 0.3, np.pi / 2.0, -TWO_PI),
+    ]
+    shape = [
+        ("line", 0.0, 0.0, 3.0, 0.0),
+        ("line", 3.0, 0.0, 3.0, 1.0),
+        ("line", 3.0, 1.0, 0.0, 1.0),
+        ("line", 0.0, 1.0, 0.0, 0.0),
+        ("arc", 1.0, 0.5, 0.2, 0.0, TWO_PI),
+        ("arc", 2.0, 0.5, 0.3, 0.0, TWO_PI),
+    ]
+    corners = np.array([[0, 0], [3, 0], [3, 1], [0, 1]], dtype=float)
+    billiard = Billiard.from_pieces(pieces, md_steps=5000)
+    md = Billiard.from_pieces(pieces, solver="md", md_steps=5000)
+    assert billiard.info["period"] is None
+    for state in random_arc_states(rng, billiard, 40, margin=0.05):
+        x0, y0, dx, dy = outgoing_from_state(billiard, 1e-7, state)
+        if near_a_corner(billiard, corners, x0, y0, 1e-3):
+            continue
+        hit = exact_hit(shape, x0, y0, dx, dy)
+        found = billiard.to_cartesian(billiard.trajectory(state, 1)[0])
+        np.testing.assert_allclose(found, hit, atol=1e-6)
+        np.testing.assert_allclose(
+            md.to_cartesian(md.trajectory(state, 1)[0]), found, atol=1e-8
+        )
+
+
+def test_pieces_with_parameters_match_the_stadium(rng):
+    user = Billiard.from_pieces(stadium_table, parameters=[1.0, 2.0])
+    builtin = Billiard("stadium", parameters=[1.0, 2.0], solver="exact")
+    for state in states_for(rng, builtin, "stadium", 20, 0.05):
+        np.testing.assert_allclose(
+            user.trajectory(state, 1), builtin.trajectory(state, 1), atol=1e-12
+        )
+    assert user.perimeter([0.5, 1.0]) == pytest.approx(np.pi + 2.0)
+
+
+def test_user_pieces_invariants(rng):
+    billiard = Billiard.from_pieces(mushroom_as_pieces(1.0, 0.5, 1.0), coordinates="birkhoff")
+    jacobian = billiard._DiscreteDynamicalSystem__jacobian
+    backward = billiard._DiscreteDynamicalSystem__backwards_mapping
+    values = np.zeros(0)
+    perimeter = billiard.perimeter()
+    for s, c in zip(rng.uniform(0.0, perimeter, 30), rng.uniform(-0.9, 0.9, 30)):
+        state = np.array([s, c])
+        assert np.linalg.det(jacobian(state, values)) == pytest.approx(1.0, abs=1e-8)
+        back = backward(billiard.trajectory(state, 1)[0], values)
+        difference = (back[0] - s + perimeter / 2.0) % perimeter - perimeter / 2.0
+        assert difference == pytest.approx(0.0, abs=1e-9)
+
+
+def test_user_pieces_escape_wraps_only_on_a_single_closed_curve():
+    closed = Billiard.from_pieces(stadium_as_pieces(1.0, 2.0))
+    perimeter = closed.perimeter()
+    assert closed.info["period"] == pytest.approx(perimeter)
+    state = [3.0, 1.0]
+    orbit = closed.trajectory(state, 500)
+    index, time = closed.escape_analysis(
+        state, 500, exits=[0.0, 0.0], hole_size=[0.3, np.inf]
+    )
+    inside = (orbit[:, 0] <= 0.15) | (orbit[:, 0] >= perimeter - 0.15)
+    assert (index, time) == (0, np.flatnonzero(inside)[0] + 1)
+
+    with_disk = Billiard.from_pieces(sinai_as_pieces(0.2, 0.5, 0.5))
+    assert with_disk.info["period"] is None
+
+
+def test_user_inside_function_is_used_by_molecular_dynamics(rng):
+    fast = Billiard.from_pieces(
+        stadium_table, inside=stadium_inside, solver="md", parameters=[1.0, 2.0]
+    )
+    derived = Billiard.from_pieces(stadium_table, solver="md", parameters=[1.0, 2.0])
+    for state in states_for(rng, fast, "stadium", 10, 0.05):
+        np.testing.assert_allclose(
+            fast.trajectory(state, 1), derived.trajectory(state, 1), atol=1e-10
+        )
+
+
+def test_boundary_and_cartesian_of_user_billiards():
+    billiard = Billiard.from_pieces(sinai_as_pieces(0.2, 0.3, 0.4))
+    boundary = billiard.boundary(200)
+    assert np.isnan(boundary[:, 0]).sum() == 1
+    polar = Billiard.from_polar(two_mode_radius, two_mode_dradius)
+    points = polar.boundary(100)
+    assert points.shape == (100, 2)
+    np.testing.assert_allclose(points[0], points[-1], atol=1e-12)
+    assert polar.to_cartesian([0.0, 1.0]) == pytest.approx((1.1, 0.0))
+
+
+@pytest.mark.parametrize(
+    "pieces, error, match",
+    [
+        ([], ValueError, "empty"),
+        ([("curve", 0.0, 0.0, 1.0, 1.0)], ValueError, "line"),
+        ([("line", 0.0, 0.0, 1.0)], ValueError, "line 0"),
+        ([("arc", 0.0, 0.0, 1.0, 0.0)], ValueError, "arc 0"),
+        ([("line", "a", 0.0, 1.0, 1.0)], TypeError, "numeric"),
+        ([("arc", 0.0, 0.0, -1.0, 0.0, TWO_PI)], ValueError, "radius"),
+        ([("arc", 0.0, 0.0, 1.0, 0.0, 7.0)], ValueError, "2 pi"),
+        (
+            [("line", 0.0, 0.0, 0.0, 0.0), ("arc", 0.0, 0.0, 1.0, 0.0, TWO_PI)],
+            ValueError,
+            "length",
+        ),
+        (
+            [
+                ("line", 0.0, 0.0, 1.0, 0.0),
+                ("line", 1.0, 0.0, 1.0, 1.0),
+                ("line", 1.0, 1.0, 0.0, 1.0),
+            ],
+            ValueError,
+            "connected",
+        ),
+        (
+            [
+                ("line", 0.0, 0.0, 0.0, 1.0),
+                ("line", 0.0, 1.0, 1.0, 1.0),
+                ("line", 1.0, 1.0, 1.0, 0.0),
+                ("line", 1.0, 0.0, 0.0, 0.0),
+            ],
+            ValueError,
+            "left",
+        ),
+        (
+            [
+                ("line", 0.0, 0.0, 1.0, 0.0),
+                ("line", 1.0, 0.0, 1.0, 1.0),
+                ("line", 1.0, 1.0, 0.0, 1.0),
+                ("line", 0.0, 1.0, 0.0, 0.0),
+                ("arc", 0.5, 0.5, 0.2, 0.0, TWO_PI),
+            ],
+            ValueError,
+            "left",
+        ),
+    ],
+)
+def test_invalid_pieces(pieces, error, match):
+    with pytest.raises(error, match=match):
+        Billiard.from_pieces(pieces)
+
+
+@njit
+def clockwise_stadium(parameters):
+    table = new_pieces(2)
+    set_arc(table, 0, 0.0, 0.0, 1.0, 0.0, -np.pi)
+    set_arc(table, 1, 0.0, 0.0, 1.0, np.pi, -np.pi)
+    return table
+
+
+def test_invalid_pieces_from_a_function_raise_with_the_parameters():
+    with pytest.raises(ValueError, match="left"):
+        Billiard.from_pieces(clockwise_stadium, parameters=[1.0])
+
+
+def test_unavailable_solver_on_user_pieces():
+    with pytest.raises(ValueError, match="not available"):
+        Billiard.from_pieces(stadium_as_pieces(1.0, 1.0), solver="polygon")
+
+
+def test_auto_on_user_billiards():
+    assert Billiard.from_polar(two_mode_radius, two_mode_dradius).info["active_solver"] == "md"
+    assert Billiard.from_pieces(stadium_as_pieces(1.0, 1.0)).info["active_solver"] == "exact"
+
+
+def test_the_same_definition_is_compiled_once():
+    first = Billiard.from_pieces(stadium_as_pieces(1.0, 1.0))
+    second = Billiard.from_pieces(stadium_as_pieces(1.0, 1.0))
+    assert first._DiscreteDynamicalSystem__mapping is second._DiscreteDynamicalSystem__mapping
+    first = Billiard.from_polar(two_mode_radius, two_mode_dradius)
+    second = Billiard.from_polar(two_mode_radius, two_mode_dradius)
+    assert first._DiscreteDynamicalSystem__mapping is second._DiscreteDynamicalSystem__mapping
+
+
+def test_parameters_are_required_by_a_user_billiard_that_has_them():
+    billiard = Billiard.from_pieces(stadium_table, number_of_parameters=2)
+    with pytest.raises(ValueError):
+        billiard.perimeter()
+    assert billiard.info["period"] is None
+    billiard.set_parameters([1.0, 1.0])
+    assert billiard.info["period"] == pytest.approx(TWO_PI + 2.0)
+
+
+def test_parallel_workers_on_user_billiards():
+    for billiard in (
+        Billiard.from_polar(two_mode_radius, two_mode_dradius),
+        Billiard.from_pieces(stadium_as_pieces(1.0, 2.0)),
+        Billiard.from_pieces(stadium_table, parameters=[1.0, 2.0]),
+    ):
+        states = [[0.4, a] for a in (0.5, 1.0, 1.5)]
+        kwargs = dict(max_time=100, exits=[1.0, 0.0], hole_size=[0.2, np.inf])
+        in_parallel = Parallel(n_jobs=2)(
+            delayed(billiard.escape_analysis)(state, **kwargs) for state in states
+        )
+        assert in_parallel == [billiard.escape_analysis(s, **kwargs) for s in states]
+
+
+def test_coarse_arc_length_warns_and_more_panels_fix_it():
+    with pytest.warns(UserWarning, match="num_panels"):
+        coarse = user_oval([0.9, 3], coordinates="birkhoff")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fine = user_oval([0.9, 3], coordinates="birkhoff", num_panels=512)
+        # The arc length plays no part in these coordinates.
+        user_oval([0.9, 3])
+    builtin = Billiard("oval", parameters=[0.9, 3]).perimeter()
+    assert abs(fine.perimeter() - builtin) < 1e-11
+    assert abs(coarse.perimeter() - builtin) > 1e-8
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: Billiard("oval", parameters=[0.08, 3]),
+        lambda: Billiard("oval", parameters=[0.3, 3], coordinates="birkhoff"),
+        lambda: Billiard("oval", parameters=[0.3, 3], solver="md", md_steps=321),
+        lambda: Billiard("sinai", parameters=[0.2, 0.5, 0.5], solver="exact"),
+        lambda: Billiard("stadium"),
+        lambda: Billiard.from_pieces(stadium_as_pieces(1.0, 2.0)),
+        lambda: Billiard.from_pieces(stadium_table, parameters=[1.0, 2.0]),
+        lambda: Billiard.from_polar(two_mode_radius, two_mode_dradius),
+        lambda: user_oval([0.08, 3], solver="circle"),
+    ],
+)
+def test_pickling_keeps_the_billiard_and_is_light(build):
+    billiard = build()
+    data = cloudpickle.dumps(billiard)
+    copy = pickle.loads(data)
+    assert copy.info == billiard.info
+    assert copy._DiscreteDynamicalSystem__mapping is (
+        billiard._DiscreteDynamicalSystem__mapping
+    )
+    # One task for each trajectory must not pay for the compiled maps.
+    assert len(data) < 30_000
+
+
+def test_pickling_a_builtin_billiard_takes_no_compiled_code():
+    assert len(pickle.dumps(Billiard("oval", parameters=[0.08, 3]))) < 1000
