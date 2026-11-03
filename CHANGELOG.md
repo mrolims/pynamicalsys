@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.8.0] - 2026-11-03
 
 ### Added
 
@@ -90,7 +90,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PlotStyler(tick_direction_in=False)` had no effect.
 - `DiscreteDynamicalSystem.escape_analysis` accepted `hole_size=np.nan`, which made every trajectory escape at the first iteration, and counted a trajectory that reached NaN as entering the first hole. `hole_size=np.nan` now raises a `ValueError`, and such a trajectory does not enter a hole.
 
-[Unreleased]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...HEAD
+[v1.8.0]: https://github.com/mrolims/pynamicalsys/compare/v1.7.0...v1.8.0
 
 ## [v1.7.0] - 2026-09-16
 

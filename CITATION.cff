@@ -5,8 +5,8 @@ authors:
     given-names: Matheus
     orcid: https://orcid.org/0000-0002-1121-6371
 title: "pynamicalsys"
-version: 1.6.0
-date-released: 2026-07-01
+version: 1.8.0
+date-released: 2026-11-03
 repository-code: "https://github.com/mrolims/pynamicalsys.git"
 url: "https://pynamicalsys.readthedocs.io/"
 license: GPL-3.0-only
