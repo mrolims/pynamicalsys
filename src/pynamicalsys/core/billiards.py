@@ -33,7 +33,6 @@ from pynamicalsys.discrete_time.billiards import (
     make_birkhoff_maps,
     make_fixed_pieces,
     make_md_solver,
-    make_oval_auto_solver,
     make_pieces_inside_and_size,
     make_piecewise_geometry,
     make_polar_geometry,
@@ -46,7 +45,6 @@ from pynamicalsys.discrete_time.billiards import (
     oval_arc_length,
     oval_arc_position,
     oval_arc_speed,
-    oval_auto_choice,
     oval_boundary_point,
     oval_check,
     oval_circle_solver,
@@ -79,14 +77,12 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "position": "theta",
         "position_range": (0.0, 2.0 * np.pi),
         "period": 2.0 * np.pi,
-        "solvers": ["auto", "md", "exact", "circle", "polygon"],
+        "solvers": ["md", "exact", "circle", "polygon"],
         "solver_functions": {
             "exact": oval_exact_solver,
             "circle": oval_circle_solver,
             "polygon": oval_polygon_solver,
         },
-        "make_auto_solver": make_oval_auto_solver,
-        "auto_choice": oval_auto_choice,
         "check": oval_check,
         "diameter": oval_diameter,
         "inside": oval_inside,
@@ -106,8 +102,7 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "parameters": ["r", "l"],
         "position": "s",
         "closed": True,
-        "solvers": ["auto", "md", "exact"],
-        "auto_solver": "exact",
+        "solvers": ["md", "exact"],
         "check": stadium_check,
         "diameter": stadium_diameter,
         "inside": stadium_inside,
@@ -120,8 +115,7 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "parameters": ["r", "x_d", "y_d"],
         "position": "s",
         "closed": False,
-        "solvers": ["auto", "md", "exact"],
-        "auto_solver": "exact",
+        "solvers": ["md", "exact"],
         "check": sinai_check,
         "diameter": sinai_diameter,
         "inside": sinai_inside,
@@ -134,8 +128,7 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
         "parameters": ["R", "w", "h"],
         "position": "s",
         "closed": True,
-        "solvers": ["auto", "md", "exact"],
-        "auto_solver": "exact",
+        "solvers": ["md", "exact"],
         "check": mushroom_check,
         "diameter": mushroom_diameter,
         "inside": mushroom_inside,
@@ -153,6 +146,8 @@ _TOUCH_TOLERANCE = 1e-9
 
 _INVALID_FIGURE = "Invalid billiard boundary"
 
+_CONVEXITY_POINTS = 4097
+
 
 def _find_billiard(name: Any) -> Dict[str, Any]:
     return _USER_BILLIARDS[name] if isinstance(name, tuple) else _BILLIARDS[name]
@@ -161,24 +156,12 @@ def _find_billiard(name: Any) -> Dict[str, Any]:
 @lru_cache(maxsize=None)
 def _collision_solver(name: Any, solver: str, md_steps: int) -> Callable:
     billiard = _find_billiard(name)
-    if solver == "auto":
-        if "make_auto_solver" in billiard:
-            return billiard["make_auto_solver"](md_steps)
-        solver = billiard["auto_solver"]
     if solver == "md":
         return make_md_solver(billiard["inside"], billiard["diameter"], md_steps)
     if "solver_functions" in billiard:
         return billiard["solver_functions"][solver]
 
     return billiard["exact_solver"]
-
-
-def _uses_md_steps(name: Any, solver: str) -> bool:
-    billiard = _find_billiard(name)
-    if solver == "auto":
-        return "make_auto_solver" in billiard or billiard["auto_solver"] == "md"
-
-    return solver == "md"
 
 
 @lru_cache(maxsize=None)
@@ -224,6 +207,7 @@ def _validate_polar_functions(
     ddradius: Callable | None,
     max_radius: Callable | None,
     solver: str,
+    convexity: Callable,
     parameters: NDArray[np.float64],
 ) -> None:
     """Check the functions of a polar boundary along it, for the given parameters."""
@@ -232,9 +216,14 @@ def _validate_polar_functions(
     r = np.array([radius(theta, parameters) for theta in thetas])
     dr = np.array([dradius(theta, parameters) for theta in thetas])
 
-    def draw(axes: Any, marks: NDArray[np.bool_]) -> None:
-        x = r * np.cos(thetas)
-        y = r * np.sin(thetas)
+    def draw(
+        axes: Any,
+        marks: NDArray[np.bool_],
+        angles: NDArray[np.float64] = thetas,
+        radii: NDArray[np.float64] = r,
+    ) -> None:
+        x = radii * np.cos(angles)
+        y = radii * np.sin(angles)
         axes.plot(x, y, "k", lw=1.2)
         axes.plot(x[marks], y[marks], "o", color="tab:red", ms=4.0, mfc="none")
         axes.set_aspect("equal")
@@ -269,20 +258,21 @@ def _validate_polar_functions(
         ddr = np.array([ddradius(theta, parameters) for theta in thetas])
         if not matches(ddr, dradius):
             raise ValueError("ddradius is not the derivative of dradius")
-    else:
-        ddr = np.array(
-            [
-                (dradius(theta + h, parameters) - dradius(theta - h, parameters))
-                / (2.0 * h)
-                for theta in thetas
-            ]
-        )
 
     if max_radius is not None and max_radius(parameters) < np.max(r) * (1.0 - 1e-12):
         raise ValueError("max_radius is smaller than the radius along the boundary")
 
-    if solver == "circle" and np.any(r * r + 2.0 * dr * dr - r * ddr < -1e-9):
-        raise ValueError("solver='circle' requires a convex boundary")
+    if solver == "circle":
+        # A sampled check, on a grid fine enough for dents of about 1e-3 in the angle.
+        fine = np.linspace(0.0, 2.0 * np.pi, _CONVEXITY_POINTS)
+        concave = convexity(fine, parameters) < -1e-9
+        if np.any(concave):
+            radii = np.array([radius(theta, parameters) for theta in fine])
+            raise _invalid_boundary(
+                "solver='circle' requires a convex boundary. On a boundary that is not "
+                "convex, use solver='md'",
+                lambda axes: draw(axes, concave, fine, radii),
+            )
 
 
 def _warn_if_arc_length_is_coarse(
@@ -761,29 +751,46 @@ class Billiard(DiscreteDynamicalSystem):
     parameters : numeric_like_t | None, optional
         Parameters of the billiard. They can also be set with `set_parameters`
         or passed to each method.
-    solver : str, optional
+    solver : str
         Method that finds the next collision, one of
-        `Billiard.available_solvers(name)`. A solver that is not valid for the
-        parameters raises a `ValueError` when the map is used.
+        `Billiard.available_solvers(name)`. It is required, as the right one depends on
+        the boundary and the problem. A solver that is not valid for the parameters
+        raises a `ValueError` when the map is used.
 
-        - `"auto"` (default) uses the fastest valid solver for the parameters of each
-          call. `info["active_solver"]` tells which one for the stored parameters.
         - `"md"` is molecular dynamics: the particle advances in small steps until it
           is outside the billiard, and the collision is located by bisection. It works
           on every billiard, but it is the slowest, and a large step can miss a
-          collision.
-        - `"exact"` finds the collision in closed form. It is available on boundaries
-          made of lines and arcs, and on the oval billiard with `p = 1`.
-        - `"circle"`, on the oval billiard with `eps <= 1 / (1 + p^2)`, where the
-          curvature of the boundary does not change sign, is the tangent method from a
-          seed on a circle around the billiard (Algorithm 1 of da Costa et al., 2022).
-        - `"polygon"`, on the oval billiard with `p >= 2` and
-          `1 / (1 + p^2) < eps < 1`, is the tangent method from a seed on a polygon around one wedge of the billiard
-          (Algorithm 2 of da Costa et al., 2022).
+          collision, so `md_steps` must suit the boundary.
+        - `"exact"` finds the collision in closed form, on boundaries made of lines and
+          arcs, and on the oval billiard with `p = 1`, including the cardioid.
+        - `"circle"` is the tangent method from a seed on a circle around the billiard
+          (Algorithm 1 of da Costa et al., 2022). It works only on a convex `R(theta)`,
+          such as the oval billiard with `eps <= 1 / (1 + p^2)`.
+        - `"polygon"` is the tangent method from a seed on a polygon around one wedge of
+          the billiard (Algorithm 2 of da Costa et al., 2022). It uses the formula of
+          the oval billiard, and requires `p >= 2` and `1 / (1 + p^2) < eps < 1`.
+
+        By kind of boundary:
+
+        - Lines and arcs (stadium, Sinai, mushroom): `"exact"`.
+        - A convex `R(theta)`: `"circle"`.
+        - A general `R(theta)` that is not convex: `"md"`.
+        - The oval billiard: `"exact"` if `p = 1`, `"circle"` up to
+          `eps = 1 / (1 + p^2)`, `"polygon"` above it, and `"md"` if `eps = 1` and
+          `p > 1`.
+
+        By kind of problem:
+
+        - Long orbits, ensembles, and basins: the fastest valid solver above, as `"md"`
+          is an order of magnitude slower.
+        - A scan of parameters across `eps = 1 / (1 + p^2)`: `"circle"` raises past it, so
+          use `"md"`, or `"polygon"` on that side.
+        - Checking a new boundary or a result: compare with `"md"` and a large
+          `md_steps`.
 
         If `"circle"` or `"polygon"` does not converge, as for a trajectory that almost
         touches the boundary, that collision is found by molecular dynamics with a fine
-        step.
+        step on the oval billiard, and raises a `ValueError` on a user-defined boundary.
     coordinates : str, optional
         Coordinates of the state. Default is `"angles"`, the state `(q, alpha)`.
         With `"birkhoff"`, the state is `(s, cos(alpha))`, and positions and sizes
@@ -808,15 +815,13 @@ class Billiard(DiscreteDynamicalSystem):
     Notes
     -----
     Each map is compiled by Numba the first time it is used with a given billiard,
-    coordinates, and solver, and, when the solver can be molecular dynamics, `md_steps`.
+    coordinates, and solver, and, when the solver is molecular dynamics, `md_steps`.
 
     Examples
     --------
-    >>> bl = Billiard("oval", parameters=[0.08, 3])
-    >>> bl.available_solvers("oval")
-    ['auto', 'md', 'exact', 'circle', 'polygon']
-    >>> bl.info["active_solver"]
-    'circle'
+    >>> Billiard.available_solvers("oval")
+    ['md', 'exact', 'circle', 'polygon']
+    >>> bl = Billiard("oval", parameters=[0.08, 3], solver="circle")
 
     A hole in the boundary is an interval of the position, whatever the value of
     `alpha`:
@@ -827,7 +832,7 @@ class Billiard(DiscreteDynamicalSystem):
 
     In Birkhoff coordinates, the state is the arc length and `cos(alpha)`:
 
-    >>> bl = Billiard("oval", parameters=[0.08, 3], coordinates="birkhoff")
+    >>> bl = Billiard("oval", parameters=[0.08, 3], solver="circle", coordinates="birkhoff")
     >>> s, cos_alpha = bl.trajectory([2.0, 0.5], 1)[0]
     """
 
@@ -835,7 +840,8 @@ class Billiard(DiscreteDynamicalSystem):
         self,
         name: str,
         parameters: numeric_like_t | None = None,
-        solver: str = "auto",
+        *,
+        solver: str,
         coordinates: str = "angles",
         md_steps: int_t = 500,
     ) -> None:
@@ -848,7 +854,8 @@ class Billiard(DiscreteDynamicalSystem):
         if solver not in billiard["solvers"]:
             raise ValueError(
                 f"Solver '{solver}' not available for the {billiard['name']} billiard. "
-                f"Available solvers: {billiard['solvers']}"
+                f"Available solvers: {billiard['solvers']}."
+                f"{billiard.get('solver_hint', '')}"
             )
         if coordinates not in ("angles", "birkhoff"):
             raise ValueError("coordinates must be either 'angles' or 'birkhoff'")
@@ -870,7 +877,7 @@ class Billiard(DiscreteDynamicalSystem):
             name,
             coordinates,
             solver,
-            self.__md_steps if _uses_md_steps(name, solver) else 0,
+            self.__md_steps if solver == "md" else 0,
         )
         super().__init__(
             mapping=mapping,
@@ -896,7 +903,8 @@ class Billiard(DiscreteDynamicalSystem):
         check: Callable | None = None,
         number_of_parameters: int_t | None = None,
         parameters: numeric_like_t | None = None,
-        solver: str = "auto",
+        *,
+        solver: str,
         coordinates: str = "angles",
         md_steps: int_t = 500,
         num_panels: int_t = 32,
@@ -928,10 +936,13 @@ class Billiard(DiscreteDynamicalSystem):
             Number of parameters. If None, it is the number in `parameters`, or zero.
         parameters : numeric_like_t | None, optional
             Parameters of the billiard.
-        solver : str, optional
-            `"auto"` (default) and `"md"` use molecular dynamics. `"circle"` is the tangent
-            method of Algorithm 1 of da Costa et al. (2022), which is faster, but valid
-            only on a convex boundary. It requires `max_radius`.
+        solver : str
+            Required. `"md"` uses molecular dynamics, which works on every boundary, with
+            `md_steps` chosen to suit it. `"circle"` is the tangent method of Algorithm 1
+            of da Costa et al. (2022), about ten times faster, but valid only on a convex
+            boundary. It requires `max_radius`. Convexity is checked on a grid of 4097
+            angles, for the given or stored parameters, which can miss a narrower dent,
+            and a wrong solver can give wrong collisions without an error.
         coordinates : str, optional
             `"angles"` (default) or `"birkhoff"`, as in `Billiard`.
         md_steps : int_t, optional
@@ -955,7 +966,8 @@ class Billiard(DiscreteDynamicalSystem):
             - If, for the given or stored parameters, `radius` is not positive and
               periodic, a derivative does not match, `max_radius` is too small, or
               `solver="circle"` is used on a boundary that is not convex. Parameters
-              passed to each method are not checked this way.
+              passed to `trajectory` and similar methods are not checked this way. The
+              boundary is drawn in a figure if the radius or the convexity is at fault.
 
         Examples
         --------
@@ -965,7 +977,7 @@ class Billiard(DiscreteDynamicalSystem):
         >>> @njit
         ... def dradius(theta, parameters):
         ...     return -3.0 * parameters[0] * np.sin(3.0 * theta)
-        >>> bl = Billiard.from_polar(radius, dradius, parameters=[0.1])
+        >>> bl = Billiard.from_polar(radius, dradius, parameters=[0.1], solver="md")
         """
         _require_jitted(radius, "radius")
         _require_jitted(dradius, "dradius")
@@ -993,7 +1005,7 @@ class Billiard(DiscreteDynamicalSystem):
             geometry = make_polar_geometry(
                 radius, dradius, ddradius, max_radius, int(num_panels)
             )
-            solvers = ["auto", "md"]
+            solvers = ["md"]
             solver_functions = {}
             if max_radius is not None:
                 solvers.append("circle")
@@ -1003,7 +1015,13 @@ class Billiard(DiscreteDynamicalSystem):
                 values: NDArray[np.float64], chosen: str, chosen_coordinates: str
             ) -> None:
                 _validate_polar_functions(
-                    radius, dradius, ddradius, max_radius, chosen, values
+                    radius,
+                    dradius,
+                    ddradius,
+                    max_radius,
+                    chosen,
+                    geometry["convexity"],
+                    values,
                 )
                 if chosen_coordinates == "birkhoff":
                     _warn_if_arc_length_is_coarse(
@@ -1022,7 +1040,9 @@ class Billiard(DiscreteDynamicalSystem):
                 "position_range": (0.0, 2.0 * np.pi),
                 "period": 2.0 * np.pi,
                 "solvers": solvers,
-                "auto_solver": "md",
+                "solver_hint": (
+                    "" if max_radius is not None else " 'circle' requires max_radius."
+                ),
                 "solver_functions": solver_functions,
                 "analytic_jacobian": ddradius is not None,
                 "check": check if check is not None else no_check,
@@ -1059,7 +1079,8 @@ class Billiard(DiscreteDynamicalSystem):
         check: Callable | None = None,
         number_of_parameters: int_t | None = None,
         parameters: numeric_like_t | None = None,
-        solver: str = "auto",
+        *,
+        solver: str,
         coordinates: str = "angles",
         md_steps: int_t = 500,
     ) -> "Billiard":
@@ -1090,9 +1111,10 @@ class Billiard(DiscreteDynamicalSystem):
             Number of parameters. If None, it is the number in `parameters`, or zero.
         parameters : numeric_like_t | None, optional
             Parameters of the billiard.
-        solver : str, optional
-            `"auto"` (default) or `"exact"` find the collision in closed form. `"md"`
-            uses molecular dynamics.
+        solver : str
+            Required. `"exact"` finds the collision in closed form, and is the choice for
+            these boundaries. `"md"` uses molecular dynamics, which is slower and can miss
+            a collision near a corner, but is useful to compare with.
         coordinates : str, optional
             `"angles"` (default) or `"birkhoff"`, as in `Billiard`.
         md_steps : int_t, optional
@@ -1125,7 +1147,7 @@ class Billiard(DiscreteDynamicalSystem):
         ...     ("arc", 1.0, 1.0, 1.0, -np.pi / 2.0, np.pi / 2.0),
         ...     ("line", 2.0, 1.0, 0.0, 1.0),
         ...     ("line", 0.0, 1.0, 0.0, 0.0),
-        ... ])
+        ... ], solver="exact")
         >>> bl.perimeter() == 1.0 + np.pi / 2.0 + 2.0 + 1.0
         np.True_
         """
@@ -1165,8 +1187,7 @@ class Billiard(DiscreteDynamicalSystem):
                 "parameters": [f"parameter {j}" for j in range(count)],
                 "position": "s",
                 "closed": closed,
-                "solvers": ["auto", "md", "exact"],
-                "auto_solver": "exact",
+                "solvers": ["md", "exact"],
                 "check": check if check is not None else no_check,
                 "validate": validate,
                 **make_piecewise_geometry(function),
@@ -1327,9 +1348,7 @@ class Billiard(DiscreteDynamicalSystem):
         """
         Return a dictionary with information about the billiard.
 
-        The entry `"active_solver"` is the solver in use, which is None if the solver is
-        `"auto"`, depends on the parameters, and none are stored. The entry `"period"`
-        is the period of the position, the perimeter when the
+        The entry `"period"` is the period of the position, the perimeter when the
         position is an arc length. It is None if the position does not wrap or if the
         perimeter is needed and no parameters are stored.
         """
@@ -1356,7 +1375,6 @@ class Billiard(DiscreteDynamicalSystem):
             "period": period,
             "available_solvers": list(self.__billiard["solvers"]),
             "solver": self.__solver,
-            "active_solver": self.__active_solver(),
             "coordinates": self.__coordinates,
             "md_steps": self.__md_steps,
         }
@@ -1376,15 +1394,6 @@ class Billiard(DiscreteDynamicalSystem):
         self.__validate_parameters(parameters_arr)
 
         return parameters_arr
-
-    def __active_solver(self) -> str | None:
-        if self.__solver != "auto":
-            return self.__solver
-        if "auto_choice" not in self.__billiard:
-            return self.__billiard["auto_solver"]
-        parameters = self.get_parameters()
-
-        return None if parameters is None else self.__billiard["auto_choice"](parameters)
 
     def __period(self, parameters: numeric_like_t | None) -> float:
         closed = self.__billiard.get("closed", True)

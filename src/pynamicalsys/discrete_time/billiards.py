@@ -842,7 +842,10 @@ def oval_exact_solver(
 ) -> Tuple[float, float, float]:
     eps, p = parameters
     if p != 1.0:
-        raise ValueError("solver='exact' on the oval billiard requires p = 1")
+        raise ValueError(
+            "solver='exact' on the oval billiard requires p = 1. "
+            "For other p, use 'circle', 'polygon', or 'md'."
+        )
     speed = np.sqrt(vx * vx + vy * vy)
     distance = oval_exact_distance(x0, y0, vx / speed, vy / speed, eps)
     if np.isnan(distance):
@@ -881,7 +884,10 @@ def oval_circle_solver(
 ) -> Tuple[float, float, float]:
     eps, p = parameters
     if eps > oval_critical_eps(p) * (1.0 + 1e-12):
-        raise ValueError("solver='circle' requires eps <= 1 / (1 + p^2)")
+        raise ValueError(
+            "solver='circle' requires eps <= 1 / (1 + p^2), where the boundary is "
+            "convex. Above it, use 'polygon' or 'md', or 'exact' if p = 1."
+        )
     speed = np.sqrt(vx * vx + vy * vy)
     distance = oval_circle_distance(x0, y0, vx / speed, vy / speed, parameters)
     if np.isnan(distance):
@@ -1064,7 +1070,10 @@ def oval_polygon_solver(
 ) -> Tuple[float, float, float]:
     eps, p = parameters
     if p < 2.0 or not oval_critical_eps(p) < eps < 1.0:
-        raise ValueError("solver='polygon' requires p >= 2 and 1 / (1 + p^2) < eps < 1")
+        raise ValueError(
+            "solver='polygon' requires p >= 2 and 1 / (1 + p^2) < eps < 1. Use "
+            "'circle' below that range, 'exact' if p = 1, and 'md' if eps = 1."
+        )
     speed = np.sqrt(vx * vx + vy * vy)
     distance = oval_polygon_distance(q0, vx / speed, vy / speed, parameters)
     if np.isnan(distance):
@@ -1072,46 +1081,6 @@ def oval_polygon_solver(
     time = distance / speed
 
     return t0 + time, x0 + vx * time, y0 + vy * time
-
-
-def oval_auto_choice(parameters: NDArray[np.float64]) -> str:
-    """Return the name of the solver that `solver='auto'` uses on the oval billiard."""
-    eps, p = parameters
-    if p == 1.0:
-        return "exact"
-    if eps <= 1.0 / (1.0 + p * p):
-        return "circle"
-    if eps < 1.0:
-        return "polygon"
-
-    return "md"
-
-
-def make_oval_auto_solver(md_steps: int) -> Callable:
-    """Build the solver that picks the fastest valid method for the parameters of each call."""
-    md_solver = make_md_solver(oval_inside, oval_diameter, md_steps)
-
-    @njit
-    def collide(
-        q0: float,
-        x0: float,
-        y0: float,
-        vx: float,
-        vy: float,
-        t0: float,
-        parameters: NDArray[np.float64],
-    ) -> Tuple[float, float, float]:
-        eps, p = parameters
-        if p == 1.0:
-            return oval_exact_solver(q0, x0, y0, vx, vy, t0, parameters)
-        if eps <= oval_critical_eps(p):
-            return oval_circle_solver(q0, x0, y0, vx, vy, t0, parameters)
-        if eps < 1.0:
-            return oval_polygon_solver(q0, x0, y0, vx, vy, t0, parameters)
-
-        return md_solver(q0, x0, y0, vx, vy, t0, parameters)
-
-    return collide
 
 
 # ! ----------------------------- !
@@ -1847,6 +1816,16 @@ def make_polar_geometry(
         ) -> float:
             raise ValueError("the curvature requires ddradius")
 
+        @njit
+        def second_derivative(
+            theta: float, parameters: NDArray[np.float64]
+        ) -> float:
+            h = 1e-5
+
+            return (dradius(theta + h, parameters) - dradius(theta - h, parameters)) / (
+                2.0 * h
+            )
+
     else:
 
         @njit
@@ -1860,7 +1839,23 @@ def make_polar_geometry(
 
             return (r * r + 2.0 * dr * dr - r * ddr) / norm2**1.5
 
+        second_derivative = ddradius
+
+    @njit
+    def convexity(
+        thetas: NDArray[np.float64], parameters: NDArray[np.float64]
+    ) -> NDArray[np.float64]:
+        # The numerator of the curvature, negative where the boundary is not convex.
+        values = np.empty(thetas.size)
+        for j in range(thetas.size):
+            r = radius(thetas[j], parameters)
+            dr = dradius(thetas[j], parameters)
+            values[j] = r * r + 2.0 * dr * dr - r * second_derivative(thetas[j], parameters)
+
+        return values
+
     geometry["curvature"] = curvature
+    geometry["convexity"] = convexity
 
     if max_radius is None:
 
@@ -1904,7 +1899,8 @@ def make_polar_geometry(
             )
             if not converged:
                 raise ValueError(
-                    "solver='circle' did not converge: the boundary must be convex"
+                    "solver='circle' did not converge: the boundary must be convex. "
+                    "On a boundary that is not convex, use solver='md'."
                 )
             time = distance / speed
 
