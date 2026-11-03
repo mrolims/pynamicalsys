@@ -10,6 +10,11 @@ reversal, the preserved measure), and results published for the oval billiard.
 import pickle
 import warnings
 
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from joblib import Parallel, delayed
@@ -19,7 +24,11 @@ from scipy.integrate import quad
 from scipy.optimize import brentq
 
 from pynamicalsys import Billiard
-from pynamicalsys.core.billiards import _fixed_pieces_table
+from pynamicalsys.core.billiards import (
+    _fixed_pieces_table,
+    _pieces_meeting_point,
+    _pieces_problem,
+)
 from pynamicalsys.discrete_time.billiards import (
     inside_pieces,
     md_collision,
@@ -32,6 +41,7 @@ from pynamicalsys.discrete_time.billiards import (
     oval_circle_distance,
     oval_polygon_distance,
     oval_tangent,
+    piece_point,
     reflect,
     set_arc,
     set_line,
@@ -2088,6 +2098,329 @@ def clockwise_stadium(parameters):
 def test_invalid_pieces_from_a_function_raise_with_the_parameters():
     with pytest.raises(ValueError, match="left"):
         Billiard.from_pieces(clockwise_stadium, parameters=[1.0])
+
+
+SQUARE = [
+    ("line", 0.0, 0.0, 1.0, 0.0),
+    ("line", 1.0, 0.0, 1.0, 1.0),
+    ("line", 1.0, 1.0, 0.0, 1.0),
+    ("line", 0.0, 1.0, 0.0, 0.0),
+]
+
+
+def disk(x, y, r):
+    return ("arc", x, y, r, 0.0, -TWO_PI)
+
+
+def two_rooms(r, h=0.4, L=1.0, a=0.1):
+    # Two squares joined by an aperture, with half circles at the ends of the wall.
+    w = 2.0 * r if r > 0.0 else a
+    y = (L - h - 2.0 * r) / 2.0
+    if r > 0.0:
+        lower = ("arc", L + r, y, r, np.pi, -np.pi)
+        upper = ("arc", L + r, L - y, r, 0.0, -np.pi)
+    else:
+        lower = ("line", L, y, L + w, y)
+        upper = ("line", L + w, L - y, L, L - y)
+    return [
+        ("line", 0.0, 0.0, L, 0.0),
+        ("line", L, 0.0, L, y),
+        lower,
+        ("line", L + w, y, L + w, 0.0),
+        ("line", L + w, 0.0, 2.0 * L + w, 0.0),
+        ("line", 2.0 * L + w, 0.0, 2.0 * L + w, L),
+        ("line", 2.0 * L + w, L, L + w, L),
+        ("line", L + w, L, L + w, L - y),
+        upper,
+        ("line", L, L - y, L, L),
+        ("line", L, L, 0.0, L),
+        ("line", 0.0, L, 0.0, 0.0),
+        disk(L + w + 0.4, L / 2.0, 0.1),
+    ]
+
+
+def rotated(pieces, angle):
+    # The same boundary at another angle, which changes the round-off at its joints.
+    cos, sin = np.cos(angle), np.sin(angle)
+
+    def turn(x, y):
+        return cos * x - sin * y, sin * x + cos * y
+
+    result = []
+    for piece in pieces:
+        if piece[0] == "line":
+            result.append(("line", *turn(*piece[1:3]), *turn(*piece[3:5])))
+        else:
+            result.append(("arc", *turn(*piece[1:3]), piece[3], piece[4] + angle, piece[5]))
+    return result
+
+
+@pytest.mark.parametrize(
+    "pieces, match",
+    [
+        # A bow tie
+        (
+            [
+                ("line", 0.0, 0.0, 1.0, 1.0),
+                ("line", 1.0, 1.0, 1.0, 0.0),
+                ("line", 1.0, 0.0, 0.0, 1.0),
+                ("line", 0.0, 1.0, 0.0, 0.0),
+            ],
+            r"pieces 0 and 2 cross or touch at \(0\.5, 0\.5\)",
+        ),
+        # A disk through a wall
+        (SQUARE + [disk(0.5, 1.0, 0.3)], "pieces 2 and 4 cross"),
+        # An arc of the boundary through a wall
+        (
+            [
+                ("line", 0.0, 0.0, 2.0, 0.0),
+                ("line", 2.0, 0.0, 2.0, 1.0),
+                ("arc", 1.5, 1.0, 0.5, 0.0, -np.pi),
+                ("line", 1.0, 1.0, 1.0, -0.5),
+                ("line", 1.0, -0.5, 0.5, -0.5),
+                ("line", 0.5, -0.5, 0.5, 1.0),
+                ("line", 0.5, 1.0, 0.0, 1.0),
+                ("line", 0.0, 1.0, 0.0, 0.0),
+            ],
+            "cross",
+        ),
+        # Two overlapping disks
+        (SQUARE + [disk(0.4, 0.5, 0.2), disk(0.6, 0.5, 0.2)], "pieces 4 and 5 cross"),
+        # Tangent parts
+        (SQUARE + [disk(0.5, 0.2, 0.2)], r"pieces 0 and 4 cross or touch at \(0\.5, 0\)"),
+        (SQUARE + [disk(0.3, 0.5, 0.2), disk(0.7, 0.5, 0.2)], "pieces 4 and 5 cross"),
+        # A piece that doubles back over its neighbor
+        (
+            [
+                ("line", 0.0, 0.0, 1.0, 0.0),
+                ("line", 1.0, 0.0, 0.5, 0.0),
+                ("line", 0.5, 0.0, 0.5, 1.0),
+                ("line", 0.5, 1.0, 0.0, 0.0),
+            ],
+            "pieces 0 and 1 cross",
+        ),
+        # A half circle wider than the wall it sits on, which also doubles back
+        (
+            [
+                ("line", 0.0, 0.0, 1.0, 0.0),
+                ("line", 1.0, 0.0, 0.8, 0.0),
+                ("arc", 1.0, 0.0, 0.2, np.pi, -np.pi),
+                ("line", 1.2, 0.0, 2.0, 0.0),
+                ("line", 2.0, 0.0, 2.0, 1.0),
+                ("line", 2.0, 1.0, 0.0, 1.0),
+                ("line", 0.0, 1.0, 0.0, 0.0),
+            ],
+            "pieces 0 and 1 cross",
+        ),
+        # A corner that touches the opposite wall
+        (
+            [
+                ("line", 0.0, 0.0, 1.0, 0.0),
+                ("line", 1.0, 0.0, 1.0, 1.0),
+                ("line", 1.0, 1.0, 0.5, 0.0),
+                ("line", 0.5, 0.0, 0.0, 1.0),
+                ("line", 0.0, 1.0, 0.0, 0.0),
+            ],
+            "cross",
+        ),
+        # The walls of the two rooms overlap across the aperture
+        (two_rooms(0.0, h=-0.1), "cross"),
+        (two_rooms(0.1, h=-0.1), "cross"),
+        # Holes in the wrong place
+        (SQUARE + [disk(3.0, 0.5, 0.2)], "outside the billiard"),
+        (SQUARE + [disk(0.5, 0.5, 0.3), disk(0.5, 0.5, 0.1)], "inside the hole"),
+    ],
+)
+def test_invalid_boundaries_are_rejected_and_named(pieces, match):
+    with pytest.raises(ValueError, match=match):
+        Billiard.from_pieces(pieces)
+    assert plt.fignum_exists("Invalid billiard boundary")
+
+
+@pytest.mark.parametrize("angle", [0.0, 0.3, 1.0, 2.5])
+def test_valid_boundaries_are_accepted(angle):
+    half_disk = [("arc", 0.0, 0.0, 1.0, 0.0, np.pi), ("line", -1.0, 0.0, 1.0, 0.0)]
+    circle_in_halves = [
+        ("arc", 0.0, 0.0, 1.0, 0.0, np.pi),
+        ("arc", 0.0, 0.0, 1.0, np.pi, np.pi),
+    ]
+    collinear = [
+        ("line", 0.0, 0.0, 0.5, 0.0),
+        ("line", 0.5, 0.0, 1.0, 0.0),
+        ("line", 1.0, 0.0, 0.0, 1.0),
+        ("line", 0.0, 1.0, 0.0, 0.0),
+    ]
+    # Arcs of two radii with one tangent at their joint, and a line tangent to the arc
+    tangent_arcs = [
+        ("arc", 0.0, 0.0, 1.0, -np.pi / 2.0, np.pi),
+        ("arc", 0.0, 0.5, 0.5, np.pi / 2.0, np.pi),
+        ("arc", 0.0, -0.5, 0.5, np.pi / 2.0, -np.pi),
+    ]
+    boundaries = [half_disk, circle_in_halves, collinear, tangent_arcs]
+    boundaries += [SQUARE + [disk(0.3, 0.3, 0.2), disk(0.7, 0.7, 0.2)]]
+    boundaries += [two_rooms(r) for r in (0.0, 1e-3, 0.05, 0.2, 0.29)]
+    boundaries += [
+        AS_PIECES[name](*parameters)
+        for name, parameters in PIECEWISE_PARAMETERS
+    ]
+    for pieces in boundaries:
+        table = _fixed_pieces_table(rotated(pieces, angle))
+        assert _pieces_problem(table) is None
+
+
+def test_random_builtin_shapes_are_accepted(rng):
+    for _ in range(300):
+        angle = rng.uniform(0.0, TWO_PI)
+        R = rng.uniform(0.2, 2.0)
+        w = rng.uniform(0.01, 1.9 * R)
+        r = rng.uniform(0.01, 0.45)
+        center = rng.uniform(r + 0.01, 1.0 - r - 0.01, 2)
+        for pieces in (
+            stadium_as_pieces(rng.uniform(0.01, 3.0), rng.uniform(0.01, 3.0)),
+            mushroom_as_pieces(R, w, rng.uniform(0.01, 3.0)),
+            sinai_as_pieces(r, *center),
+        ):
+            assert _pieces_problem(_fixed_pieces_table(rotated(pieces, angle))) is None
+
+
+def segments_cross(p0, p1, q0, q1):
+    def side(a, b, c):
+        return np.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
+
+    return side(p0, p1, q0) != side(p0, p1, q1) and side(q0, q1, p0) != side(q0, q1, p1)
+
+
+def test_crossings_of_random_polygons_match_an_independent_test(rng):
+    crossing = 0
+    for _ in range(400):
+        corners = rng.uniform(0.0, 1.0, (7, 2))
+        pieces = [
+            ("line", *corners[j], *corners[(j + 1) % 7]) for j in range(7)
+        ]
+        expected = any(
+            segments_cross(corners[i], corners[(i + 1) % 7], corners[j], corners[(j + 1) % 7])
+            for i in range(7)
+            for j in range(i + 2, 7)
+            if (j + 1) % 7 != i
+        )
+        problem = _pieces_problem(_fixed_pieces_table(pieces))
+        found = problem is not None and "cross" in problem[0]
+        assert found == expected
+        crossing += expected
+    assert 0 < crossing < 400
+
+
+def test_arc_crossings_match_a_dense_scan(rng):
+    # Two random arcs and whether they meet, against points sampled along both.
+    checked = 0
+    for _ in range(300):
+        pieces = [
+            (
+                "arc",
+                *rng.uniform(0.0, 1.0, 2),
+                rng.uniform(0.1, 0.6),
+                rng.uniform(0.0, TWO_PI),
+                rng.uniform(0.2, 6.0) * rng.choice([-1.0, 1.0]),
+            )
+            for _ in range(2)
+        ]
+        table = _fixed_pieces_table(pieces)
+        curves = [
+            np.array(
+                [piece_point(table, row, u) for u in np.linspace(0.0, table[row, 2], 1500)]
+            )
+            for row in range(2)
+        ]
+        separation = np.min(
+            np.hypot(*(curves[0][:, None, :] - curves[1][None, :, :]).transpose(2, 0, 1))
+        )
+        found = _pieces_meeting_point(table, 0, 1, []) is not None
+        if separation > 5e-3:
+            assert not found
+            checked += 1
+        elif separation < 1e-4:
+            assert found
+            checked += 1
+    assert checked > 200
+
+
+def test_two_rooms_stay_valid_up_to_the_largest_radius():
+    assert Billiard.from_pieces(two_rooms(0.2999)).perimeter() > 0.0
+    # At the limit the vertical walls vanish, as a piece without length.
+    with pytest.raises(ValueError, match="positive length"):
+        Billiard.from_pieces(two_rooms(0.3))
+
+
+@njit
+def square_with_disk(parameters):
+    table = new_pieces(5)
+    set_line(table, 0, 0.0, 0.0, 1.0, 0.0)
+    set_line(table, 1, 1.0, 0.0, 1.0, 1.0)
+    set_line(table, 2, 1.0, 1.0, 0.0, 1.0)
+    set_line(table, 3, 0.0, 1.0, 0.0, 0.0)
+    set_arc(table, 4, 0.5, 0.5, parameters[0], 0.0, -2.0 * np.pi)
+    return table
+
+
+def test_parameters_that_make_the_boundary_cross_raise():
+    billiard = Billiard.from_pieces(square_with_disk, parameters=[0.2])
+    plt.close("all")
+    with pytest.raises(ValueError, match="pieces 0 and 4 cross"):
+        billiard.set_parameters([0.6])
+    assert plt.fignum_exists("Invalid billiard boundary")
+
+
+def test_rejected_boundary_is_drawn_with_the_problem_marked():
+    with pytest.raises(ValueError, match="pieces 2 and 4 cross") as error:
+        Billiard.from_pieces(SQUARE + [disk(0.5, 1.0, 0.3)])
+    assert "plt.show" in str(error.value)
+
+    axes = plt.figure("Invalid billiard boundary").axes[0]
+    assert "pieces 2 and 4 cross" in axes.get_title()
+    red = [line for line in axes.get_lines() if line.get_color() == "tab:red"]
+    # The two pieces, and the point where they meet
+    assert len(red) == 3
+    assert {text.get_text() for text in axes.texts if text.get_text()} == set("01234")
+
+
+def test_repeated_rejections_reuse_one_figure():
+    plt.close("all")
+    for radius in (0.55, 0.6, 0.65):
+        with pytest.raises(ValueError, match="cross"):
+            Billiard.from_pieces(SQUARE + [disk(0.5, 0.5, radius)])
+    assert len(plt.get_fignums()) == 1
+
+
+def test_failure_to_draw_keeps_the_error(monkeypatch):
+    def fail(*args, **kwargs):
+        raise RuntimeError("no display")
+
+    monkeypatch.setattr(plt, "figure", fail)
+    with pytest.raises(ValueError, match="pieces 2 and 4 cross") as error:
+        Billiard.from_pieces(SQUARE + [disk(0.5, 1.0, 0.3)])
+    assert "plt.show" not in str(error.value)
+
+
+def test_plot_pieces():
+    axes = Billiard.plot_pieces(SQUARE + [disk(0.5, 0.5, 0.2)])
+    assert len(axes.get_lines()) == 5
+    assert {text.get_text() for text in axes.texts if text.get_text()} == set("01234")
+
+    # A boundary that is not valid can be drawn too.
+    _, given = plt.subplots()
+    assert Billiard.plot_pieces(SQUARE + [disk(0.5, 1.0, 0.3)], ax=given) is given
+
+    assert len(Billiard.plot_pieces(square_with_disk, [0.2]).get_lines()) == 5
+    with pytest.raises(ValueError, match="requires parameters"):
+        Billiard.plot_pieces(square_with_disk)
+
+
+def test_rejected_polar_boundary_is_drawn():
+    plt.close("all")
+    with pytest.raises(ValueError, match="positive") as error:
+        Billiard.from_polar(negative_radius, zero_derivative)
+    assert "plt.show" in str(error.value)
+    assert plt.fignum_exists("Invalid billiard boundary")
 
 
 def test_unavailable_solver_on_user_pieces():

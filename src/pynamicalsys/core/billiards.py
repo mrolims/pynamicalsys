@@ -28,6 +28,7 @@ from pynamicalsys.common.types import int_t, numeric_like_t, numeric_t
 from pynamicalsys.common.validators import validate_parameters, validate_positive
 from pynamicalsys.core.discrete_dynamical_systems import DiscreteDynamicalSystem
 from pynamicalsys.discrete_time.billiards import (
+    inside_pieces,
     make_angle_maps,
     make_birkhoff_maps,
     make_fixed_pieces,
@@ -147,6 +148,11 @@ _BILLIARDS: Dict[str, Dict[str, Any]] = {
 # same definition is compiled only once.
 _USER_BILLIARDS: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
 
+# Pieces closer than this touch, as the ends of connected pieces do.
+_TOUCH_TOLERANCE = 1e-9
+
+_INVALID_FIGURE = "Invalid billiard boundary"
+
 
 def _find_billiard(name: Any) -> Dict[str, Any]:
     return _USER_BILLIARDS[name] if isinstance(name, tuple) else _BILLIARDS[name]
@@ -226,10 +232,24 @@ def _validate_polar_functions(
     r = np.array([radius(theta, parameters) for theta in thetas])
     dr = np.array([dradius(theta, parameters) for theta in thetas])
 
+    def draw(axes: Any, marks: NDArray[np.bool_]) -> None:
+        x = r * np.cos(thetas)
+        y = r * np.sin(thetas)
+        axes.plot(x, y, "k", lw=1.2)
+        axes.plot(x[marks], y[marks], "o", color="tab:red", ms=4.0, mfc="none")
+        axes.set_aspect("equal")
+
     if np.any(r <= 0.0):
-        raise ValueError("radius must be positive along the boundary")
+        raise _invalid_boundary(
+            "radius must be positive along the boundary",
+            lambda axes: draw(axes, r <= 0.0),
+        )
     if abs(r[0] - r[-1]) > 1e-9 * abs(r[0]):
-        raise ValueError("radius must have period 2 pi")
+        ends = np.zeros(thetas.size, dtype=bool)
+        ends[[0, -1]] = True
+        raise _invalid_boundary(
+            "radius must have period 2 pi", lambda axes: draw(axes, ends)
+        )
 
     def matches(values: NDArray[np.float64], derivative: Callable) -> bool:
         numerical = np.array(
@@ -329,7 +349,7 @@ def _pieces_components(table: NDArray[np.float64]) -> List[Tuple[int, int]]:
     for row in range(table.shape[0] - 1):
         end = piece_point(table, row, table[row, 2])
         start = piece_point(table, row + 1, 0.0)
-        if np.hypot(end[0] - start[0], end[1] - start[1]) > 1e-9:
+        if np.hypot(end[0] - start[0], end[1] - start[1]) > _TOUCH_TOLERANCE:
             components.append((first, row))
             first = row + 1
     components.append((first, table.shape[0] - 1))
@@ -337,30 +357,199 @@ def _pieces_components(table: NDArray[np.float64]) -> List[Tuple[int, int]]:
     return components
 
 
-def _validate_pieces(table: NDArray[np.float64]) -> None:
-    """Check that a table of pieces is a boundary with the billiard on its left."""
-    if table.ndim != 2 or table.shape[0] == 0 or table.shape[1] != new_pieces(1).shape[1]:
-        raise ValueError("the table of pieces has the wrong shape")
+def _on_piece(
+    table: NDArray[np.float64], row: int, x: float, y: float, margin: float
+) -> bool:
+    """Tell if a point of the line or circle of a piece is within the piece."""
+    length = table[row, 2]
+    if table[row, 0] == 0.0:
+        position = (x - table[row, 3]) * table[row, 5] + (y - table[row, 4]) * table[row, 6]
+    else:
+        radius = table[row, 5]
+        angle = np.arctan2(y - table[row, 4], x - table[row, 3])
+        swept = (table[row, 7] * (angle - table[row, 6])) % (2.0 * np.pi)
+        position = radius * swept
+        if position > length + margin:
+            position -= 2.0 * np.pi * radius
 
+    return -margin <= position <= length + margin
+
+
+def _same_line_or_circle(table: NDArray[np.float64], i: int, j: int) -> bool:
+    if table[i, 0] != table[j, 0]:
+        return False
+    if table[i, 0] == 1.0:
+        return (
+            np.hypot(table[i, 3] - table[j, 3], table[i, 4] - table[j, 4])
+            <= _TOUCH_TOLERANCE
+            and abs(table[i, 5] - table[j, 5]) <= _TOUCH_TOLERANCE
+        )
+    parallel = abs(table[i, 5] * table[j, 6] - table[i, 6] * table[j, 5]) <= 1e-12
+    offset = (table[j, 3] - table[i, 3]) * table[i, 6] - (
+        table[j, 4] - table[i, 4]
+    ) * table[i, 5]
+
+    return parallel and abs(offset) <= _TOUCH_TOLERANCE
+
+
+def _line_circle_points(
+    x0: float, y0: float, dx: float, dy: float, cx: float, cy: float, radius: float
+) -> List[Tuple[float, float]]:
+    along = (cx - x0) * dx + (cy - y0) * dy
+    distance = abs((cx - x0) * dy - (cy - y0) * dx)
+    if distance > radius + _TOUCH_TOLERANCE:
+        return []
+    # A tangent line meets the circle once, whatever the round-off in the distance.
+    half = (
+        0.0
+        if abs(distance - radius) <= _TOUCH_TOLERANCE
+        else np.sqrt(radius * radius - distance * distance)
+    )
+
+    return [
+        (x0 + (along + side * half) * dx, y0 + (along + side * half) * dy)
+        for side in (1.0, -1.0)
+    ]
+
+
+def _circle_circle_points(
+    x0: float, y0: float, r0: float, x1: float, y1: float, r1: float
+) -> List[Tuple[float, float]]:
+    distance = np.hypot(x1 - x0, y1 - y0)
+    if (
+        distance > r0 + r1 + _TOUCH_TOLERANCE
+        or distance < abs(r0 - r1) - _TOUCH_TOLERANCE
+        or distance == 0.0
+    ):
+        return []
+    along = (r0 * r0 - r1 * r1 + distance * distance) / (2.0 * distance)
+    # Tangent circles meet once, whatever the round-off in the distance.
+    tangent = min(abs(distance - r0 - r1), abs(distance - abs(r0 - r1)))
+    half = (
+        0.0
+        if tangent <= _TOUCH_TOLERANCE
+        else np.sqrt(max(r0 * r0 - along * along, 0.0))
+    )
+    ux = (x1 - x0) / distance
+    uy = (y1 - y0) / distance
+
+    return [
+        (
+            x0 + along * ux - side * half * uy,
+            y0 + along * uy + side * half * ux,
+        )
+        for side in (1.0, -1.0)
+    ]
+
+
+def _pieces_meeting_point(
+    table: NDArray[np.float64], i: int, j: int, joints: List[Tuple[float, float]]
+) -> Tuple[float, float] | None:
+    """Return a point shared by two pieces, other than the joints between them."""
+    if _same_line_or_circle(table, i, j):
+        # Only a stretch in common counts, so test the ends and middle of each piece
+        # against the interior of the other.
+        for row, other in ((i, j), (j, i)):
+            for u in (0.0, 0.5 * table[row, 2], table[row, 2]):
+                x, y = piece_point(table, row, u)
+                if _on_piece(table, other, x, y, -_TOUCH_TOLERANCE):
+                    return x, y
+        return None
+
+    if table[i, 0] == 0.0 and table[j, 0] == 0.0:
+        cross = table[i, 5] * table[j, 6] - table[i, 6] * table[j, 5]
+        if abs(cross) <= 1e-12:
+            return None
+        u = (
+            (table[j, 3] - table[i, 3]) * table[j, 6]
+            - (table[j, 4] - table[i, 4]) * table[j, 5]
+        ) / cross
+        points = [(table[i, 3] + u * table[i, 5], table[i, 4] + u * table[i, 6])]
+    elif table[i, 0] == 1.0 and table[j, 0] == 1.0:
+        points = _circle_circle_points(
+            table[i, 3], table[i, 4], table[i, 5], table[j, 3], table[j, 4], table[j, 5]
+        )
+    else:
+        line, arc = (i, j) if table[i, 0] == 0.0 else (j, i)
+        points = _line_circle_points(
+            table[line, 3],
+            table[line, 4],
+            table[line, 5],
+            table[line, 6],
+            table[arc, 3],
+            table[arc, 4],
+            table[arc, 5],
+        )
+
+    for x, y in points:
+        if (
+            _on_piece(table, i, x, y, _TOUCH_TOLERANCE)
+            and _on_piece(table, j, x, y, _TOUCH_TOLERANCE)
+            and all(
+                np.hypot(x - joint[0], y - joint[1]) > _TOUCH_TOLERANCE
+                for joint in joints
+            )
+        ):
+            return x, y
+
+    return None
+
+
+def _pieces_name(first: int, last: int) -> str:
+    return f"piece {first}" if first == last else f"pieces {first} to {last}"
+
+
+def _pieces_problem(
+    table: NDArray[np.float64],
+) -> Tuple[str, List[int], List[Tuple[float, float]]] | None:
+    """Return what is wrong with a boundary, the pieces, and the points involved."""
     for row in range(table.shape[0]):
         if table[row, 0] == 1.0 and table[row, 5] <= 0.0:
-            raise ValueError(f"piece {row} must have a positive radius")
+            point = (table[row, 3], table[row, 4])
+            return f"piece {row} must have a positive radius", [row], [point]
         if table[row, 2] <= 0.0:
-            raise ValueError(f"piece {row} must have a positive length")
+            point = (table[row, 3], table[row, 4])
+            return f"piece {row} must have a positive length", [row], [point]
         if table[row, 0] == 1.0 and table[row, 2] / table[row, 5] > 2.0 * np.pi * (
             1.0 + 1e-12
         ):
-            raise ValueError(f"arc {row} must sweep at most 2 pi")
+            return f"arc {row} must sweep at most 2 pi", [row], []
 
-    areas = []
-    for first, last in _pieces_components(table):
+    components = _pieces_components(table)
+    following = {}
+    for first, last in components:
         end = piece_point(table, last, table[last, 2])
         start = piece_point(table, first, 0.0)
-        if np.hypot(end[0] - start[0], end[1] - start[1]) > 1e-9:
-            raise ValueError(
+        if np.hypot(end[0] - start[0], end[1] - start[1]) > _TOUCH_TOLERANCE:
+            return (
                 "the pieces must be connected: each part of the boundary must end "
-                "where it starts"
+                f"where it starts, but piece {last} ends at "
+                f"({end[0]:.6g}, {end[1]:.6g}) and piece {first} starts at "
+                f"({start[0]:.6g}, {start[1]:.6g})",
+                [first, last],
+                [start, end],
             )
+        for row in range(first, last + 1):
+            following[row] = row + 1 if row < last else first
+
+    for i in range(table.shape[0]):
+        for j in range(i + 1, table.shape[0]):
+            joints = []
+            if following[i] == j:
+                joints.append(piece_point(table, j, 0.0))
+            if following[j] == i:
+                joints.append(piece_point(table, i, 0.0))
+            point = _pieces_meeting_point(table, i, j, joints)
+            if point is not None:
+                return (
+                    f"pieces {i} and {j} cross or touch at "
+                    f"({point[0]:.6g}, {point[1]:.6g})",
+                    [i, j],
+                    [point],
+                )
+
+    areas = []
+    for first, last in components:
 
         # The signed area of the part, from the boundary integral of (x dy - y dx) / 2.
         area = 0.0
@@ -382,12 +571,130 @@ def _validate_pieces(table: NDArray[np.float64]) -> None:
         areas.append(area)
 
     outer = int(np.argmax(np.abs(areas)))
-    if areas[outer] <= 0.0 or any(
-        area >= 0.0 for j, area in enumerate(areas) if j != outer
-    ):
-        raise ValueError(
+    wrong = [
+        j
+        for j, area in enumerate(areas)
+        if (area <= 0.0 if j == outer else area >= 0.0)
+    ]
+    if wrong:
+        first, last = components[wrong[0]]
+        return (
             "the billiard must be on the left of each piece: the outer boundary runs "
-            "counterclockwise, and the boundary of a hole runs clockwise"
+            "counterclockwise, and the boundary of a hole runs clockwise, but the part "
+            f"with {_pieces_name(first, last)} runs the other way",
+            list(range(first, last + 1)),
+            [],
+        )
+
+    outer_first, outer_last = components[outer]
+    for j, (first, last) in enumerate(components):
+        if j == outer:
+            continue
+        rows = list(range(first, last + 1))
+        point = piece_point(table, first, 0.0)
+        if not inside_pieces(table[outer_first : outer_last + 1], *point):
+            return (
+                f"the hole with {_pieces_name(first, last)} is outside the billiard",
+                rows,
+                [point],
+            )
+        for k, (other_first, other_last) in enumerate(components):
+            if k not in (j, outer) and inside_pieces(
+                table[other_first : other_last + 1], *point
+            ):
+                return (
+                    f"the hole with {_pieces_name(first, last)} is inside the hole "
+                    f"with {_pieces_name(other_first, other_last)}",
+                    rows,
+                    [point],
+                )
+
+    return None
+
+
+def _invalid_boundary(message: str, draw: Callable) -> ValueError:
+    """Draw a boundary that is not valid, and return the error to raise."""
+    # One figure is reused, so that a loop over invalid boundaries doesn't open many.
+    # The error matters more than the figure, so a failure to draw does not replace it.
+    try:
+        import matplotlib.pyplot as plt
+
+        figure = plt.figure(_INVALID_FIGURE, clear=True)
+        axes = figure.add_subplot()
+        draw(axes)
+        axes.set_title(message, fontsize=9, color="tab:red", wrap=True)
+    except Exception:
+        return ValueError(message)
+
+    return ValueError(
+        f"{message}. The boundary is drawn in the figure '{_INVALID_FIGURE}': "
+        "notebooks display it, and a script needs plt.show()."
+    )
+
+
+def _draw_pieces(
+    axes: Any,
+    table: NDArray[np.float64],
+    rows: Sequence[int] = (),
+    points: Sequence[Tuple[float, float]] = (),
+) -> None:
+    """Draw numbered pieces with their directions, and mark those with a problem."""
+    extent = []
+    drawn = []
+    for row in range(table.shape[0]):
+        length = table[row, 2]
+        if length <= 0.0 or (table[row, 0] == 1.0 and table[row, 5] <= 0.0):
+            continue
+        count = 2 if table[row, 0] == 0.0 else 129
+        curve = np.array(
+            [piece_point(table, row, u) for u in np.linspace(0.0, length, count)]
+        )
+        color = "tab:red" if row in rows else "black"
+        axes.plot(curve[:, 0], curve[:, 1], color=color, lw=2.0 if row in rows else 1.2)
+        extent.append(curve)
+        drawn.append((row, color))
+    extent = np.vstack(extent) if extent else np.zeros((1, 2))
+    size = max(float(np.ptp(extent, axis=0).max()), 1e-12)
+
+    for row, color in drawn:
+        length = table[row, 2]
+        # An arrow that stays on the piece, and the number on the side of the billiard.
+        step = min(0.01 * size, 0.1 * length)
+        back = np.array(piece_point(table, row, 0.5 * length - step))
+        middle = np.array(piece_point(table, row, 0.5 * length))
+        ahead = np.array(piece_point(table, row, 0.5 * length + step))
+        axes.annotate(
+            "",
+            xy=ahead,
+            xytext=back,
+            arrowprops={"arrowstyle": "-|>", "color": color, "lw": 1.2},
+        )
+        direction = (ahead - back) / np.hypot(*(ahead - back))
+        left = np.array([-direction[1], direction[0]])
+        axes.text(
+            *(middle + 0.04 * size * left),
+            str(row),
+            color=color,
+            fontsize=8,
+            ha="center",
+            va="center",
+        )
+
+    for point in points:
+        axes.plot(*point, "o", color="tab:red", ms=7.0, mfc="none", mew=1.5)
+    axes.set_aspect("equal")
+
+
+def _validate_pieces(table: NDArray[np.float64]) -> None:
+    """Check that a table of pieces is a boundary with the billiard on its left."""
+    if table.ndim != 2 or table.shape[0] == 0 or table.shape[1] != new_pieces(1).shape[1]:
+        raise ValueError("the table of pieces has the wrong shape")
+
+    problem = _pieces_problem(table)
+    if problem is not None:
+        message, rows, points = problem
+        raise _invalid_boundary(
+            message, lambda axes: _draw_pieces(axes, table, rows, points)
         )
 
 
@@ -804,8 +1111,10 @@ class Billiard(DiscreteDynamicalSystem):
         ValueError
             - If `solver` is not available.
             - If a piece is malformed or has no length or radius.
-            - If, for the given or stored parameters, the pieces are not connected, or
-              the billiard is not on their left.
+            - If, for the given or stored parameters, the pieces are not connected,
+              cross or touch each other, the billiard is not on their left, or a hole
+              is outside the billiard or inside another hole. The boundary is drawn in
+              a figure, as with `plot_pieces`, with the problem marked in red.
 
         Examples
         --------
@@ -879,6 +1188,56 @@ class Billiard(DiscreteDynamicalSystem):
         )
 
         return billiard
+
+    @staticmethod
+    def plot_pieces(
+        pieces: Callable | Sequence[Sequence[Any]],
+        parameters: numeric_like_t | None = None,
+        ax: Any | None = None,
+    ) -> Any:
+        """
+        Draw a boundary made of lines and arcs, whether it is valid or not.
+
+        Each piece is numbered, on the side where the billiard must be, and has an arrow
+        with its direction.
+
+        Parameters
+        ----------
+        pieces : Callable | Sequence[Sequence[Any]]
+            The pieces, as in `from_pieces`.
+        parameters : numeric_like_t | None, optional
+            Parameters of a function `pieces`.
+        ax : matplotlib.axes.Axes | None, optional
+            Axes to draw on. If None, a new figure is created.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes with the drawing.
+
+        Examples
+        --------
+        >>> ax = Billiard.plot_pieces([
+        ...     ("line", 0.0, 0.0, 1.0, 1.0),
+        ...     ("line", 1.0, 1.0, 1.0, 0.0),
+        ...     ("line", 1.0, 0.0, 0.0, 1.0),
+        ...     ("line", 0.0, 1.0, 0.0, 0.0),
+        ... ])
+        """
+        import matplotlib.pyplot as plt
+
+        if callable(pieces):
+            if parameters is None:
+                raise ValueError("a function pieces requires parameters")
+            table = pieces(np.atleast_1d(np.asarray(parameters, dtype=np.float64)))
+        else:
+            table = _fixed_pieces_table(pieces)
+
+        if ax is None:
+            _, ax = plt.subplots()
+        _draw_pieces(ax, table)
+
+        return ax
 
     def __reduce__(self) -> Tuple[Any, ...]:
         # Compiled maps are slow to pickle, which would dominate parallel runs with
