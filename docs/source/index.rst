@@ -138,6 +138,7 @@ See :doc:`citation` for citation formats.
    api/dds
    api/cds
    api/hs
+   api/billiards
    api/basin_metrics
    api/time_series_metrics
    api/plot_styler

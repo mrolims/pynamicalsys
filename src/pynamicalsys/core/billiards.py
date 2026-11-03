@@ -146,7 +146,7 @@ _TOUCH_TOLERANCE = 1e-9
 
 _INVALID_FIGURE = "Invalid billiard boundary"
 
-_CONVEXITY_POINTS = 4097
+_CONVEXITY_POINTS = 5000
 
 
 def _find_billiard(name: Any) -> Dict[str, Any]:
@@ -569,9 +569,9 @@ def _pieces_problem(
     if wrong:
         first, last = components[wrong[0]]
         return (
-            "the billiard must be on the left of each piece: the outer boundary runs "
-            "counterclockwise, and the boundary of a hole runs clockwise, but the part "
-            f"with {_pieces_name(first, last)} runs the other way",
+            "the pieces run the wrong way: the outer boundary must run counterclockwise, "
+            "and the boundary of a hole clockwise, but the part with "
+            f"{_pieces_name(first, last)} runs the other way",
             list(range(first, last + 1)),
             [],
         )
@@ -676,7 +676,7 @@ def _draw_pieces(
 
 
 def _validate_pieces(table: NDArray[np.float64]) -> None:
-    """Check that a table of pieces is a boundary with the billiard on its left."""
+    """Check that a table of pieces is a closed boundary that runs in the right direction."""
     if table.ndim != 2 or table.shape[0] == 0 or table.shape[1] != new_pieces(1).shape[1]:
         raise ValueError("the table of pieces has the wrong shape")
 
@@ -710,9 +710,18 @@ class Billiard(DiscreteDynamicalSystem):
     """
     Billiard, as the map from one collision with the boundary to the next.
 
-    A billiard is a discrete dynamical system, so every method of
-    `DiscreteDynamicalSystem` is available, such as `trajectory`, `lyapunov`,
-    and `escape_analysis`.
+    It inherits from `DiscreteDynamicalSystem`, so all the methods of that class work on
+    a billiard, with these exceptions:
+
+    - `classify_orbit` and `rotation_number` need a frequency map, and a billiard does
+      not have one unless you set it with `set_frequency_map`. Without it,
+      `classify_orbit` raises an error, and `rotation_number` falls back on its
+      deprecated computation with a `DeprecationWarning`.
+    - `available_models` lists the models of `DiscreteDynamicalSystem`. Use
+      `available_billiards` for the billiards.
+    - `diffusion_coefficient`, `mean_squared_displacement`, and `root_mean_squared` run,
+      but the position and the angle are bounded, so their results do not describe
+      diffusion.
 
     The available billiards, with their parameters in order, are:
 
@@ -781,8 +790,8 @@ class Billiard(DiscreteDynamicalSystem):
 
         By kind of problem:
 
-        - Long orbits, ensembles, and basins: the fastest valid solver above, as `"md"`
-          is an order of magnitude slower.
+        - Long orbits, ensembles, and basins: the fastest valid solver above. `"md"` is
+          about 2 times slower on lines and arcs, and 6 to 20 times slower on `R(theta)`.
         - A scan of parameters across `eps = 1 / (1 + p^2)`: `"circle"` raises past it, so
           use `"md"`, or `"polygon"` on that side.
         - Checking a new boundary or a result: compare with `"md"` and a large
@@ -939,8 +948,8 @@ class Billiard(DiscreteDynamicalSystem):
         solver : str
             Required. `"md"` uses molecular dynamics, which works on every boundary, with
             `md_steps` chosen to suit it. `"circle"` is the tangent method of Algorithm 1
-            of da Costa et al. (2022), about ten times faster, but valid only on a convex
-            boundary. It requires `max_radius`. Convexity is checked on a grid of 4097
+            of da Costa et al. (2022), much faster, but valid only on a convex
+            boundary. It requires `max_radius`. Convexity is checked on a grid of 5000
             angles, for the given or stored parameters, which can miss a narrower dent,
             and a wrong solver can give wrong collisions without an error.
         coordinates : str, optional
@@ -1087,9 +1096,9 @@ class Billiard(DiscreteDynamicalSystem):
         """
         Define a billiard by a boundary made of lines and circular arcs.
 
-        The position on the boundary is the arc length, in the order of the pieces, and
-        the billiard must be on the left of each piece. So the outer boundary runs
-        counterclockwise, and the boundary of a hole, such as a disk, runs clockwise.
+        The position on the boundary is the arc length, in the order of the pieces. The
+        direction of the pieces matters: the outer boundary must run counterclockwise, and
+        the boundary of a hole, such as a disk, clockwise.
 
         Parameters
         ----------
@@ -1134,7 +1143,7 @@ class Billiard(DiscreteDynamicalSystem):
             - If `solver` is not available.
             - If a piece is malformed or has no length or radius.
             - If, for the given or stored parameters, the pieces are not connected,
-              cross or touch each other, the billiard is not on their left, or a hole
+              cross or touch each other, run in the wrong direction, or a hole
               is outside the billiard or inside another hole. The boundary is drawn in
               a figure, as with `plot_pieces`, with the problem marked in red.
 
@@ -1219,8 +1228,8 @@ class Billiard(DiscreteDynamicalSystem):
         """
         Draw a boundary made of lines and arcs, whether it is valid or not.
 
-        Each piece is numbered, on the side where the billiard must be, and has an arrow
-        with its direction.
+        Each piece is numbered, and has an arrow with its direction. The number lies on the
+        inner side of the billiard when the piece runs in the right direction.
 
         Parameters
         ----------

@@ -2047,7 +2047,7 @@ def test_boundary_and_cartesian_of_user_billiards():
                 ("line", 1.0, 0.0, 0.0, 0.0),
             ],
             ValueError,
-            "left",
+            "wrong way",
         ),
         (
             [
@@ -2058,7 +2058,7 @@ def test_boundary_and_cartesian_of_user_billiards():
                 ("arc", 0.5, 0.5, 0.2, 0.0, TWO_PI),
             ],
             ValueError,
-            "left",
+            "wrong way",
         ),
     ],
 )
@@ -2076,7 +2076,7 @@ def clockwise_stadium(parameters):
 
 
 def test_invalid_pieces_from_a_function_raise_with_the_parameters():
-    with pytest.raises(ValueError, match="left"):
+    with pytest.raises(ValueError, match="wrong way"):
         Billiard.from_pieces(clockwise_stadium, parameters=[1.0], solver="exact")
 
 

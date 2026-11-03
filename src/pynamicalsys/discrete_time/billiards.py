@@ -249,7 +249,7 @@ def make_angle_maps(
         Solver that finds the next collision, as in `make_md_solver`.
     boundary_point, tangent : Callable
         Functions of `(q, t, parameters)` that return the point and the unit
-        tangent of the boundary, with the billiard on the left of the tangent.
+        tangent of the boundary, which runs counterclockwise along the outer boundary.
     curvature, arc_speed : Callable
         Functions of `(q, t, parameters)` that return the signed curvature and
         `ds/dq`, the arc length per unit of `q`.
@@ -1094,7 +1094,7 @@ def oval_polygon_solver(
 #
 # where start is the arc length at the beginning of the piece, (dx, dy) is the unit
 # direction of a line, and orientation is +1 or -1 for an arc run counterclockwise or
-# clockwise. The billiard is on the left of each piece.
+# clockwise. The outer boundary runs counterclockwise, and a hole clockwise.
 _PIECE_COLUMNS = 8
 
 
@@ -1122,7 +1122,7 @@ def set_line(
     Make a row of the table the line from `(x0, y0)` to `(x1, y1)`.
 
     Rows must be set in order, as each starts where the arc length of the previous one
-    ends. The billiard must be on the left of the line.
+    ends. The outer boundary runs counterclockwise, and a hole clockwise.
     """
     length = np.hypot(x1 - x0, y1 - y0)
     table[row, 0] = 0.0
@@ -1150,8 +1150,8 @@ def set_arc(
 
     The arc starts at `first_angle` and sweeps the angle `span`, counterclockwise if it
     is positive and clockwise if it is negative. Rows must be set in order, as each starts
-    where the arc length of the previous one ends. The billiard must be on the left
-    of the arc, so an arc that bounds a disk inside the billiard runs clockwise.
+    where the arc length of the previous one ends. The outer boundary runs
+    counterclockwise, so an arc that bounds a disk inside the billiard runs clockwise.
     """
     table[row, 0] = 1.0
     table[row, 1] = _piece_start(table, row)
@@ -1598,7 +1598,7 @@ def sinai_inside(
 @njit
 def sinai_pieces(parameters: NDArray[np.float64]) -> NDArray[np.float64]:
     # s = 0 at the origin, runs counterclockwise along the walls, then clockwise
-    # around the disk from its rightmost point, so the billiard stays on the left.
+    # around the disk from its rightmost point, as the boundary of a hole does.
     r, x_d, y_d = parameters
     table = new_pieces(5)
     set_line(table, 0, 0.0, 0.0, 1.0, 0.0)
