@@ -59,6 +59,13 @@ from pynamicalsys.discrete_time.periodic_orbits import (
     find_periodic_orbit_symmetry_line,
     newton_periodic_orbit,
 )
+
+from pynamicalsys.discrete_time.pseudo_orbits_bollt import (
+    build_pseudo_orbit as build_pseudo_orbit_kernel,
+    refine_gradient,
+    refine_sampling,
+)
+
 from pynamicalsys.discrete_time.stability import (
     eigenvalues_and_eigenvectors,
     classify_stability,
@@ -1072,6 +1079,163 @@ class DiscreteDynamicalSystem:
         if self.__system_dimension == 1:
             return trajectories[:, :, 0]
         return trajectories
+
+    def build_pseudo_orbit(
+        self,
+        u: numeric_like_t,
+        exits: Sequence[Sequence[numeric_t]],
+        parameters: numeric_like_t | None = None,
+        refine: Literal["gradient", "sampling"] = "gradient",
+        total_time: int_t = 10_000,
+        min_lifetime: int_t = 50,
+        max_escape_time: int_t = 1_000,
+        h_max: numeric_t = 0.1,
+        n_dim: int_t | None = None,
+        delta: numeric_t = 1e-6,
+        n_trials: int_t = 50,
+        tolerance: numeric_t = 1e-10,
+        max_freq: int_t = 10,
+        seed: int_t = 0,
+    ) -> tuple[NDArray[np.float64], int]:
+        """
+        Build a pseudo-orbit using the Bollt method.
+
+        Generates a sequence of states (an ``epsilon``-chain) that remains
+        confined within a bounded hyper-box region ``B`` for ``total_time``
+        iterations. Whenever the discrete lifetime of the current state drops
+        below ``min_lifetime``, a small perturbation is applied to push the
+        trajectory toward points with longer escape times, approximating an
+        unstable invariant set.
+
+        Parameters
+        ----------
+        u : numeric_like_t
+            Initial state condition inside the bounded region ``B``.
+        exits : Sequence[Sequence[numeric_t]]
+            Lower and upper bounds ``[min, max]`` for each state variable
+            defining the convex hyper-box region ``B``, with shape
+            ``(system_dimension, 2)``.
+        parameters : numeric_like_t | None, optional
+            System parameters. If ``None``, the default parameters stored in
+            the system instance are used.
+        refine : {"gradient", "sampling"}, optional
+            Strategy used to perturb the state when its lifetime falls below
+            ``min_lifetime``. ``"gradient"`` follows the gradient of the
+            continuous lifetime function (Bollt's Algorithm A), whereas
+            ``"sampling"`` searches via random perturbations. Default is
+            ``"gradient"``.
+        total_time : int_t, optional
+            Total number of iterations (length) of the generated pseudo-orbit.
+            Default is ``10_000``.
+        min_lifetime : int_t, optional
+            Minimum required discrete lifetime ``N`` inside ``B`` before a
+            perturbation is triggered. Default is ``50``.
+        max_escape_time : int_t, optional
+            Maximum number of forward iterations evaluated when computing the
+            escape time of a state. Default is ``1_000``.
+        h_max : numeric_t, optional
+            Maximum step size used in the adaptive gradient integration
+            (Algorithm A). Default is ``0.1``.
+        n_dim : int_t | None, optional
+            Number of leading state components allowed to be perturbed during
+            refinement. If ``None``, all system dimensions are perturbed.
+        delta : numeric_t, optional
+            Finite-difference step size used to numerically approximate the
+            gradient of the continuous lifetime function. Default is ``1e-6``.
+        n_trials : int_t, optional
+            Maximum number of refinement attempts (e.g., adaptive step
+            reductions or random samples) allowed per perturbation step.
+            Default is ``50``.
+        tolerance : numeric_t, optional
+            Euclidean distance threshold used to identify state recurrence
+            when checking for an auxiliary cycle. Default is ``1e-10``.
+        max_freq : int_t, optional
+            Maximum recurrence frequency or period threshold considered during
+            auxiliary cycle detection. Default is ``10``.
+        seed : int_t, optional
+            Random seed for reproducibility during stochastic sampling.
+            Default is ``0``.
+
+        Returns
+        -------
+        pseudo_orbit : NDArray[np.float64]
+            Array of shape ``(total_time + 1, system_dimension)`` (or
+            ``(total_time, system_dimension)``) containing the trajectory
+            states.
+        cycle_length : int
+            Detected auxiliary cycle period, or ``-1`` if no cycle is found.
+
+        References
+        ----------
+        .. [1] E. M. Bollt, "The Path Towards a Longer Life: On Invariant
+           Sets and the Escape Time Landscape", *International Journal of
+           Bifurcation and Chaos*, 15(5), 1615--1624, 2005.
+        """
+
+        u_arr = validate_initial_conditions(
+            u, self.__system_dimension, allow_ensemble=False
+        )
+
+        if parameters is None and self.__parameters is not None:
+            parameters_arr = self.__parameters
+        else:
+            parameters_arr = validate_parameters(
+                parameters, self.__number_of_parameters
+            )
+
+        exits_arr = np.asarray(exits, dtype=np.float64)
+        if exits_arr.shape != (self.__system_dimension, 2):
+            raise ValueError(
+                "exits must have shape "
+                f"({self.__system_dimension}, 2)"
+            )
+        if np.any(np.isnan(exits_arr)):
+            raise ValueError("exits must not contain NaN")
+        if np.any(exits_arr[:, 0] > exits_arr[:, 1]):
+            raise ValueError("each exit lower bound must not exceed its upper bound")
+
+        if refine not in ("gradient", "sampling"):
+            raise ValueError("refine must be either 'gradient' or 'sampling'")
+        refine_function = (
+            refine_gradient if refine == "gradient" else refine_sampling
+        )
+
+        if n_dim is None:
+            n_dim = self.__system_dimension
+        validate_positive(total_time, "total_time", Integral)
+        validate_non_negative(min_lifetime, "min_lifetime", Integral)
+        validate_positive(max_escape_time, "max_escape_time", Integral)
+        validate_positive(h_max, "h_max", Real)
+        validate_positive(n_dim, "n_dim", Integral)
+        if n_dim > self.__system_dimension:
+            raise ValueError(
+                f"n_dim must be at most {self.__system_dimension}"
+            )
+        validate_positive(delta, "delta", Real)
+        validate_positive(n_trials, "n_trials", Integral)
+        validate_non_negative(tolerance, "tolerance", Real)
+        if isinstance(max_freq, bool) or not isinstance(max_freq, Integral):
+            raise TypeError("max_freq must be of type Integral")
+        if not isinstance(seed, Integral):
+            raise TypeError("seed must be an integer")
+
+        return build_pseudo_orbit_kernel(
+            u=u_arr,
+            parameters=parameters_arr,
+            mapping=self.__mapping,
+            exits=np.ascontiguousarray(exits_arr),
+            refine=refine_function,
+            total_time=total_time,
+            min_lifetime=min_lifetime,
+            max_escape_time=max_escape_time,
+            h_max=h_max,
+            n_dim=n_dim,
+            delta=delta,
+            n_trials=n_trials,
+            tolerance=tolerance,
+            max_freq=max_freq,
+            seed=seed,
+        )
 
     def bifurcation_diagram(
         self,
